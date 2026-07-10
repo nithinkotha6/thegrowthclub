@@ -6,11 +6,11 @@ import { Users, ChevronDown } from 'lucide-react';
 const DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
 
 const MOCK_USERS = [
-  { name: 'Nithin', color: '#FF3B30', data: [0,  2,  5,  9, 13, 17, 19] },
-  { name: 'Ashray', color: '#007AFF', data: [0,  3,  7, 10, 12, 15, 17] },
-  { name: 'Rahul',  color: '#AF52DE', data: [0,  2,  6,  9, 11, 14, 16] },
-  { name: 'Mouye',  color: '#34C759', data: [0,  1,  3,  5,  7,  8,  9] },
-  { name: 'Narri',  color: '#FFCC00', data: [0,  1,  2,  3,  4,  5,  6] },
+  { name: 'Nithin', color: '#FF3B30', avatar_url: '', data: [0,  2,  5,  9, 13, 17, 19] },
+  { name: 'Ashray', color: '#007AFF', avatar_url: '', data: [0,  3,  7, 10, 12, 15, 17] },
+  { name: 'Rahul',  color: '#AF52DE', avatar_url: '', data: [0,  2,  6,  9, 11, 14, 16] },
+  { name: 'Mouye',  color: '#34C759', avatar_url: '', data: [0,  1,  3,  5,  7,  8,  9] },
+  { name: 'Narri',  color: '#FFCC00', avatar_url: '', data: [0,  1,  2,  3,  4,  5,  6] },
 ];
 
 /**
@@ -53,13 +53,20 @@ export default function MetricChart() {
       type: 'line',
       name: u.name,
       smooth: true,
+      // Base symbol: hidden for all non-terminal points.
+      // Terminal point uses image:// if avatar_url is set, otherwise a colored circle.
       symbol: 'circle',
       lineStyle: { color: u.color, width: 2.5 },
       data: u.data.map((v, i) => {
         const isLast = i === DAYS.length - 1;
+        // Use the profile avatar_url with ECharts image:// protocol at the terminal node.
+        const terminalSymbol = isLast && u.avatar_url
+          ? `image://${u.avatar_url}`
+          : 'circle';
         return {
           value: v,
-          symbolSize: isLast ? 30 : 0,
+          symbol: terminalSymbol,
+          symbolSize: isLast ? (u.avatar_url ? 34 : 30) : 0,
           itemStyle: isLast
             ? { color: u.color, borderColor: '#fff', borderWidth: 3 }
             : { opacity: 0 },

@@ -1,4 +1,5 @@
-import { CalendarDays, ChevronDown, Plus, PersonStanding, Dumbbell, Zap, Scale } from 'lucide-react';
+import { CalendarDays, ChevronDown, PersonStanding, Dumbbell, Zap, Scale } from 'lucide-react';
+import AddActivityModal from '@/components/AddActivityModal';
 import MetricChart from '@/components/MetricChart';
 import BreakingNewsFeed from '@/components/BreakingNewsFeed';
 import KpiCards from '@/components/KpiCards';
@@ -54,14 +55,7 @@ export default function DashboardPage() {
             <ChevronDown size={13} className="text-[#6B7280]" />
           </button>
 
-          <button
-            id="add-activity-btn"
-            className="flex items-center gap-1.5 bg-[#111827] text-white rounded-xl px-3 md:px-4 py-2.5 text-xs md:text-sm font-semibold hover:bg-black transition-colors"
-          >
-            <Plus size={14} strokeWidth={2.5} />
-            <span className="hidden sm:inline">Add Activity</span>
-            <span className="sm:hidden">Add</span>
-          </button>
+          <AddActivityModal />
         </div>
       </header>
 
