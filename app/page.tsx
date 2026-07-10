@@ -29,19 +29,53 @@ export default function LandingPage() {
   const [isPending, startTransition] = useTransition();
 
   // Step 1 state
-  const [groups, setGroups]         = useState<Group[]>([]);
-  const [selectedGroup, setGroup]   = useState<Group | null>(null);
-  const [pin, setPin]               = useState('');
-  const [pinError, setPinError]     = useState<string | null>(null);
+  const [groups, setGroups]           = useState<Group[]>([]);
+  const [isLoadingGroups, setLoading] = useState(true);
+  const [loadError, setLoadError]     = useState<string | null>(null);
+  const [selectedGroup, setGroup]     = useState<Group | null>(null);
+  const [pin, setPin]                 = useState('');
+  const [pinError, setPinError]       = useState<string | null>(null);
 
   // Step 2 state
-  const [step, setStep]             = useState<Step>('pin');
-  const [profiles, setProfiles]     = useState<GroupProfile[]>([]);
+  const [step, setStep]               = useState<Step>('pin');
+  const [profiles, setProfiles]       = useState<GroupProfile[]>([]);
   const [selectingId, setSelectingId] = useState<string | null>(null);
 
-  // Fetch group list on mount
+  // Fetch group list on mount — strict error handling
   useEffect(() => {
-    getGroupsAction().then(({ groups }) => setGroups(groups));
+    let cancelled = false;
+
+    async function loadGroups() {
+      try {
+        const { groups, error } = await getGroupsAction();
+        if (cancelled) return;
+
+        if (error) {
+          console.error('[LandingPage] getGroupsAction returned query error:', error);
+          setLoadError('Failed to load groups. Check database connection.');
+          setLoading(false);
+          return;
+        }
+
+        if (groups.length === 0) {
+          console.warn('[LandingPage] getGroupsAction returned empty group list');
+          setLoadError('Failed to load groups. Check database connection.');
+        } else {
+          setGroups(groups);
+        }
+      } catch (err: any) {
+        if (cancelled) return;
+        console.error('[LandingPage] Error in fetchGroups:', err);
+        setLoadError('Failed to load groups. Check database connection.');
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadGroups();
+    return () => { cancelled = true; };
   }, []);
 
   /* ── Step 1: Verify PIN ─────────────────────────────────────────────── */
@@ -114,6 +148,14 @@ export default function LandingPage() {
 
             <form onSubmit={handlePinSubmit} className="flex flex-col gap-4">
 
+              {/* DB load error — shown when getGroupsAction fails or returns empty */}
+              {loadError && (
+                <div className="flex items-start gap-2 rounded-xl bg-[#FF3B30]/10 border border-[#FF3B30]/20 px-4 py-3 text-xs text-[#FF3B30]" role="alert">
+                  <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
+                  <span>{loadError}</span>
+                </div>
+              )}
+
               {/* Group selector */}
               <div>
                 <label className="block text-[11px] font-bold tracking-wider text-[#6B7280] uppercase mb-1.5">
@@ -129,11 +171,11 @@ export default function LandingPage() {
                       setPinError(null);
                     }}
                     required
-                    disabled={isPending || groups.length === 0}
+                    disabled={isPending || isLoadingGroups || !!loadError}
                     className="w-full appearance-none rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#CEFF00]/40 disabled:opacity-50 transition pr-10"
                   >
                     <option value="" disabled className="bg-[#1A1A1A] text-[#6B7280]">
-                      {groups.length === 0 ? 'Loading groups…' : 'Select your group'}
+                      {isLoadingGroups ? 'Loading groups…' : loadError ? 'Error — see above' : 'Select your group'}
                     </option>
                     {groups.map(g => (
                       <option key={g.id} value={g.id} className="bg-[#1A1A1A] text-white">

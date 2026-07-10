@@ -155,3 +155,28 @@ Supporting functions:
 | `SUPABASE_SERVICE_ROLE_KEY` | Telegram webhook (service-role, server-only) |
 | `GOOGLE_GENERATIVE_AI_API_KEY` | `@ai-sdk/google` auto-detection |
 | `TELEGRAM_WEBHOOK_SECRET` | Webhook route secret token verification |
+| `SESSION_SECRET` | Kiosk JWT cookie encryption key (min 32 chars) |
+
+---
+
+## 7. Kiosk Auth Model & Room Session Security
+
+### Strict Room Session
+The kiosk application operates entirely decoupled from traditional Supabase Auth. Authentication and tenant-scoping are enforced at the application level:
+1. **Selection & PIN Verification**: The user selects a group (publicly visible) and enters a 4-digit PIN (stored as `invite_code` in the `groups` table). This is verified server-side.
+2. **Profile Mapping**: Upon correct PIN validation, all profiles mapped to the group are retrieved.
+3. **Session Cookie**: Tapping a profile issues a signed, HTTP-only `app_session` cookie containing `{ userId, groupId, groupName, userName }`.
+4. **Middleware Guard**: Next.js middleware intercepts `/dashboard` paths. Any request without a valid, unexpired `app_session` cookie is strictly redirected back to `/`.
+
+### Kiosk Database RLS Strategy
+Since clients access the landing page unauthenticated, specific table policies allow read operations for anonymous users:
+- **`groups`**: Accessible via `SELECT` to public/anonymous users so the dropdown list can populate. (Only `id` and `name` are loaded; the PIN code is handled privately during verification).
+- **`profiles` / `group_members`**: Readable by `anon` client to display room rosters once a group PIN is validated.
+- **SQL RLS Fix**:
+```sql
+DROP POLICY IF EXISTS "groups: anon can list group names" ON public.groups;
+CREATE POLICY "groups: anon can read"
+  ON public.groups FOR SELECT
+  TO anon
+  USING (true);
+```

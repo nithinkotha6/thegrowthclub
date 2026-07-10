@@ -27,7 +27,7 @@ export type GroupProfile = {
   avatar_url: string | null;
 };
 
-export type GetGroupsResult = { groups: Group[] };
+export type GetGroupsResult = { groups: Group[]; error?: string };
 
 export type VerifyPinResult =
   | { success: true;  profiles: GroupProfile[] }
@@ -41,19 +41,24 @@ export type VerifyPinResult =
  * (the landing page is public, there is no Supabase Auth session yet).
  */
 export async function getGroupsAction(): Promise<GetGroupsResult> {
-  const supabase = await createClient();
+  try {
+    const supabase = await createClient();
 
-  const { data, error } = await supabase
-    .from('groups')
-    .select('id, name')
-    .order('name', { ascending: true });
+    const { data, error } = await supabase
+      .from('groups')
+      .select('id, name')
+      .order('name', { ascending: true });
 
-  if (error) {
-    console.error('[getGroupsAction]', error.message);
-    return { groups: [] };
+    if (error) {
+      console.error('[getGroupsAction]', error.message);
+      return { groups: [], error: error.message };
+    }
+
+    return { groups: (data ?? []) as Group[] };
+  } catch (err: any) {
+    console.error('[getGroupsAction] catch block error:', err);
+    return { groups: [], error: err?.message || 'Failed to connect to database' };
   }
-
-  return { groups: (data ?? []) as Group[] };
 }
 
 /* ── verifyPinAction ──────────────────────────────────────────────────────── */
