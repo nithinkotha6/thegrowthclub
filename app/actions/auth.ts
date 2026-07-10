@@ -188,17 +188,33 @@ export async function signUpAction(
       return { success: false, error: 'Failed to verify unique account.' };
     }
 
-    const hasDuplicate = (existingMembers ?? []).some((m: any) => {
-      const p = m.profiles;
-      if (!p) return false;
-      
-      const sameName = p.full_name?.toLowerCase().trim() === fullName.trim().toLowerCase();
-      const sameEmail = email.trim() && p.email?.toLowerCase().trim() === email.trim().toLowerCase();
-      return sameName || sameEmail;
-    });
+    if (existingMembers && existingMembers.length > 0) {
+      const hasDuplicate = existingMembers.some((m: any) => {
+        const rawProfiles = m.profiles;
+        if (!rawProfiles) return false;
 
-    if (hasDuplicate) {
-      return { success: false, error: 'An account with this name/email already exists in this group.' };
+        const profilesList = Array.isArray(rawProfiles) ? rawProfiles : [rawProfiles];
+
+        return profilesList.some((p: any) => {
+          if (!p) return false;
+
+          // Strictly compare trimmed lowercase names
+          const dbName = p.full_name?.toLowerCase().trim();
+          const inputName = fullName.toLowerCase().trim();
+          const nameMatch = dbName && inputName && dbName === inputName;
+
+          // Strictly compare trimmed lowercase emails only if both are set and non-empty
+          const dbEmail = p.email?.toLowerCase().trim();
+          const inputEmail = email?.toLowerCase().trim();
+          const emailMatch = dbEmail && inputEmail && dbEmail === inputEmail;
+
+          return nameMatch || emailMatch;
+        });
+      });
+
+      if (hasDuplicate) {
+        return { success: false, error: 'An account with this name/email already exists in this group.' };
+      }
     }
 
     // 3. Generate a new profile

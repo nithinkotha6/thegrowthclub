@@ -1,7 +1,6 @@
 -- =============================================================================
--- CONSOLIDATED FRESH SCHEMA — The Growth Club Dashboard
--- Run this on a clean Supabase project (after dropping the public schema).
--- This is the final state of all 4 migration files combined and resolved.
+-- CONSOLIDATED INITIAL SCHEMA — The Growth Club Dashboard
+-- Consolidated state of all schema tables, triggers, and RLS policies.
 -- =============================================================================
 
 -- Ensure correct schema permissions (crucial if public schema was dropped/recreated)
@@ -20,7 +19,7 @@ create extension if not exists "uuid-ossp";
 -- Each group is an isolated batch (e.g. 'Texasbuds', 'Budbikers').
 -- invite_code is used by signups to join the group.
 -- ---------------------------------------------------------------------------
-create table public.groups (
+create table if not exists public.groups (
   id          uuid        primary key default uuid_generate_v4(),
   name        text        not null,
   invite_code text        unique,
@@ -35,7 +34,7 @@ create table public.groups (
 -- telegram_user_id links this profile to a Telegram account for bot ingestion.
 -- total_xp and current_level are managed automatically by the XP trigger.
 -- ---------------------------------------------------------------------------
-create table public.profiles (
+create table if not exists public.profiles (
   id                uuid        primary key default uuid_generate_v4(),
   full_name         text        not null,
   nickname          text,        -- User nickname for dashboard display
@@ -53,23 +52,29 @@ create table public.profiles (
 -- Many-to-many: one user can belong to multiple groups.
 -- Composite PK prevents duplicate memberships.
 -- ---------------------------------------------------------------------------
-create table public.group_members (
+create table if not exists public.group_members (
   user_id   uuid        not null references public.profiles (id) on delete cascade,
   group_id  uuid        not null references public.groups   (id) on delete cascade,
   joined_at timestamptz not null default now(),
   primary key (user_id, group_id)
 );
 
-create index group_members_group_id_idx on public.group_members (group_id);
+create index if not exists group_members_group_id_idx on public.group_members (group_id);
 
 -- ---------------------------------------------------------------------------
 -- TABLE: metrics_config
 -- Catalogue of all metric types. Adding a new metric = one INSERT here.
 -- xp_reward is the XP awarded when a log of this type gets verified.
 -- ---------------------------------------------------------------------------
-create type sort_order_enum as enum ('asc', 'desc');
+do $$
+begin
+  if not exists (select 1 from pg_type where typname = 'sort_order_enum') then
+    create type sort_order_enum as enum ('asc', 'desc');
+  end if;
+end
+$$;
 
-create table public.metrics_config (
+create table if not exists public.metrics_config (
   id           uuid            primary key default uuid_generate_v4(),
   slug         text            not null unique,
   display_name text            not null,
@@ -85,7 +90,7 @@ create table public.metrics_config (
 -- metric_slug is stored directly (no join required to insert).
 -- status lifecycle: pending → verified (via 3 votes) or rejected.
 -- ---------------------------------------------------------------------------
-create table public.metric_logs (
+create table if not exists public.metric_logs (
   id           uuid        primary key default uuid_generate_v4(),
   user_id      uuid        not null references public.profiles (id) on delete cascade,
   group_id     uuid        not null references public.groups   (id) on delete cascade,
@@ -98,17 +103,17 @@ create table public.metric_logs (
   logged_at    timestamptz not null default now()
 );
 
-create index metric_logs_group_id_idx    on public.metric_logs (group_id);
-create index metric_logs_user_id_idx     on public.metric_logs (user_id);
-create index metric_logs_metric_slug_idx on public.metric_logs (metric_slug);
-create index metric_logs_status_idx      on public.metric_logs (status);
-create index metric_logs_logged_at_idx   on public.metric_logs (logged_at desc);
+create index if not exists metric_logs_group_id_idx    on public.metric_logs (group_id);
+create index if not exists metric_logs_user_id_idx     on public.metric_logs (user_id);
+create index if not exists metric_logs_metric_slug_idx on public.metric_logs (metric_slug);
+create index if not exists metric_logs_status_idx      on public.metric_logs (status);
+create index if not exists metric_logs_logged_at_idx   on public.metric_logs (logged_at desc);
 
 -- ---------------------------------------------------------------------------
 -- TABLE: log_votes — peer-review voting engine
 -- UNIQUE(log_id, user_id) prevents double-voting at the DB level.
 -- ---------------------------------------------------------------------------
-create table public.log_votes (
+create table if not exists public.log_votes (
   id      uuid        primary key default uuid_generate_v4(),
   log_id  uuid        not null references public.metric_logs (id) on delete cascade,
   user_id uuid        not null references public.profiles    (id) on delete cascade,
@@ -116,7 +121,7 @@ create table public.log_votes (
   unique (log_id, user_id)
 );
 
-create index log_votes_log_id_idx on public.log_votes (log_id);
+create index if not exists log_votes_log_id_idx on public.log_votes (log_id);
 
 -- ---------------------------------------------------------------------------
 -- TRIGGER: Auto-verify on 3 votes
@@ -149,6 +154,7 @@ begin
 end;
 $$;
 
+drop trigger if exists trg_auto_verify on public.log_votes;
 create trigger trg_auto_verify
   after insert on public.log_votes
   for each row
@@ -187,6 +193,7 @@ begin
 end;
 $$;
 
+drop trigger if exists trg_award_xp on public.metric_logs;
 create trigger trg_award_xp
   after update of status on public.metric_logs
   for each row
@@ -230,6 +237,7 @@ $$;
 alter table public.groups enable row level security;
 
 -- Landing page needs to list all groups for the dropdown (no session exists).
+drop policy if exists "groups: anon can read" on public.groups;
 create policy "groups: anon can read"
   on public.groups for select
   to anon
@@ -239,6 +247,7 @@ create policy "groups: anon can read"
 alter table public.group_members enable row level security;
 
 -- Server actions need to read group membership to resolve the group for a user.
+drop policy if exists "group_members: anon can read" on public.group_members;
 create policy "group_members: anon can read"
   on public.group_members for select
   to anon
@@ -249,6 +258,7 @@ alter table public.profiles enable row level security;
 
 -- verifyPinAction reads profiles to show member cards on the landing page.
 -- getDashboardData reads profiles to show names on charts and the feed.
+drop policy if exists "profiles: anon can read" on public.profiles;
 create policy "profiles: anon can read"
   on public.profiles for select
   to anon
@@ -257,6 +267,7 @@ create policy "profiles: anon can read"
 -- ── metrics_config ───────────────────────────────────────────────────────────
 alter table public.metrics_config enable row level security;
 
+drop policy if exists "metrics_config: anon can read" on public.metrics_config;
 create policy "metrics_config: anon can read"
   on public.metrics_config for select
   to anon
@@ -266,11 +277,13 @@ create policy "metrics_config: anon can read"
 alter table public.metric_logs enable row level security;
 
 -- Dashboard reads logs; server actions insert logs via anon key + cookie session.
+drop policy if exists "metric_logs: anon can read" on public.metric_logs;
 create policy "metric_logs: anon can read"
   on public.metric_logs for select
   to anon
   using (true);
 
+drop policy if exists "metric_logs: anon can insert" on public.metric_logs;
 create policy "metric_logs: anon can insert"
   on public.metric_logs for insert
   to anon
@@ -279,17 +292,17 @@ create policy "metric_logs: anon can insert"
 -- ── log_votes ────────────────────────────────────────────────────────────────
 alter table public.log_votes enable row level security;
 
+drop policy if exists "log_votes: anon can read" on public.log_votes;
 create policy "log_votes: anon can read"
   on public.log_votes for select
   to anon
   using (true);
 
+drop policy if exists "log_votes: anon can insert" on public.log_votes;
 create policy "log_votes: anon can insert"
   on public.log_votes for insert
   to anon
   with check (true);
-
-
 
 -- ===========================================================================
 -- SEED DATA — metrics catalogue
@@ -308,10 +321,14 @@ insert into public.metrics_config (slug, display_name, unit, sort_order, xp_rewa
   ('cycling_distance',  'Cycling Distance',  'mi',      'desc', 40),
   ('longest_swim',      'Longest Swim',      'm',       'desc', 45),
   ('sleep',             'Sleep',             'hrs',     'desc', 15),
-  ('5k_time',           '5K Time',           'min',     'asc',  55);
+  ('5k_time',           '5K Time',           'min',     'asc',  55)
+on conflict (slug) do update set
+  display_name = excluded.display_name,
+  unit = excluded.unit,
+  sort_order = excluded.sort_order,
+  xp_reward = excluded.xp_reward;
 
 -- Explicitly grant privileges to avoid RLS/permission issues on newly created tables
 grant all privileges on all tables in schema public to postgres, anon, authenticated, service_role;
 grant all privileges on all sequences in schema public to postgres, anon, authenticated, service_role;
 grant all privileges on all functions in schema public to postgres, anon, authenticated, service_role;
-

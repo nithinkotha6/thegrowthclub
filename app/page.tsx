@@ -16,7 +16,7 @@ import {
   type Group,
 } from '@/app/actions/auth';
 import Confetti from '@/components/Confetti';
-import { playAudio } from '@/lib/audio';
+import { playAudio, preloadAllSounds } from '@/lib/audio';
 
 type Tab = 'login' | 'signup';
 
@@ -49,9 +49,12 @@ export default function LandingPage() {
   // Success welcome animation state
   const [loggedInUser, setLoggedInUser] = useState<string | null>(null);
 
-  // Fetch groups on mount
+  // Fetch groups and preload sounds on mount
   useEffect(() => {
     let cancelled = false;
+
+    // Eagerly preload all audio assets to resolve latency issues
+    preloadAllSounds();
 
     async function loadGroups() {
       try {
