@@ -173,10 +173,35 @@ export async function signUpAction(
 
     if (groupError || !group) {
       console.error('[signUpAction] Group invite code lookup failed:', groupError);
-      return { success: false, error: 'Invalid group invite code.' };
+      return { success: false, error: 'Invalid Group Code' };
     }
 
-    // 2. Generate a new profile
+    // 2. Prevent duplicate accounts in the specific group
+    // Query group roster (group_members joined with profiles)
+    const { data: existingMembers, error: checkError } = await supabase
+      .from('group_members')
+      .select('user_id, profiles!inner(full_name, email)')
+      .eq('group_id', group.id);
+
+    if (checkError) {
+      console.error('[signUpAction] Duplicate check query failed:', checkError);
+      return { success: false, error: 'Failed to verify unique account.' };
+    }
+
+    const hasDuplicate = (existingMembers ?? []).some((m: any) => {
+      const p = m.profiles;
+      if (!p) return false;
+      
+      const sameName = p.full_name?.toLowerCase().trim() === fullName.trim().toLowerCase();
+      const sameEmail = email.trim() && p.email?.toLowerCase().trim() === email.trim().toLowerCase();
+      return sameName || sameEmail;
+    });
+
+    if (hasDuplicate) {
+      return { success: false, error: 'An account with this name/email already exists in this group.' };
+    }
+
+    // 3. Generate a new profile
     const { data: newProfile, error: profileError } = await supabase
       .from('profiles')
       .insert({
@@ -193,7 +218,7 @@ export async function signUpAction(
       return { success: false, error: 'Failed to create user profile. The PIN/email may already be registered.' };
     }
 
-    // 3. Link them in the group_members table
+    // 4. Link them in the group_members table
     const { error: memberError } = await supabase
       .from('group_members')
       .insert({
@@ -208,7 +233,7 @@ export async function signUpAction(
       return { success: false, error: 'Failed to link user to the group.' };
     }
 
-    // 4. Encode session and set the HTTP-only cookie
+    // 5. Encode session and set the HTTP-only cookie
     const displayName = newProfile.nickname || newProfile.full_name;
     const token = await encodeSession({
       userId: newProfile.id,

@@ -16,6 +16,7 @@ import {
   type Group,
 } from '@/app/actions/auth';
 import Confetti from '@/components/Confetti';
+import { playAudio } from '@/lib/audio';
 
 type Tab = 'login' | 'signup';
 
@@ -89,11 +90,13 @@ export default function LandingPage() {
     startTransition(async () => {
       const result = await loginWithPersonalPinAction(selectedGroup.id, loginPin);
       if (result.success) {
+        playAudio('login.mp3');
         setLoggedInUser(result.userName);
         setTimeout(() => {
           router.push('/dashboard');
         }, 2500);
       } else {
+        playAudio('error.mp3');
         setLoginError(result.error);
       }
     });
@@ -104,6 +107,7 @@ export default function LandingPage() {
     setSignUpError(null);
 
     if (signUpPin.length !== 4) {
+      playAudio('error.mp3');
       setSignUpError('PIN must be exactly 4 digits.');
       return;
     }
@@ -118,11 +122,13 @@ export default function LandingPage() {
       );
 
       if (result.success) {
+        playAudio('signup-success.mp3');
         setLoggedInUser(result.userName);
         setTimeout(() => {
           router.push('/dashboard');
         }, 2500);
       } else {
+        playAudio('error.mp3');
         setSignUpError(result.error);
       }
     });
