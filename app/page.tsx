@@ -44,6 +44,7 @@ export default function LandingPage() {
   const [signUpEmail, setSignUpEmail]   = useState('');
   const [signUpPin, setSignUpPin]       = useState('');
   const [signUpError, setSignUpError]   = useState<string | null>(null);
+  const [hasPlayedNameAudio, setHasPlayedNameAudio] = useState(false);
 
   // Success welcome animation state
   const [loggedInUser, setLoggedInUser] = useState<string | null>(null);
@@ -107,7 +108,7 @@ export default function LandingPage() {
     setSignUpError(null);
 
     if (signUpPin.length !== 4) {
-      playAudio('error.mp3');
+      playAudio('who-are-you.mp3');
       setSignUpError('PIN must be exactly 4 digits.');
       return;
     }
@@ -122,13 +123,13 @@ export default function LandingPage() {
       );
 
       if (result.success) {
-        playAudio('signup-success.mp3');
+        playAudio('thanks-a-lot.mp3');
         setLoggedInUser(result.userName);
         setTimeout(() => {
           router.push('/dashboard');
         }, 2500);
       } else {
-        playAudio('error.mp3');
+        playAudio('who-are-you.mp3');
         setSignUpError(result.error);
       }
     });
@@ -200,7 +201,13 @@ export default function LandingPage() {
               Log In
             </button>
             <button
-              onClick={() => { setActiveTab('signup'); setLoginError(null); }}
+              onClick={() => {
+                if (activeTab !== 'signup') {
+                  playAudio('signup-process.mp3');
+                }
+                setActiveTab('signup');
+                setLoginError(null);
+              }}
               disabled={isPending}
               className={`flex-1 py-2 text-xs font-black tracking-wider uppercase rounded-lg transition-all ${
                 activeTab === 'signup'
@@ -344,6 +351,12 @@ export default function LandingPage() {
                     type="text"
                     value={signUpName}
                     onChange={e => { setSignUpName(e.target.value); setSignUpError(null); }}
+                    onFocus={() => {
+                      if (!hasPlayedNameAudio) {
+                        playAudio('name.mp3');
+                        setHasPlayedNameAudio(true);
+                      }
+                    }}
                     required
                     placeholder="First and Last name"
                     disabled={isPending}
