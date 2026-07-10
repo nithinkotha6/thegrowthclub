@@ -141,3 +141,22 @@
 .ticker-wrapper:hover .animate-ticker-scroll {
   animation-play-state: paused;
 }
+
+/* Confetti animation for welcome transition */
+@keyframes confetti-fall {
+  0% {
+    transform: translateY(-5vh) rotate(0deg) scale(1);
+    opacity: 1;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(105vh) rotate(720deg) scale(0.5);
+    opacity: 0;
+  }
+}
+
+.animate-confetti {
+  animation: confetti-fall 3.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}

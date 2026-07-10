@@ -161,17 +161,19 @@ Supporting functions:
 
 ## 7. Kiosk Auth Model & Room Session Security
 
-### Strict Room Session
+### Strict Room Session (Personal PINs & 1-Step Login)
 The kiosk application operates entirely decoupled from traditional Supabase Auth. Authentication and tenant-scoping are enforced at the application level:
-1. **Selection & PIN Verification**: The user selects a group (publicly visible) and enters a 4-digit PIN (stored as `invite_code` in the `groups` table). This is verified server-side.
-2. **Profile Mapping**: Upon correct PIN validation, all profiles mapped to the group are retrieved.
-3. **Session Cookie**: Tapping a profile issues a signed, HTTP-only `app_session` cookie containing `{ userId, groupId, groupName, userName }`.
-4. **Middleware Guard**: Next.js middleware intercepts `/dashboard` paths. Any request without a valid, unexpired `app_session` cookie is strictly redirected back to `/`.
+1. **1-Step Selection & Personal PIN Verification**: The user selects a group (publicly visible) and enters their 4-digit personal PIN (stored as `pin` in the `profiles` table).
+2. **Database Verification**: The server action `loginWithPersonalPinAction` queries the database joining `profiles` and `group_members` to find a matching user who belongs to the selected `groupId` with the exact `pin`.
+3. **Session Cookie**: If a match is found, the server issues a signed, HTTP-only `app_session` cookie containing `{ userId, groupId, groupName, userName }`.
+4. **Welcome Animation (Party Poppers)**: On successful login, the frontend renders a 2.5-second success state saying "Welcome back, [First Name]!" and fires a lightweight, pure-CSS falling confetti animation.
+5. **Client-Side Redirect**: After the animation completes, client-side navigation (`router.push('/dashboard')`) is triggered.
+6. **Request Proxy Guard**: Next.js 16 request proxy (`proxy.ts`) intercepts `/dashboard` paths. Any request without a valid, unexpired `app_session` cookie is strictly redirected back to `/`.
 
 ### Kiosk Database RLS Strategy
 Since clients access the landing page unauthenticated, specific table policies allow read operations for anonymous users:
 - **`groups`**: Accessible via `SELECT` to public/anonymous users so the dropdown list can populate. (Only `id` and `name` are loaded; the PIN code is handled privately during verification).
-- **`profiles` / `group_members`**: Readable by `anon` client to display room rosters once a group PIN is validated.
+- **`profiles` / `group_members`**: Readable by `anon` client to verify credentials and map users to groups.
 - **SQL RLS Fix**:
 ```sql
 DROP POLICY IF EXISTS "groups: anon can list group names" ON public.groups;

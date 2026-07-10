@@ -18,20 +18,13 @@ create extension if not exists "uuid-ossp";
 -- ---------------------------------------------------------------------------
 -- TABLE: groups
 -- Each group is an isolated batch (e.g. 'Texasbuds', 'Budbikers').
--- invite_code doubles as the 4-digit kiosk PIN.
 -- ---------------------------------------------------------------------------
 create table public.groups (
   id          uuid        primary key default uuid_generate_v4(),
   name        text        not null,
-  invite_code text        not null unique,
   created_at  timestamptz not null default now()
 );
 
--- ---------------------------------------------------------------------------
--- TABLE: profiles
--- One row per user. id mirrors the Supabase auth.users id.
--- telegram_user_id is the lookup key for the Telegram bot webhook.
--- total_xp and current_level are managed by the XP trigger.
 -- ---------------------------------------------------------------------------
 -- TABLE: profiles
 -- One row per group member. id is a plain UUID — NOT tied to auth.users.
@@ -43,6 +36,7 @@ create table public.groups (
 create table public.profiles (
   id                uuid        primary key default uuid_generate_v4(),
   full_name         text        not null,
+  pin               varchar(4),  -- 4-character personal PIN for 1-step login
   avatar_url        text,
   telegram_user_id  text        unique,
   total_xp          integer     not null default 0,

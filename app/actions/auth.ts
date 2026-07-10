@@ -61,16 +61,20 @@ export async function getGroupsAction(): Promise<GetGroupsResult> {
   }
 }
 
-/* ── verifyPinAction ──────────────────────────────────────────────────────── */
+/* ── loginWithPersonalPinAction ───────────────────────────────────────────── */
+
+export type LoginResult =
+  | { success: true; userName: string; userId: string; groupId: string; groupName: string }
+  | { success: false; error: string };
 
 /**
- * Verify the 4-digit PIN (= invite_code) for a given group_id.
- * On success, return all profile members of that group.
+ * Verify a 4-digit personal PIN for a member of a specific group.
+ * Sets the HTTP-only app_session cookie if the credentials match.
  */
-export async function verifyPinAction(
+export async function loginWithPersonalPinAction(
   groupId: string,
   pin: string,
-): Promise<VerifyPinResult> {
+): Promise<LoginResult> {
   if (!groupId || !pin) {
     return { success: false, error: 'Group and PIN are required.' };
   }
@@ -78,41 +82,53 @@ export async function verifyPinAction(
   // Sanitize: strip whitespace, keep only digits
   const sanitizedPin = pin.replace(/\s/g, '').trim();
 
-  const supabase = await createClient();
+  try {
+    const supabase = await createClient();
 
-  // 1. Verify PIN matches the invite_code for this group
-  const { data: group, error: groupErr } = await supabase
-    .from('groups')
-    .select('id, name')
-    .eq('id', groupId)
-    .eq('invite_code', sanitizedPin)
-    .single();
+    // Query profiles in this group with the exact personal PIN
+    const { data: member, error } = await supabase
+      .from('group_members')
+      .select(`
+        group_id,
+        groups!inner ( name ),
+        profiles!inner ( id, full_name, pin )
+      `)
+      .eq('group_id', groupId)
+      .eq('profiles.pin', sanitizedPin)
+      .single();
 
-  if (groupErr || !group) {
-    return { success: false, error: 'Invalid PIN. Please try again.' };
+    if (error || !member) {
+      console.error('[loginWithPersonalPinAction] Query failed or no match:', error);
+      return { success: false, error: 'Invalid PIN. Please try again.' };
+    }
+
+    const typedMember = member as unknown as {
+      group_id: string;
+      groups: { name: string };
+      profiles: { id: string; full_name: string; pin: string };
+    };
+
+    const token = await encodeSession({
+      userId: typedMember.profiles.id,
+      groupId: typedMember.group_id,
+      groupName: typedMember.groups.name,
+      userName: typedMember.profiles.full_name,
+    });
+
+    const cookieStore = await cookies();
+    cookieStore.set(SESSION_COOKIE, token, COOKIE_OPTIONS);
+
+    return {
+      success: true,
+      userName: typedMember.profiles.full_name,
+      userId: typedMember.profiles.id,
+      groupId: typedMember.group_id,
+      groupName: typedMember.groups.name,
+    };
+  } catch (err: any) {
+    console.error('[loginWithPersonalPinAction] Caught exception:', err);
+    return { success: false, error: 'An error occurred during authentication.' };
   }
-
-  // 2. Fetch all profiles who are members of this group
-  const { data: members, error: membersErr } = await supabase
-    .from('group_members')
-    .select(`
-      profiles!inner ( id, full_name, avatar_url )
-    `)
-    .eq('group_id', groupId);
-
-  if (membersErr) {
-    console.error('[verifyPinAction] members error:', membersErr.message);
-    return { success: false, error: 'Could not load group members.' };
-  }
-
-  // Flatten the nested join result.
-  // Supabase !inner join returns profiles as an array on each row.
-  const profiles: GroupProfile[] = (members ?? [])
-    .map((m) => (m as { profiles: GroupProfile | GroupProfile[] }).profiles)
-    .flatMap((p) => (Array.isArray(p) ? p : [p]))
-    .filter(Boolean) as GroupProfile[];
-
-  return { success: true, profiles };
 }
 
 /* ── selectProfileAction ─────────────────────────────────────────────────── */
