@@ -56,7 +56,7 @@ export type ChartSeries = {
   name:      string;    // display name (nickname ?? full_name)
   avatar_url: string;
   color:     string;
-  points:    number[];  // parallel array matching the ChartPoint[] date labels
+  points:    (number | null)[];  // parallel array matching the ChartPoint[] date labels
 };
 
 /* ── getDashboardData ─────────────────────────────────────────────────────── */
@@ -77,6 +77,11 @@ export async function getDashboardData(
   range = '7d',
   limit = 100,
 ): Promise<DashboardData> {
+  if (!groupId) {
+    console.error('[getDashboardData] groupId is empty — session may be corrupt.');
+    return { logs: [], kpi: { totalActivities: 0, topSpeed: null, heaviestLift: null, longestRun: null, caloriesBurned: null } };
+  }
+
   const days  = rangeToDays(range);
   const since = new Date();
   since.setDate(since.getDate() - days);
@@ -108,7 +113,7 @@ export async function getDashboardData(
   const { data, error } = await query;
 
   if (error) {
-    console.error('[getDashboardData] Supabase error:', error.message);
+    console.error('[getDashboardData] Supabase error:', error.message, '| code:', error.code, '| details:', error.details);
   }
 
   const logs = (data ?? []) as unknown as MetricLogRow[];
@@ -160,6 +165,11 @@ export async function getChartData(
   range = '7d',
   isCumulative = false,
 ): Promise<{ dateLabels: string[]; series: ChartSeries[] }> {
+  if (!groupId || !metricSlug) {
+    console.error('[getChartData] missing groupId or metricSlug:', { groupId, metricSlug });
+    return { dateLabels: [], series: [] };
+  }
+
   const days  = rangeToDays(range);
   const since = new Date();
   since.setDate(since.getDate() - days);
@@ -180,7 +190,7 @@ export async function getChartData(
     .order('logged_at', { ascending: true }); // ASC → chronological left→right
 
   if (error) {
-    console.error('[getChartData] Supabase error:', error.message);
+    console.error('[getChartData] Supabase error:', error.message, '| groupId:', groupId, '| slug:', metricSlug, '| code:', error.code);
   }
 
   type Row = {
@@ -235,13 +245,18 @@ export async function getChartData(
 
   for (const [uid, entry] of userMap) {
     let running = 0;
+    let hasAnyLogs = false;
     const points = dateLabels.map((d) => {
+      const hasVal = entry.byDate.has(d);
       const v = entry.byDate.get(d) ?? 0;
       if (isCumulative) {
-        running += v;
-        return running;
+        if (hasVal) {
+          running += v;
+          hasAnyLogs = true;
+        }
+        return hasAnyLogs ? running : null;
       }
-      return v;
+      return hasVal ? v : null;
     });
 
     series.push({

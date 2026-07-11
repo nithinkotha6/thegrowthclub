@@ -119,12 +119,23 @@ export default async function DashboardPage({
 
   const supabase = await createClient();
 
+  // ── Diagnostic logging — visible in Next.js terminal ────────────────────
+  console.log('[dashboard] session groupId :', groupId);
+  console.log('[dashboard] session userId  :', userId);
+  console.log('[dashboard] activeMetric    :', activeMetric);
+  console.log('[dashboard] activeRange     :', activeRange);
+
   // ── Parallel data fetch ──────────────────────────────────────────────────
   const [{ dateLabels, series }, feedRows, { kpi: kpiRaw }] = await Promise.all([
     getChartData(supabase, groupId, activeMetric, activeRange, activePill.isCumulative),
     getFeedItems(supabase, groupId, 12),
     getDashboardData(supabase, groupId, undefined, activeRange, 200),
   ]);
+
+  // ── Post-fetch diagnostic logging ────────────────────────────────────────
+  console.log('[dashboard] chart series count:', series.length, '| dateLabels:', dateLabels.length);
+  console.log('[dashboard] feed rows         :', feedRows.length);
+  console.log('[dashboard] kpi totalActivities:', kpiRaw.totalActivities);
 
   // ── KPI ─────────────────────────────────────────────────────────────────
   const kpiData: KpiData = kpiRaw;
@@ -170,6 +181,16 @@ export default async function DashboardPage({
 
       {/* ── Metric Pills ─────────────────────────────────────────────── */}
       <MetricPillSelector activeMetric={activeMetric} />
+
+      {/* ── Group-ID Debug Banner (only when data is empty) ─────────────── */}
+      {series.length === 0 && feedRows.length === 0 && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-mono text-amber-800">
+          <p className="font-bold mb-1">⚠️ No data returned for your session group.</p>
+          <p>Session <code>group_id</code>: <span className="font-bold select-all">{groupId}</span></p>
+          <p className="mt-1 text-amber-600">Compare this UUID against the <code>group_id</code> column in
+          your <code>metric_logs</code> table. If they differ, log out and log back in with the correct group.</p>
+        </div>
+      )}
 
       {/* ── Chart + Feed ─────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-5 md:gap-6 mb-5 md:mb-6">
