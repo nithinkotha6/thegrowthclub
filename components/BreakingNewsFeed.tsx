@@ -1,4 +1,7 @@
+'use client';
+
 import { ChevronRight, Newspaper } from 'lucide-react';
+import UserAvatar from './UserAvatar';
 
 export type FeedItem = {
   id:          string | number;
@@ -15,8 +18,7 @@ interface BreakingNewsFeedProps {
 
 /**
  * Real-time Breaking News feed — natural language activity messages with
- * relative timestamps and pending/verified status badges.
- * Spec: Features.md §4, Pillar 3
+ * relative timestamps, user avatars, and pending/verified status badges.
  */
 export default function BreakingNewsFeed({ items }: BreakingNewsFeedProps) {
   const hasItems = items.length > 0;
@@ -28,24 +30,15 @@ export default function BreakingNewsFeed({ items }: BreakingNewsFeedProps) {
       {hasItems ? (
         <ul className="flex flex-col gap-4 flex-1" aria-label="Activity feed">
           {items.map((item) => {
-            const isImage   = item.avatar_url?.startsWith('http');
-            const initials  = item.name?.charAt(0)?.toUpperCase() ?? '?';
             const isPending = item.status === 'pending';
 
             return (
               <li key={item.id} className="flex items-start gap-3">
-                {/* Circular avatar */}
-                <div
-                  className="w-9 h-9 rounded-full bg-[#1A1A1A] flex-shrink-0 flex items-center justify-center text-[15px] overflow-hidden"
-                  aria-hidden="true"
-                >
-                  {isImage ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={item.avatar_url} alt={item.name} className="w-full h-full object-cover" />
-                  ) : (
-                    <span className="text-[#CEFF00] text-xs font-black">{initials}</span>
-                  )}
-                </div>
+                {/* Reusable UserAvatar component */}
+                <UserAvatar
+                  user={{ avatar_url: item.avatar_url, full_name: item.name }}
+                  size="md"
+                />
 
                 {/* Text block */}
                 <div className="flex-1 min-w-0">

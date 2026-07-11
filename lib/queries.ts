@@ -31,16 +31,7 @@ export type MetricLogRow = {
   };
 };
 
-export type DashboardData = {
-  logs: MetricLogRow[];
-  kpi: {
-    totalActivities: number;
-    topSpeed:        number | null;
-    heaviestLift:    number | null;
-    longestRun:      number | null;
-    caloriesBurned:  number | null;
-  };
-};
+// DashboardData type removed as kpi cards were deleted
 
 /**
  * One data point in the chronological chart series.
@@ -59,85 +50,7 @@ export type ChartSeries = {
   points:    (number | null)[];  // parallel array matching the ChartPoint[] date labels
 };
 
-/* ── getDashboardData ─────────────────────────────────────────────────────── */
-
-/**
- * Fetches the most recent verified logs for a group within a date range.
- *
- * @param supabase   Supabase server client
- * @param groupId    Group UUID (explicit filter + RLS double-fence)
- * @param metricSlug Optional slug to narrow to one metric
- * @param range      Range string: '7d' | '30d' | '90d' | 'all'
- * @param limit      Maximum rows to return (default 100)
- */
-export async function getDashboardData(
-  supabase: SupabaseClient,
-  groupId: string,
-  metricSlug?: string,
-  range = '7d',
-  limit = 100,
-): Promise<DashboardData> {
-  if (!groupId) {
-    console.error('[getDashboardData] groupId is empty — session may be corrupt.');
-    return { logs: [], kpi: { totalActivities: 0, topSpeed: null, heaviestLift: null, longestRun: null, caloriesBurned: null } };
-  }
-
-  const days  = rangeToDays(range);
-  const since = new Date();
-  since.setDate(since.getDate() - days);
-
-  let query = supabase
-    .from('metric_logs')
-    .select(`
-      id,
-      user_id,
-      group_id,
-      metric_slug,
-      value,
-      unit,
-      status,
-      logged_at,
-      evidence_url,
-      profiles!inner ( full_name, nickname, avatar_url )
-    `)
-    .eq('group_id', groupId)
-    .eq('status', 'verified')
-    .gte('logged_at', since.toISOString())
-    .order('logged_at', { ascending: false })
-    .limit(limit);
-
-  if (metricSlug) {
-    query = query.eq('metric_slug', metricSlug);
-  }
-
-  const { data, error } = await query;
-
-  if (error) {
-    console.error('[getDashboardData] Supabase error:', error.message, '| code:', error.code, '| details:', error.details);
-  }
-
-  const logs = (data ?? []) as unknown as MetricLogRow[];
-
-  const maxOf = (slug: string) => {
-    const vals = logs.filter(l => l.metric_slug === slug).map(l => Number(l.value));
-    return vals.length ? Math.max(...vals) : null;
-  };
-  const sumOf = (slug: string) => {
-    const vals = logs.filter(l => l.metric_slug === slug).map(l => Number(l.value));
-    return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
-  };
-
-  return {
-    logs,
-    kpi: {
-      totalActivities: logs.length,
-      topSpeed:        maxOf('top_speed'),
-      heaviestLift:    maxOf('deadlift'),
-      longestRun:      maxOf('long_run'),
-      caloriesBurned:  sumOf('calories'),
-    },
-  };
-}
+// getDashboardData query removed as kpi cards were deleted
 
 /* ── getChartData ─────────────────────────────────────────────────────────── */
 

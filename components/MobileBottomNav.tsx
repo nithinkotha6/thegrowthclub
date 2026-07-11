@@ -1,19 +1,17 @@
 'use client';
 
-import { LayoutDashboard, Activity, BarChart2, Users, Settings } from 'lucide-react';
+import { LayoutDashboard, BarChart2, Users } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 
 const ITEMS = [
   { icon: LayoutDashboard, label: 'Home',        href: '/dashboard' },
-  { icon: Activity,        label: 'Activity',    href: '#' },
-  { icon: BarChart2,       label: 'Performance', href: '#' },
-  { icon: Users,           label: 'Community',   href: '#' },
-  { icon: Settings,        label: 'Settings',    href: '#' },
+  { icon: BarChart2,       label: 'Leaderboard', href: '/dashboard/leaderboard' },
+  { icon: Users,           label: 'Community',   href: '/dashboard/community' },
 ];
 
 /**
  * Fixed bottom navigation bar — visible only on mobile (hidden md:hidden).
- * Mirrors the sidebar nav for small screens.
+ * Mirrors the sidebar nav for small screens, excluding dead links and settings.
  */
 export default function MobileBottomNav() {
   const pathname = usePathname();
@@ -24,13 +22,13 @@ export default function MobileBottomNav() {
       aria-label="Mobile navigation"
     >
       {ITEMS.map(({ icon: Icon, label, href }) => {
-        const active = pathname === href;
+        const active = href === '/dashboard' ? pathname === href : pathname?.startsWith(href);
         return (
           <a
             key={label}
             href={href}
             aria-current={active ? 'page' : undefined}
-            className="flex flex-col items-center gap-1 flex-1 py-2 transition-colors"
+            className="flex flex-col items-center gap-1 flex-1 py-2 transition-colors cursor-pointer"
           >
             <Icon
               size={20}

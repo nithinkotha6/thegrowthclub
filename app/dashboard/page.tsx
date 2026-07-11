@@ -9,7 +9,6 @@ import type { FeedRow } from '@/lib/queries';
 import AddActivityModal   from '@/components/AddActivityModal';
 import MetricChart        from '@/components/MetricChart';
 import BreakingNewsFeed, { type FeedItem } from '@/components/BreakingNewsFeed';
-import KpiCards,          { type KpiData } from '@/components/KpiCards';
 import MetricPillSelector from '@/components/MetricPillSelector';
 import DateRangeSelector  from '@/components/DateRangeSelector';
 import VotingPanel        from '@/components/VotingPanel';
@@ -126,19 +125,14 @@ export default async function DashboardPage({
   console.log('[dashboard] activeRange     :', activeRange);
 
   // ── Parallel data fetch ──────────────────────────────────────────────────
-  const [{ dateLabels, series }, feedRows, { kpi: kpiRaw }] = await Promise.all([
+  const [{ dateLabels, series }, feedRows] = await Promise.all([
     getChartData(supabase, groupId, activeMetric, activeRange, activePill.isCumulative),
     getFeedItems(supabase, groupId, 12),
-    getDashboardData(supabase, groupId, undefined, activeRange, 200),
   ]);
 
   // ── Post-fetch diagnostic logging ────────────────────────────────────────
   console.log('[dashboard] chart series count:', series.length, '| dateLabels:', dateLabels.length);
   console.log('[dashboard] feed rows         :', feedRows.length);
-  console.log('[dashboard] kpi totalActivities:', kpiRaw.totalActivities);
-
-  // ── KPI ─────────────────────────────────────────────────────────────────
-  const kpiData: KpiData = kpiRaw;
 
   // ── Feed items with NL messages ─────────────────────────────────────────
   const feedItems: FeedItem[] = feedRows.map((log) => ({
@@ -204,9 +198,6 @@ export default async function DashboardPage({
         />
         <BreakingNewsFeed items={feedItems} />
       </div>
-
-      {/* ── KPI Cards ────────────────────────────────────────────────── */}
-      <KpiCards data={kpiData} />
 
       {/* ── Peer-Review Voting Panel ──────────────────────────────────── */}
       <div className="mt-5 md:mt-6">
