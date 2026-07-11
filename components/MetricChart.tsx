@@ -1,50 +1,61 @@
 'use client';
 
 import ReactECharts from 'echarts-for-react';
-import { Users, ChevronDown } from 'lucide-react';
+import type { ChartSeries } from '@/lib/queries';
 
-export type ChartUser = {
-  name: string;
-  color: string;
-  avatar_url: string;
-  data: number[]; // 7 values, index 0 = MON
-};
+export type { ChartSeries };
 
 interface MetricChartProps {
-  users: ChartUser[];
-  title?: string;
-  days?: string[]; // x-axis labels
+  dateLabels:   string[];   // chronological x-axis: ["Jul 4", "Jul 5", …]
+  series:       ChartSeries[];
+  title:        string;     // e.g. "Deadlift — Last 30 Days"
+  unit:         string;     // e.g. "lbs", "mi", "kcal"
+  metricLabel:  string;     // e.g. "Deadlift" — used in empty state
+  rangeLabel:   string;     // e.g. "Last 7 Days" — used in empty state
 }
 
-const DEFAULT_DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
-const COLOR_PALETTE = ['#FF3B30', '#007AFF', '#AF52DE', '#34C759', '#FFCC00'];
-
 /**
- * ECharts multi-series line chart — live data only, no mock arrays.
- * Spec: Features.md §4, frontend.md §4
+ * ECharts chronological line chart — live server-fetched data only.
+ * X-axis: actual date labels sorted ascending (oldest → newest).
+ * Y-axis: unit-aware labels and tooltip formatters.
+ * Empty state: contextual message with metric + timeframe names.
+ * Spec: Features.md §4, Pillar 2
  */
 export default function MetricChart({
-  users,
-  title = 'Weekly Progress',
-  days = DEFAULT_DAYS,
+  dateLabels,
+  series,
+  title,
+  unit,
+  metricLabel,
+  rangeLabel,
 }: MetricChartProps) {
-  const hasData = users.length > 0;
+  const hasData = series.length > 0 && dateLabels.length > 0;
 
   const option = {
-    grid: { left: 36, right: 72, top: 16, bottom: 28, containLabel: false },
+    grid: { left: 48, right: 80, top: 16, bottom: 32, containLabel: false },
     xAxis: {
       type: 'category',
-      data: days,
+      data: dateLabels,
       boundaryGap: false,
       axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: { color: '#9CA3AF', fontSize: 11, fontWeight: 600 },
+      axisLabel: {
+        color: '#9CA3AF',
+        fontSize: 11,
+        fontWeight: 600,
+        // Show every Nth label so they don't crowd on long ranges
+        interval: dateLabels.length > 14 ? Math.ceil(dateLabels.length / 7) - 1 : 0,
+      },
     },
     yAxis: {
       type: 'value',
       axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: { color: '#9CA3AF', fontSize: 11 },
+      axisLabel: {
+        color: '#9CA3AF',
+        fontSize: 11,
+        formatter: (v: number) => `${v}${unit ? ` ${unit}` : ''}`,
+      },
       splitLine: {
         lineStyle: { type: 'dashed', color: '#F3F4F6', width: 1 },
       },
@@ -55,40 +66,57 @@ export default function MetricChart({
       backgroundColor: '#fff',
       borderColor: '#E5E7EB',
       textStyle: { color: '#111827', fontSize: 12 },
+      formatter: (params: any[]) => {
+        const date = params[0]?.axisValue ?? '';
+        const lines = params
+          .filter((p) => p.value !== 0)
+          .map(
+            (p) =>
+              `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${p.color};margin-right:5px;"></span>` +
+              `<b>${p.seriesName}</b>: ${p.value} ${unit}`,
+          );
+        return `<div style="font-size:11px"><b>${date}</b><br/>${lines.join('<br/>')}</div>`;
+      },
     },
-    series: users.map((u, idx) => {
-      const color = u.color || COLOR_PALETTE[idx % COLOR_PALETTE.length];
-      return {
-        type: 'line',
-        name: u.name,
-        smooth: true,
-        symbol: 'circle',
-        lineStyle: { color, width: 2.5 },
-        data: u.data.map((v, i) => {
-          const isLast = i === days.length - 1;
-          const terminalSymbol =
-            isLast && u.avatar_url && u.avatar_url.startsWith('http')
-              ? `image://${u.avatar_url}`
-              : 'circle';
-          return {
-            value: v,
-            symbol: terminalSymbol,
-            symbolSize: isLast ? 30 : 0,
-            itemStyle: isLast
-              ? { color, borderColor: '#fff', borderWidth: 3 }
-              : { opacity: 0 },
-            label: {
-              show: isLast,
-              position: 'right',
-              formatter: `${v}`,
-              fontWeight: 'bold',
-              fontSize: 14,
-              color: '#111827',
-            },
-          };
-        }),
-      };
-    }),
+    series: series.map((s) => ({
+      type: 'line',
+      name: s.name,
+      smooth: true,
+      symbol: 'circle',
+      lineStyle: { color: s.color, width: 2.5 },
+      areaStyle: {
+        color: {
+          type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [
+            { offset: 0, color: `${s.color}22` },
+            { offset: 1, color: `${s.color}00` },
+          ],
+        },
+      },
+      data: s.points.map((v, i) => {
+        const isLast = i === s.points.length - 1;
+        const terminalSymbol =
+          isLast && s.avatar_url && s.avatar_url.startsWith('http')
+            ? `image://${s.avatar_url}`
+            : 'circle';
+        return {
+          value: v,
+          symbol: terminalSymbol,
+          symbolSize: isLast ? 30 : 0,
+          itemStyle: isLast
+            ? { color: s.color, borderColor: '#fff', borderWidth: 3 }
+            : { opacity: 0 },
+          label: {
+            show: isLast && v > 0,
+            position: 'right',
+            formatter: `${v} ${unit}`,
+            fontWeight: 'bold',
+            fontSize: 13,
+            color: '#111827',
+          },
+        };
+      }),
+    })),
   };
 
   return (
@@ -97,13 +125,15 @@ export default function MetricChart({
       <div className="flex items-start justify-between mb-4">
         <div>
           <h2 className="text-base font-bold text-[#111827]">{title}</h2>
-          <p className="text-xs text-[#6B7280] mt-0.5">Weekly Progress</p>
+          <p className="text-xs text-[#6B7280] mt-0.5">
+            {hasData ? `${series.length} athlete${series.length !== 1 ? 's' : ''} tracked` : rangeLabel}
+          </p>
         </div>
-        <button className="flex items-center gap-1.5 text-xs text-[#6B7280] bg-[#F7F8FA] rounded-lg px-3 py-1.5 font-medium hover:bg-gray-100 transition-colors">
-          <Users size={12} />
-          All Athletes
-          <ChevronDown size={11} />
-        </button>
+        {hasData && (
+          <span className="text-[10px] font-bold text-[#6B7280] bg-[#F7F8FA] rounded-lg px-2.5 py-1.5 uppercase tracking-wide">
+            {unit}
+          </span>
+        )}
       </div>
 
       {hasData ? (
@@ -113,21 +143,23 @@ export default function MetricChart({
           opts={{ renderer: 'canvas' }}
         />
       ) : (
-        <div className="h-[272px] flex flex-col items-center justify-center gap-2 text-center">
-          <svg
-            viewBox="0 0 48 48" fill="none"
-            className="w-10 h-10 text-[#E5E7EB]"
-          >
+        <div className="h-[272px] flex flex-col items-center justify-center gap-3 text-center px-8">
+          {/* Upward-climbing graph icon */}
+          <svg viewBox="0 0 48 48" fill="none" className="w-10 h-10 text-[#E5E7EB]">
             <path
               d="M6 36 L14 24 L22 29 L30 16 L38 20 L46 10"
               stroke="currentColor" strokeWidth="3"
               strokeLinecap="round" strokeLinejoin="round"
             />
           </svg>
-          <p className="text-sm font-semibold text-[#9CA3AF]">No activity yet</p>
-          <p className="text-xs text-[#D1D5DB]">
-            Log your first activity to see it here.
-          </p>
+          <div>
+            <p className="text-sm font-bold text-[#9CA3AF]">
+              No {metricLabel} logged in this timeframe yet.
+            </p>
+            <p className="text-xs text-[#D1D5DB] mt-1">
+              Be the first to set the pace! 🏁
+            </p>
+          </div>
         </div>
       )}
     </div>

@@ -5,6 +5,7 @@ import Sidebar                   from '@/components/Sidebar';
 import MobileBottomNav           from '@/components/MobileBottomNav';
 import LiveAchievementTicker     from '@/components/LiveAchievementTicker';
 import { decodeSession, SESSION_COOKIE } from '@/lib/session';
+import { createClient }          from '@/lib/supabase/server';
 
 /**
  * Dashboard shell layout — async Server Component.
@@ -28,13 +29,26 @@ export default async function DashboardLayout({
   // Safety net — should never happen if middleware is correctly configured
   if (!session) redirect('/');
 
+  // Fetch live XP + level for the sidebar profile block
+  const supabase = await createClient();
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('total_xp, current_level')
+    .eq('id', session.userId)
+    .single();
+
+  const totalXp      = (profile as any)?.total_xp      ?? 0;
+  const currentLevel = (profile as any)?.current_level ?? 1;
+
   return (
     <div className="flex h-full min-h-screen">
-      {/* Sidebar — receives live session data */}
+      {/* Sidebar — receives live session + XP data */}
       <Sidebar
         userName={session.userName}
         groupName={session.groupName}
         userId={session.userId}
+        totalXp={totalXp}
+        currentLevel={currentLevel}
       />
 
       {/* Light main content — pb-16 on mobile to clear fixed bottom nav */}
@@ -64,3 +78,4 @@ export default async function DashboardLayout({
     </div>
   );
 }
+

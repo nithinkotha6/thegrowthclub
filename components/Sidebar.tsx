@@ -21,9 +21,11 @@ const NAV_ITEMS = [
 ];
 
 interface SidebarProps {
-  userName:  string;
-  groupName: string;
-  userId:    string;
+  userName:     string;
+  groupName:    string;
+  userId:       string;
+  totalXp:      number;
+  currentLevel: number;
 }
 
 /**
@@ -31,7 +33,10 @@ interface SidebarProps {
  * Spec: frontend.md §1, Features.md §2, architecture.md §7
  * bg: #0A0A0A | accent: #CEFF00 (Neon Lime)
  */
-export default function Sidebar({ userName, groupName }: SidebarProps) {
+export default function Sidebar({ userName, groupName, totalXp, currentLevel }: SidebarProps) {
+  // XP within the current level (each level = 1000 XP)
+  const xpInLevel       = totalXp % 1000;
+  const xpBarPct        = Math.min(100, xpInLevel / 10); // 0–100
   const initials = userName?.charAt(0)?.toUpperCase() ?? '?';
 
   return (
@@ -83,16 +88,24 @@ export default function Sidebar({ userName, groupName }: SidebarProps) {
           </div>
         </div>
 
-        {/* XP progress bar (static display — live data via dashboard) */}
+        {/* XP progress bar — live data from profiles table */}
         <div>
           <div
             className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden"
             role="progressbar"
-            aria-label="XP progress"
+            aria-label={`XP progress — Level ${currentLevel}`}
+            aria-valuenow={xpBarPct}
+            aria-valuemin={0}
+            aria-valuemax={100}
           >
-            <div className="h-full rounded-full bg-[#CEFF00]" style={{ width: '35%' }} />
+            <div
+              className="h-full rounded-full bg-[#CEFF00] transition-all duration-700"
+              style={{ width: `${xpBarPct}%` }}
+            />
           </div>
-          <p className="text-right text-[#6B7280] text-[10px] mt-1">Earning XP…</p>
+          <p className="text-right text-[#6B7280] text-[10px] mt-1">
+            {totalXp.toLocaleString()} XP · Lv {currentLevel}
+          </p>
         </div>
       </div>
 

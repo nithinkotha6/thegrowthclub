@@ -104,47 +104,70 @@ export async function loginWithPersonalPinAction(
     console.log("LOGIN ATTEMPT:", { groupId, pin });
     const supabase = await getAdminClient();
 
-    // Query profiles in this group with the exact personal PIN
-    const { data: member, error } = await supabase
+    // Step 1: Find a profile with this PIN that belongs to the given group.
+    // We query group_members joined with profiles, filtering on the PIN directly
+    // on the profiles table by doing an inner-join select on profiles.
+    const { data: members, error: membersError } = await supabase
       .from('group_members')
       .select(`
         group_id,
-        groups!inner ( name ),
         profiles!inner ( id, full_name, nickname, pin )
       `)
-      .eq('group_id', groupId)
-      .eq('profiles.pin', sanitizedPin)
-      .single();
+      .eq('group_id', groupId);
 
-    if (error || !member) {
-      console.error('[loginWithPersonalPinAction] Query failed or no match:', error);
+    if (membersError) {
+      console.error('[loginWithPersonalPinAction] members query error:', membersError);
+      return { success: false, error: 'Login failed. Please try again.' };
+    }
+
+    // Filter in application code: find the member whose profile PIN matches
+    const match = (members ?? []).find((m: any) => {
+      const profiles = Array.isArray(m.profiles) ? m.profiles : [m.profiles];
+      return profiles.some((p: any) => p?.pin === sanitizedPin);
+    });
+
+    if (!match) {
       return { success: false, error: 'Invalid PIN. Please try again.' };
     }
 
-    const typedMember = member as unknown as {
-      group_id: string;
-      groups: { name: string };
-      profiles: { id: string; full_name: string; nickname: string | null; pin: string };
-    };
+    // Extract the matched profile (handle both array and object shapes)
+    const profilesArr = Array.isArray(match.profiles) ? match.profiles : [match.profiles];
+    const profile = profilesArr.find((p: any) => p?.pin === sanitizedPin);
 
-    const displayName = typedMember.profiles.nickname || typedMember.profiles.full_name;
+    if (!profile) {
+      return { success: false, error: 'Invalid PIN. Please try again.' };
+    }
+
+    // Step 2: Get the group name
+    const { data: group, error: groupError } = await supabase
+      .from('groups')
+      .select('name')
+      .eq('id', groupId)
+      .single();
+
+    if (groupError || !group) {
+      console.error('[loginWithPersonalPinAction] group fetch error:', groupError);
+      return { success: false, error: 'Failed to load group info.' };
+    }
+
+    const displayName = profile.nickname || profile.full_name;
 
     const token = await encodeSession({
-      userId: typedMember.profiles.id,
-      groupId: typedMember.group_id,
-      groupName: typedMember.groups.name,
-      userName: displayName,
+      userId:    profile.id,
+      groupId:   match.group_id,
+      groupName: group.name,
+      userName:  displayName,
     });
 
     const cookieStore = await cookies();
     cookieStore.set(SESSION_COOKIE, token, COOKIE_OPTIONS);
 
     return {
-      success: true,
-      userName: displayName,
-      userId: typedMember.profiles.id,
-      groupId: typedMember.group_id,
-      groupName: typedMember.groups.name,
+      success:   true,
+      userName:  displayName,
+      userId:    profile.id,
+      groupId:   match.group_id,
+      groupName: group.name,
     };
   } catch (err: any) {
     console.error("LOGIN CRASH:", err);

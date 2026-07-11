@@ -1,12 +1,12 @@
 import { ChevronRight, Newspaper } from 'lucide-react';
 
 export type FeedItem = {
-  id: string | number;
-  name: string;
-  action: string; // e.g. "Logged Long Run"
-  metric: string; // e.g. "5 mi"
-  date: string;   // e.g. "Jul 9"
+  id:          string | number;
+  name:        string;        // display name (nickname ?? full_name)
   avatar_url?: string;
+  message:     string;        // NL sentence: "Nithin deadlifted 325 lbs 🔥"
+  relativeTime: string;       // "2h ago", "Yesterday", "Jul 4"
+  status:      'pending' | 'verified';
 };
 
 interface BreakingNewsFeedProps {
@@ -14,8 +14,9 @@ interface BreakingNewsFeedProps {
 }
 
 /**
- * Real-time Breaking News feed card — live data only, no mock arrays.
- * Spec: Features.md §4 — circular icon, bold name, metric value, right-aligned date.
+ * Real-time Breaking News feed — natural language activity messages with
+ * relative timestamps and pending/verified status badges.
+ * Spec: Features.md §4, Pillar 3
  */
 export default function BreakingNewsFeed({ items }: BreakingNewsFeedProps) {
   const hasItems = items.length > 0;
@@ -27,14 +28,9 @@ export default function BreakingNewsFeed({ items }: BreakingNewsFeedProps) {
       {hasItems ? (
         <ul className="flex flex-col gap-4 flex-1" aria-label="Activity feed">
           {items.map((item) => {
-            // If avatar_url is an emoji (single char / short string not starting with http),
-            // display it as-is; otherwise render initials.
-            const isEmoji =
-              item.avatar_url &&
-              !item.avatar_url.startsWith('http') &&
-              [...item.avatar_url].length <= 2;
-            const isImage = item.avatar_url?.startsWith('http');
-            const initials = item.name?.charAt(0)?.toUpperCase() ?? '?';
+            const isImage   = item.avatar_url?.startsWith('http');
+            const initials  = item.name?.charAt(0)?.toUpperCase() ?? '?';
+            const isPending = item.status === 'pending';
 
             return (
               <li key={item.id} className="flex items-start gap-3">
@@ -45,42 +41,33 @@ export default function BreakingNewsFeed({ items }: BreakingNewsFeedProps) {
                 >
                   {isImage ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={item.avatar_url}
-                      alt={item.name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : isEmoji ? (
-                    item.avatar_url
+                    <img src={item.avatar_url} alt={item.name} className="w-full h-full object-cover" />
                   ) : (
-                    <span className="text-[#CEFF00] text-xs font-black">
-                      {initials}
-                    </span>
+                    <span className="text-[#CEFF00] text-xs font-black">{initials}</span>
                   )}
                 </div>
 
                 {/* Text block */}
                 <div className="flex-1 min-w-0">
                   <p className="text-[13px] text-[#111827] leading-snug">
-                    <span className="font-bold">{item.name}</span>
-                    {' — '}
-                    {item.action}
+                    {item.message}
                   </p>
-                  <p className="text-[11px] text-[#6B7280] mt-0.5 tabular-nums">
-                    {item.metric}
-                  </p>
+                  {isPending && (
+                    <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-bold uppercase tracking-wide bg-[#FEF3C7] text-[#92400E] rounded-full px-2 py-0.5">
+                      ⏳ Pending verification
+                    </span>
+                  )}
                 </div>
 
-                {/* Date — right-aligned */}
-                <span className="text-[11px] text-[#6B7280] flex-shrink-0 tabular-nums">
-                  {item.date}
+                {/* Relative time — right-aligned */}
+                <span className="text-[11px] text-[#9CA3AF] flex-shrink-0 tabular-nums mt-0.5">
+                  {item.relativeTime}
                 </span>
               </li>
             );
           })}
         </ul>
       ) : (
-        /* ── Empty state ───────────────────────────────────────── */
         <div className="flex-1 flex flex-col items-center justify-center gap-2 py-10 text-center">
           <Newspaper size={28} className="text-[#E5E7EB]" />
           <p className="text-sm font-semibold text-[#9CA3AF]">No activity yet</p>
