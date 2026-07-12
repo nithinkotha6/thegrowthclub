@@ -165,47 +165,65 @@ export default function BreakingNewsFeed({ items, currentUserId }: BreakingNewsF
                   </div>
 
                   {/* Right Side: Action buttons */}
-                  <div className="flex-shrink-0 flex items-center gap-1.5">
-                    {/* Display deletion options for authors */}
-                    {isOwner ? (
-                      <button
-                        onClick={() => handleDelete(item.id)}
-                        disabled={isPendingAction}
-                        className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wide text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-full px-2.5 py-1 transition cursor-pointer active:scale-95 disabled:opacity-50"
-                        type="button"
-                      >
-                        <Trash2 size={10} />
-                        Delete
-                      </button>
-                    ) : isPending ? (
-                      // Peer voting options
-                      approvedState.approved ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-1 select-none">
-                          ✅ Approved • {approvedState.count}/3
-                        </span>
-                      ) : (
-                        <div className="flex items-center gap-1.5">
+                  <div className="flex-shrink-0 flex items-center gap-1.5 ml-auto">
+                    {isPending ? (
+                      <div className="flex items-center gap-2">
+                        {/* Approve (✓) */}
+                        {approvedState.approved ? (
+                          <span 
+                            className="p-2 rounded-full text-emerald-600 bg-emerald-50 select-none flex items-center justify-center" 
+                            title={`Approved (${approvedState.count}/3)`}
+                          >
+                            <Check size={16} strokeWidth={3} />
+                          </span>
+                        ) : (
                           <button
                             onClick={() => handleApprove(item.id, item.user_id)}
-                            disabled={isPendingAction}
-                            className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wide text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-full px-2.5 py-1 transition cursor-pointer active:scale-95 disabled:opacity-50"
+                            disabled={isPendingAction || isOwner}
+                            className="p-2 rounded-full text-indigo-600 hover:bg-slate-100 transition-colors active:scale-95 disabled:opacity-30 disabled:pointer-events-none cursor-pointer flex items-center justify-center"
                             type="button"
+                            title={isOwner ? "You cannot approve your own activity" : `Approve (${approvedState.count}/3)`}
                           >
-                            <Check size={10} strokeWidth={3} />
-                            Approve ({approvedState.count}/3)
+                            <Check size={16} strokeWidth={3} />
                           </button>
-                          <button
-                            onClick={() => handleReject(item.id)}
-                            disabled={isPendingAction}
-                            className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wide text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-full px-2.5 py-1 transition cursor-pointer active:scale-95 disabled:opacity-50"
-                            type="button"
-                          >
-                            <X size={10} strokeWidth={3} />
-                            Reject
-                          </button>
-                        </div>
+                        )}
+
+                        {/* Reject (✗) */}
+                        <button
+                          onClick={() => handleReject(item.id)}
+                          disabled={isPendingAction}
+                          className="p-2 rounded-full text-rose-600 hover:bg-slate-100 transition-colors active:scale-95 disabled:opacity-50 cursor-pointer flex items-center justify-center"
+                          type="button"
+                          title="Reject"
+                        >
+                          <X size={16} strokeWidth={3} />
+                        </button>
+
+                        {/* Delete (🗑) */}
+                        <button
+                          onClick={() => handleDelete(item.id)}
+                          disabled={isPendingAction || !isOwner}
+                          className="p-2 rounded-full text-red-500 hover:bg-slate-100 transition-colors active:scale-95 disabled:opacity-30 disabled:pointer-events-none cursor-pointer flex items-center justify-center"
+                          type="button"
+                          title={isOwner ? "Delete" : "Only the author can delete this activity"}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    ) : (
+                      // For verified logs, only the author can delete their own activity
+                      isOwner && (
+                        <button
+                          onClick={() => handleDelete(item.id)}
+                          disabled={isPendingAction}
+                          className="p-2 rounded-full text-red-500 hover:bg-slate-100 transition-colors active:scale-95 disabled:opacity-50 cursor-pointer flex items-center justify-center"
+                          type="button"
+                          title="Delete verified activity"
+                        >
+                          <Trash2 size={16} />
+                        </button>
                       )
-                    ) : null}
+                    )}
                   </div>
                 </li>
               );

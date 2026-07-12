@@ -96,6 +96,9 @@ User text: "${rawText}"`,
     return { success: false, error: 'Failed to save activity. Please try again.' };
   }
 
+  const { revalidatePath } = await import('next/cache');
+  revalidatePath('/', 'layout');
+
   return {
     success:     true,
     metric_slug: extracted.metric_slug,

@@ -91,7 +91,7 @@ export async function castVoteAction(
       }
     }
 
-    revalidatePath('/dashboard');
+    revalidatePath('/', 'layout');
     return { success: true };
   } catch (err: any) {
     console.error('castVoteAction exception:', err);
@@ -111,7 +111,7 @@ export async function approveActivityAction(
 }
 
 /**
- * Server Action: update log status to 'rejected'.
+ * Server Action: hard delete / reject pending activity log, clearing child tables.
  */
 export async function rejectActivityAction(
   logId: string,
@@ -119,21 +119,33 @@ export async function rejectActivityAction(
 ): Promise<VoteResult> {
   try {
     const supabase = getAdminClient();
-    const { error } = await supabase
-      .from('metric_logs')
-      .update({ status: 'rejected' })
-      .eq('id', logId);
 
-    if (error) {
-      console.error('[rejectActivityAction] Error:', error.message);
-      return { success: false, error: 'Failed to reject activity.' };
+    // 1. Defensively delete child records from log_votes first
+    const { error: votesError } = await supabase
+      .from('log_votes')
+      .delete()
+      .eq('log_id', logId);
+
+    if (votesError) {
+      console.error('[rejectActivityAction] Failed to delete child votes:', votesError.message);
     }
 
-    revalidatePath('/dashboard');
+    // 2. Delete parent record from metric_logs
+    const { error: logError } = await supabase
+      .from('metric_logs')
+      .delete()
+      .eq('id', logId);
+
+    if (logError) {
+      console.error('[rejectActivityAction] Log delete error:', logError.message);
+      return { success: false, error: `Failed to reject activity: ${logError.message}` };
+    }
+
+    revalidatePath('/', 'layout');
     return { success: true };
   } catch (err: any) {
-    console.error('[rejectActivityAction] exception:', err);
-    return { success: false, error: err?.message || 'Server error occurred.' };
+    console.error('[rejectActivityAction] Exception:', err);
+    return { success: false, error: err?.message || 'Server error occurred during rejection.' };
   }
 }
 
@@ -170,7 +182,7 @@ export async function deleteActivityAction(
       return { success: false, error: `Failed to delete activity: ${logError.message}` };
     }
 
-    revalidatePath('/dashboard');
+    revalidatePath('/', 'layout');
     return { success: true };
   } catch (err: any) {
     console.error('[deleteActivityAction] Exception:', err);

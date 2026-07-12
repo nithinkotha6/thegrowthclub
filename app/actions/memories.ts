@@ -88,7 +88,7 @@ export async function uploadAndCreateMemoryAction(
       return { success: false, error: `Database insert failed: ${dbErr.message}` };
     }
 
-    revalidatePath('/dashboard/memories');
+    revalidatePath('/', 'layout');
     return { success: true, memory: dbData };
   } catch (err: any) {
     console.error('[uploadAndCreateMemoryAction] Crash details:', err);
@@ -122,7 +122,7 @@ export async function addMemoryComment(memoryId: string, content: string, userId
       return { success: false, error: error.message };
     }
 
-    revalidatePath('/dashboard/memories');
+    revalidatePath('/', 'layout');
     return { success: true, comment: data };
   } catch (err: any) {
     console.error('[addMemoryComment] Crash details:', err);

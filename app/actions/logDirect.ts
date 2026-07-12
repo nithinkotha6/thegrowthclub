@@ -44,7 +44,7 @@ export async function logDirectActivity(
     return { success: false, error: 'Failed to save activity. Please try again.' };
   }
 
-  revalidatePath('/dashboard');
+  revalidatePath('/', 'layout');
   return { success: true, metric_slug: metricSlug, value, unit };
 }
 
@@ -96,7 +96,7 @@ export async function logActivityManual(
         console.error('[logActivityManual] Retry insert error:', retryErr);
         return { success: false, error: 'Failed to save activity. Please try again.' };
       }
-      revalidatePath('/dashboard');
+      revalidatePath('/', 'layout');
       return { success: true, metric_slug: metricSlug, value, unit };
     }
 
@@ -104,6 +104,6 @@ export async function logActivityManual(
     return { success: false, error: 'Failed to save activity. Please try again.' };
   }
 
-  revalidatePath('/dashboard');
+  revalidatePath('/', 'layout');
   return { success: true, metric_slug: metricSlug, value, unit };
 }
