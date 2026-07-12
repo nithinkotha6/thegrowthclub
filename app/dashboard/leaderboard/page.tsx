@@ -10,7 +10,6 @@ import CheerButton from '@/components/CheerButton';
 // Curated list of metrics for ranking
 const LEADERBOARD_METRICS = [
   { id: 'long_run',         label: 'Long Run',          unit: 'mi',     isCumulative: true  },
-  { id: 'top_speed',        label: 'Top Speed',         unit: 'mph',    isCumulative: false },
   { id: 'weight',           label: 'Weight',            unit: 'lbs',    isCumulative: false },
   { id: 'highest_steps',   label: 'Highest Steps',     unit: 'steps',  isCumulative: false },
   { id: 'marathon',         label: 'Marathon',          unit: 'hrs',    isCumulative: false },
@@ -255,7 +254,10 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
               <span className="text-[11px] font-bold text-[#111827] truncate max-w-full mb-2">
                 {secondPlace.profile.nickname || secondPlace.profile.full_name}
               </span>
-              <div className="w-full h-14 bg-gradient-to-t from-slate-400/20 to-slate-400/5 border-2 border-slate-300 rounded-t-xl flex flex-col items-center justify-center shadow-inner">
+              <div className="relative w-full h-16 bg-white/80 backdrop-blur-sm border-t-2 border-x border-[#C0C0C0] rounded-t-xl flex flex-col items-center justify-center shadow-[0_4px_12px_rgba(0,0,0,0.03)]">
+                {/* Side wings */}
+                <div className="absolute -left-2.5 top-3 bottom-0 w-2.5 bg-[#C0C0C0]/15 border-l border-t border-[#C0C0C0]/50 rounded-l-md transform -skew-y-12 origin-right" />
+                <div className="absolute -right-2.5 top-3 bottom-0 w-2.5 bg-[#C0C0C0]/15 border-r border-t border-[#C0C0C0]/50 rounded-r-md transform skew-y-12 origin-left" />
                 <span className="text-xl md:text-2xl font-black text-slate-600 tabular-nums tracking-tight">
                   {secondPlace.score}
                 </span>
@@ -289,7 +291,10 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
               <span className="text-xs font-black text-[#111827] truncate max-w-full mb-2">
                 {firstPlace.profile.nickname || firstPlace.profile.full_name}
               </span>
-              <div className="w-full h-20 bg-gradient-to-t from-yellow-500/20 to-yellow-500/5 border-2 border-yellow-400 rounded-t-2xl flex flex-col items-center justify-center shadow-lg p-1">
+              <div className="relative w-full h-24 bg-white/90 backdrop-blur-sm border-t-2 border-x border-[#FFD700] rounded-t-2xl flex flex-col items-center justify-center shadow-[0_6px_20px_rgba(255,215,0,0.1)] p-1">
+                {/* Side wings */}
+                <div className="absolute -left-3 top-4 bottom-0 w-3 bg-[#FFD700]/15 border-l border-t border-[#FFD700]/50 rounded-l-lg transform -skew-y-12 origin-right" />
+                <div className="absolute -right-3 top-4 bottom-0 w-3 bg-[#FFD700]/15 border-r border-t border-[#FFD700]/50 rounded-r-lg transform skew-y-12 origin-left" />
                 <span className="text-[9px] font-black text-yellow-600 uppercase tracking-widest mb-0.5">Champion</span>
                 <span className="text-2xl md:text-3xl font-black text-yellow-600 tabular-nums tracking-tight">
                   {firstPlace.score}
@@ -323,7 +328,10 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
               <span className="text-[11px] font-bold text-[#111827] truncate max-w-full mb-2">
                 {thirdPlace.profile.nickname || thirdPlace.profile.full_name}
               </span>
-              <div className="w-full h-10 bg-gradient-to-t from-amber-700/20 to-amber-700/5 border-2 border-amber-600 rounded-t-xl flex flex-col items-center justify-center shadow-inner">
+              <div className="relative w-full h-12 bg-white/80 backdrop-blur-sm border-t-2 border-x border-[#CD7F32] rounded-t-xl flex flex-col items-center justify-center shadow-[0_4px_10px_rgba(0,0,0,0.02)]">
+                {/* Side wings */}
+                <div className="absolute -left-2 top-2 bottom-0 w-2 bg-[#CD7F32]/15 border-l border-t border-[#CD7F32]/50 rounded-l-md transform -skew-y-12 origin-right" />
+                <div className="absolute -right-2 top-2 bottom-0 w-2 bg-[#CD7F32]/15 border-r border-t border-[#CD7F32]/50 rounded-r-md transform skew-y-12 origin-left" />
                 <span className="text-lg md:text-xl font-black text-amber-800 tabular-nums tracking-tight">
                   {thirdPlace.score}
                 </span>
@@ -359,8 +367,13 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    {/* Rank Badge */}
-                    <div className="w-7 h-7 rounded-full bg-gray-950 text-white flex items-center justify-center font-bold text-xs select-none">
+                    {/* Rank Badge - Premium Dark Slate Shield */}
+                    <div 
+                      className="w-8 h-8 flex items-center justify-center font-black text-xs text-white select-none relative bg-slate-800 shadow-sm flex-shrink-0"
+                      style={{
+                        clipPath: 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)',
+                      }}
+                    >
                       {rank}
                     </div>
                     {/* Avatar */}

@@ -35,10 +35,7 @@ function formatActivityMessage(log: FeedRow): string {
       return val >= 10
         ? `${name} crushed a ${val} ${unit} long run 🏃‍♂️🔥`
         : `${name} ran ${val} ${unit} 🏃`;
-    case 'top_speed':
-      return val >= 20
-        ? `${name} clocked a blistering ${val} ${unit} top speed ⚡`
-        : `${name} hit ${val} ${unit} top speed ⚡`;
+
     case 'weight':
       return `${name} logged a ${val} ${unit} body weight check-in ⚖️`;
     case 'highest_steps':
@@ -143,6 +140,9 @@ export default async function DashboardPage({
     message:      formatActivityMessage(log),
     relativeTime: relativeTime(log.logged_at),
     status:       log.status as 'pending' | 'verified',
+    user_id:      log.user_id,
+    vote_count:   log.log_votes?.length || 0,
+    hasVoted:     log.log_votes?.some((v) => v.user_id === userId) || false,
   }));
 
   // ── Chart title ──────────────────────────────────────────────────────────
@@ -212,7 +212,7 @@ export default async function DashboardPage({
             rangeLabel={activeRangeLabel}
             bucketSize={bucketSize}
           />
-          <BreakingNewsFeed items={feedItems} />
+          <BreakingNewsFeed items={feedItems} currentUserId={userId} />
         </div>
 
         {/* ── Peer-Review Voting Panel ─────────────────────────────── */}

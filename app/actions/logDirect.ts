@@ -36,7 +36,7 @@ export async function logDirectActivity(
     metric_slug: metricSlug,
     value,
     unit,
-    status:      'pending',
+    status:      (metricSlug === 'car_top_speed' || metricSlug === 'most_beers') ? 'pending' : 'verified',
   });
 
   if (insertErr) {
@@ -75,7 +75,7 @@ export async function logActivityManual(
     metric_slug: metricSlug,
     value,
     unit,
-    status:      'pending',
+    status:      (metricSlug === 'car_top_speed' || metricSlug === 'most_beers') ? 'pending' : 'verified',
     caption:     caption || null,
   });
 
@@ -89,7 +89,7 @@ export async function logActivityManual(
         metric_slug: metricSlug,
         value,
         unit,
-        status:      'pending',
+        status:      (metricSlug === 'car_top_speed' || metricSlug === 'most_beers') ? 'pending' : 'verified',
       });
 
       if (retryErr) {

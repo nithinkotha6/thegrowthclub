@@ -36,11 +36,6 @@ function formatAchievement(log: LogRow): string {
         ? `${name} crushed a ${val} ${unit} long run today 🏃‍♂️🔥`
         : `${name} knocked out a ${val} ${unit} run 🏃`;
 
-    // ── speed ───────────────────────────────────────────────────────────
-    case 'top_speed':
-      return val >= 20
-        ? `${name} clocked a blistering top speed of ${val} ${unit} ⚡`
-        : `${name} hit ${val} ${unit} top speed ⚡`;
 
     // ── body metrics ────────────────────────────────────────────────────
     case 'weight':
@@ -135,34 +130,38 @@ export default async function LiveAchievementTicker({ groupId }: { groupId: stri
   const doubled = [...sentences, ...sentences];
 
   return (
-    /* Outer wrapper: explicit mobile-first flex, overflow-hidden to block scrollbar bleed */
     <div
-      className="ticker-wrapper flex w-full overflow-hidden relative bg-[#0A0A0A] border-b border-white/5 h-9 items-center"
+      className="overflow-hidden whitespace-nowrap flex w-full bg-slate-900 border-y-2 border-yellow-400 py-2 relative select-none"
       aria-label="Live achievement ticker"
       role="marquee"
     >
-      {/* LIVE badge — pinned left, outside the scroll track */}
-      <div
-        className="flex-shrink-0 flex items-center gap-1.5 bg-[#CEFF00] text-[#0A0A0A] px-3 h-full font-black text-[10px] tracking-[0.2em] uppercase z-10 select-none"
-        aria-hidden="true"
-      >
-        <span className="w-1.5 h-1.5 rounded-full bg-[#0A0A0A] animate-pulse" />
-        LIVE
-      </div>
+      <style>{`
+        @keyframes marquee {
+          from { transform: translateX(0%); }
+          to { transform: translateX(-50%); }
+        }
+        .animate-ticker-marquee {
+          display: flex;
+          white-space: nowrap;
+          animation: marquee 25s linear infinite;
+        }
+        @keyframes flashRed {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.3; }
+        }
+        .flash-red-dot {
+          animation: flashRed 1s infinite;
+        }
+      `}</style>
 
-      {/* Scrolling track — flex-1 + overflow-hidden prevents width bleed */}
-      <div className="flex-1 overflow-hidden h-full flex items-center">
-        <div
-          className="flex whitespace-nowrap animate-ticker-scroll"
-          /* will-change: transform helps GPU-composite the animation smoothly */
-          style={{ willChange: 'transform' }}
-        >
+      {/* Scrolling track */}
+      <div className="flex-grow overflow-hidden flex items-center">
+        <div className="animate-ticker-marquee" style={{ willChange: 'transform' }}>
           {doubled.map((sentence, i) => (
-            <span key={i} className="inline-flex items-center">
-              <span className="text-white text-[11px] font-semibold tracking-wide">
-                {sentence}
-              </span>
-              <Separator />
+            <span key={i} className="inline-flex items-center gap-2 font-mono font-black tracking-widest text-yellow-300 uppercase text-xs md:text-sm mr-16">
+              <span className="w-2.5 h-2.5 rounded-full bg-red-600 flash-red-dot flex-shrink-0" />
+              <span className="text-red-500 font-black">[🚨 BREAKING]</span>
+              <span>{sentence}</span>
             </span>
           ))}
         </div>

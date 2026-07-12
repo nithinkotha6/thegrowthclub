@@ -126,7 +126,6 @@ export default function AddActivityModal({ userId, groupId }: AddActivityModalPr
   // Dynamic placeholders
   const placeholderHints: Partial<Record<MetricSlug, string>> = {
     long_run:       '"I just ran 6.2 miles at 8 min/mi"',
-    top_speed:      '"Hit 24 mph on my bike today"',
     weight:         '"Weighed in at 185 lbs this morning"',
     highest_steps:  '"Walked 18,432 steps today"',
     marathon:       '"Finished the marathon in 4 hrs 12 mins"',

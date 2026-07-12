@@ -13,14 +13,6 @@ export const METRIC_PILLS = [
     bg: 'bg-[#EAFCDB]', color: 'text-[#1E1E1E]', activeBg: 'bg-[#BDEEA0]',
   },
   {
-    id: 'top_speed',
-    label: 'Top Speed',
-    unit: 'mph',
-    isCumulative: false,
-    isBoolean: false,
-    bg: 'bg-[#FFE5E5]', color: 'text-[#FF3B30]', activeBg: 'bg-[#FFBDBA]',
-  },
-  {
     id: 'weight',
     label: 'Weight',
     unit: 'lbs',

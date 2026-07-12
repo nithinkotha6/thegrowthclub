@@ -230,6 +230,7 @@ export type FeedRow = {
   status: 'pending' | 'verified' | 'rejected';
   logged_at: string;
   profiles: { full_name: string | null; nickname: string | null; avatar_url: string | null };
+  log_votes?: { user_id: string }[];
 };
 
 /**
@@ -252,7 +253,8 @@ export async function getFeedItems(
       unit,
       status,
       logged_at,
-      profiles!inner ( full_name, nickname, avatar_url )
+      profiles!inner ( full_name, nickname, avatar_url ),
+      log_votes(user_id)
     `)
     .eq('group_id', groupId)
     .in('status', ['verified', 'pending'])

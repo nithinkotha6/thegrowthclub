@@ -164,7 +164,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       metric_slug: extracted.metric_slug,
       value:       extracted.value,
       unit:        extracted.unit,
-      status:      'pending',
+      status:      (extracted.metric_slug === 'car_top_speed' || extracted.metric_slug === 'most_beers') ? 'pending' : 'verified',
     });
 
   if (insertErr) {

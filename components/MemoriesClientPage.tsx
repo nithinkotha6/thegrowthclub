@@ -1,9 +1,16 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Send, RefreshCw, Heart } from 'lucide-react';
+import { Camera, ChevronLeft, ChevronRight, MessageSquare, Plus, Send, RefreshCw } from 'lucide-react';
 import { uploadAndCreateMemoryAction, addMemoryComment } from '@/app/actions/memories';
 import UserAvatar from '@/components/UserAvatar';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 
 interface Memory {
   id: string;
@@ -123,25 +130,14 @@ export default function MemoriesClientPage({
   const [commentInput, setCommentInput] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  const [hearts, setHearts] = useState<{ id: number; left: number; delay: number }[]>([]);
+  // Upload Dialog States
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadPreview, setUploadPreview] = useState<string>('');
+  const [uploadCaption, setUploadCaption] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const slideTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  // ── Mount Floating Hearts Animation ─────────────────────────────────────
-  useEffect(() => {
-    // Generate 6-8 hearts with random placement and delays
-    const newHearts = Array.from({ length: 7 }).map((_, idx) => ({
-      id: Date.now() + idx,
-      left: Math.random() * 80 + 10, // 10% - 90% view width
-      delay: Math.random() * 2.5,     // 0s - 2.5s delay
-    }));
-    setHearts(newHearts);
-
-    // Clean up hearts after animation completes
-    const timer = setTimeout(() => setHearts([]), 5000);
-    return () => clearTimeout(timer);
-  }, []);
 
   // ── Slideshow Auto-Advance Loop ─────────────────────────────────────────
   const startSlideshowTimer = () => {
@@ -184,7 +180,7 @@ export default function MemoriesClientPage({
     fileInputRef.current?.click();
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
@@ -194,12 +190,22 @@ export default function MemoriesClientPage({
       return;
     }
 
+    setUploadFile(file);
+    setUploadPreview(URL.createObjectURL(file));
+    setUploadCaption('');
+    setIsUploadOpen(true);
+  };
+
+  const handleUploadSubmit = async () => {
+    if (!uploadFile) return;
+    if (uploadCaption.trim().length === 0) return;
+
     setIsUploading(true);
     showToast('Compressing image...', 'success');
 
     try {
       // 1. Compress Image client-side
-      const compressedBlob = await compressImage(file);
+      const compressedBlob = await compressImage(uploadFile);
 
       // 2. Convert compressed blob to base64 string
       const base64Image = await blobToBase64(compressedBlob);
@@ -207,9 +213,10 @@ export default function MemoriesClientPage({
       // 3. Perform RLS-bypassed upload and DB insert on the server
       const dbRes = await uploadAndCreateMemoryAction(
         base64Image,
-        file.name,
+        uploadFile.name,
         groupId,
-        userId
+        userId,
+        uploadCaption.trim()
       );
 
       if (!dbRes.success || !dbRes.memory) {
@@ -234,6 +241,11 @@ export default function MemoriesClientPage({
       setMemories((prev) => [newMemory, ...prev]);
       setActiveIndex(0);
       showToast('Memory uploaded successfully!');
+      
+      // Close Upload Dialog
+      setIsUploadOpen(false);
+      setUploadFile(null);
+      setUploadPreview('');
     } catch (err: any) {
       console.error('Upload failed detail:', err);
       showToast(`Upload failed: ${err.message || 'Unknown error'}`, 'error');
@@ -300,43 +312,6 @@ export default function MemoriesClientPage({
   return (
     <div className="flex flex-col gap-y-4 px-4 md:px-8 pt-4 pb-24 min-h-screen bg-[#F7F8FA] min-w-0 relative overflow-x-hidden">
       
-      {/* ── Keyframes Style Block (Self-contained animation definitions) ─ */}
-      <style jsx global>{`
-        @keyframes floatUp {
-          0% {
-            transform: translateY(100vh) scale(1) rotate(0deg);
-            opacity: 1;
-          }
-          80% {
-            opacity: 1;
-          }
-          100% {
-            transform: translateY(-80vh) scale(1.5) rotate(15deg);
-            opacity: 0;
-          }
-        }
-        .floating-heart {
-          animation: floatUp 4.2s linear forwards;
-        }
-      `}</style>
-
-      {/* ── Mounting Floating Hearts Overlay ──────────────────────────── */}
-      <div className="pointer-events-none fixed inset-0 z-50 overflow-hidden">
-        {hearts.map((h) => (
-          <span
-            key={h.id}
-            className="absolute floating-heart text-3xl md:text-4xl"
-            style={{
-              left: `${h.left}%`,
-              animationDelay: `${h.delay}s`,
-              bottom: '0px',
-            }}
-          >
-            💕
-          </span>
-        ))}
-      </div>
-
       {/* ── Page Header ────────────────────────────────────────────── */}
       <header className="flex items-center justify-between">
         <div>
@@ -358,7 +333,7 @@ export default function MemoriesClientPage({
         <div className="flex flex-col gap-4">
           
           {/* Main Cinematic Image Card */}
-          <div className="relative w-full h-[380px] md:h-[480px] bg-black rounded-[24px] overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.06)] border border-white/5 flex items-center justify-center group select-none">
+          <div className="relative w-full h-[380px] md:h-[480px] bg-white rounded-[24px] overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.06)] border border-slate-200/50 flex items-center justify-center group select-none">
             {activeImageUrl && (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -389,7 +364,7 @@ export default function MemoriesClientPage({
             </button>
 
             {/* Image Info / Uploader Overlay at bottom */}
-            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-6 text-white flex flex-col justify-end">
+            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/85 via-black/45 to-transparent p-6 text-white flex flex-col justify-end">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-black text-[#CEFF00] tracking-wide">
                   @{activeMemory.profiles?.nickname || activeMemory.profiles?.full_name || 'Athlete'}
@@ -399,14 +374,14 @@ export default function MemoriesClientPage({
                 </span>
               </div>
               {activeMemory.caption && (
-                <p className="mt-1 text-sm font-semibold truncate leading-snug">
+                <p className="mt-1 text-sm font-semibold truncate leading-snug text-white">
                   {activeMemory.caption}
                 </p>
               )}
             </div>
 
             {/* Top Indicator Bullets */}
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 flex gap-1.5 z-10 bg-black/30 px-3 py-1.5 rounded-full">
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 flex gap-1.5 z-10 bg-black/35 px-3 py-1.5 rounded-full">
               {memories.map((_, idx) => (
                 <span
                   key={idx}
@@ -488,7 +463,7 @@ export default function MemoriesClientPage({
       <input
         type="file"
         ref={fileInputRef}
-        onChange={handleFileUpload}
+        onChange={handleFileSelect}
         accept="image/*"
         className="hidden"
       />
@@ -509,6 +484,92 @@ export default function MemoriesClientPage({
           <Plus size={28} className="stroke-[2.5] text-[#CEFF00]" />
         )}
       </button>
+
+      {/* ── Upload Modal Dialog with Caption Validation ────────────────── */}
+      <Dialog open={isUploadOpen} onOpenChange={(openState) => {
+        if (!openState && !isUploading) {
+          setIsUploadOpen(false);
+          setUploadFile(null);
+          setUploadPreview('');
+        }
+      }}>
+        <DialogContent className="sm:max-w-md rounded-[24px] p-7">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-black tracking-tight text-[#111827]">
+              Post a Memory
+            </DialogTitle>
+            <DialogDescription className="text-[#6B7280] text-sm mt-1">
+              Add a caption for this memory.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-4 mt-4">
+            {/* Image Preview */}
+            {uploadPreview && (
+              <div className="w-full h-48 bg-slate-50 rounded-xl overflow-hidden flex items-center justify-center border border-slate-200">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={uploadPreview}
+                  alt="Upload preview"
+                  className="w-full h-full object-contain"
+                />
+              </div>
+            )}
+
+            {/* Caption Textarea */}
+            <div>
+              <label htmlFor="caption-input" className="text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-1.5 block">
+                Caption
+              </label>
+              <textarea
+                id="caption-input"
+                value={uploadCaption}
+                onChange={(e) => setUploadCaption(e.target.value)}
+                placeholder="Write a caption for this memory..."
+                rows={3}
+                disabled={isUploading}
+                className="w-full resize-none rounded-xl border border-[#E5E7EB] px-4 py-3 text-sm text-[#111827] placeholder:text-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#111827] disabled:opacity-50 transition"
+              />
+              {uploadCaption.trim().length === 0 && (
+                <p className="text-red-500 text-xs font-semibold mt-1">
+                  A caption is required to post a memory.
+                </p>
+              )}
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex gap-3 justify-end mt-2">
+              <button
+                type="button"
+                disabled={isUploading}
+                onClick={() => {
+                  setIsUploadOpen(false);
+                  setUploadFile(null);
+                  setUploadPreview('');
+                }}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold hover:bg-slate-50 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isUploading || uploadCaption.trim().length === 0}
+                onClick={handleUploadSubmit}
+                className="px-5 py-2.5 rounded-xl bg-gray-950 text-[#CEFF00] hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-black uppercase tracking-wider transition cursor-pointer flex items-center gap-1.5"
+              >
+                {isUploading ? (
+                  <>
+                    <RefreshCw size={12} className="animate-spin" />
+                    Uploading...
+                  </>
+                ) : (
+                  'Upload Memory'
+                )}
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Lightweight Floating Toast Notification ───────────────────── */}
       {toast && (
