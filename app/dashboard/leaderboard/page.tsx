@@ -156,9 +156,9 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
   const thirdPlace  = podiumAthletes[2] ?? null;
 
   return (
-    <div className="p-4 md:p-8 flex-1 flex flex-col bg-[#F7F8FA] min-w-0 overflow-y-auto">
-      {/* ── Page Header ──────────────────────────────────────────────── */}
-      <header className="mb-6">
+    <div className="flex flex-col gap-y-4 px-4 md:px-8 pt-4 pb-24 min-h-screen bg-[#F7F8FA] min-w-0">
+      {/* ── Page Header ────────────────────────────────────────────── */}
+      <header>
         <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tight text-[#111827] leading-none flex items-center gap-3">
           <Trophy className="text-[#CEFF00] w-10 h-10 stroke-[2.5]" />
           Leaderboard
@@ -172,7 +172,7 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
       </header>
 
       {/* ── Metric Pill Selector ─────────────────────────────────────── */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-4 mb-6 scrollbar-hide max-w-full">
+      <div className="flex items-center gap-2 overflow-x-auto py-2 scrollbar-hide max-w-full">
         {LEADERBOARD_METRICS.map((m) => {
           const isSelected = activeMetric === m.id;
           return (
@@ -194,7 +194,7 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
 
       {/* ── Olympic Podium (Top 3) ───────────────────────────────────── */}
       <div 
-        className="flex items-end justify-center gap-3 md:gap-6 bg-white rounded-[24px] border border-white/5 shadow-[0_2px_10px_rgba(0,0,0,0.03)] p-6 mb-6 max-w-full overflow-hidden"
+        className="flex items-end justify-center gap-3 md:gap-6 bg-white rounded-[24px] border border-white/5 shadow-[0_2px_10px_rgba(0,0,0,0.03)] p-6 max-w-full overflow-hidden"
         style={{ minHeight: '340px' }}
       >
         {/* 2nd Place (Left Pedestal) */}

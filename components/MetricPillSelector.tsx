@@ -40,10 +40,9 @@ export default function MetricPillSelector({ activeMetric }: MetricPillSelectorP
     params.set('metric', slug);
     router.push(`${pathname}?${params.toString()}`);
   }
-
   return (
     <div
-      className="flex gap-2 mb-6 overflow-x-auto py-1 scrollbar-none"
+      className="flex gap-2 overflow-x-auto py-2 scrollbar-none"
       style={{ WebkitOverflowScrolling: 'touch' }}
       role="group"
       aria-label="Metric selector"

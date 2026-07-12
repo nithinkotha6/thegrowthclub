@@ -39,7 +39,7 @@ export default async function DashboardLayout({
   const currentLevel = profile ? (profile.current_level as number) : 1;
 
   return (
-    <div className="flex h-full min-h-screen">
+    <div className="flex min-h-screen">
       {/* Sidebar — receives live session + XP data */}
       <Sidebar
         userName={session.userName}

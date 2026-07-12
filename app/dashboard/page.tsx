@@ -153,23 +153,10 @@ export default async function DashboardPage({
   const chartTitle = `${activePill.label} — ${activeRangeLabel}`;
 
   return (
-    <div className="p-4 md:p-8">
+    <div className="flex flex-col min-h-screen bg-[#F7F8FA]">
 
-      {/* ── Row 1: Page Header (title + tagline + underline) ─────────── */}
-      <header className="mb-5">
-        <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tight text-[#111827] leading-none">
-          The Growth Club
-        </h1>
-        <p className="mt-2 text-[11px] font-bold tracking-[0.18em] text-[#6B7280] uppercase">
-          Train Together. Compete Together. Grow Together.
-        </p>
-        <svg width="340" height="14" viewBox="0 0 340 14" fill="none" aria-hidden="true" className="mt-0.5 max-w-full">
-          <path d="M2 10 C40 3, 90 13, 140 7 S210 2, 260 8 S305 12, 338 6" stroke="#22C55E" strokeWidth="2.8" strokeLinecap="round" fill="none" />
-        </svg>
-      </header>
-
-      {/* ── Row 2: Live Ticker (Now inside page for correct document flow) */}
-      <div className="-mx-4 md:-mx-8 mb-4">
+      {/* ── Row 1: Live Ticker — full-bleed, sits at absolute top ─── */}
+      <div className="w-full flex-shrink-0">
         <Suspense
           fallback={
             <div className="w-full h-9 bg-[#0A0A0A] border-b border-white/5 flex items-center px-3">
@@ -183,46 +170,61 @@ export default async function DashboardPage({
         </Suspense>
       </div>
 
-      {/* ── Row 3: Controls Row (Range Selector + Add Activity) ──────── */}
-      <div className="flex items-center justify-between gap-2 mb-4">
-        <DateRangeSelector activeRange={activeRange} />
-        <AddActivityModal userId={userId} groupId={groupId} />
-      </div>
+      {/* ── Rows 2-5: Padded content column ──────────────────────── */}
+      <div className="flex flex-col gap-4 px-4 md:px-8 pt-4 pb-24">
 
-      {/* ── Row 4: Horizontal Scrolling Metric Pill Selector ─────────── */}
-      <MetricPillSelector activeMetric={activeMetric} />
+        {/* ── Row 2: Page Header ──────────────────────────────────── */}
+        <header>
+          <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tight text-[#111827] leading-none">
+            The Growth Club
+          </h1>
+          <p className="mt-2 text-[11px] font-bold tracking-[0.18em] text-[#6B7280] uppercase">
+            Train Together. Compete Together. Grow Together.
+          </p>
+          <svg width="340" height="14" viewBox="0 0 340 14" fill="none" aria-hidden="true" className="mt-0.5 max-w-full">
+            <path d="M2 10 C40 3, 90 13, 140 7 S210 2, 260 8 S305 12, 338 6" stroke="#22C55E" strokeWidth="2.8" strokeLinecap="round" fill="none" />
+          </svg>
+        </header>
 
-      {/* ── Group-ID Debug Banner (only when data is empty) ──────────── */}
-      {series.length === 0 && feedRows.length === 0 && (
-        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-mono text-amber-800">
-          <p className="font-bold mb-1">⚠️ No data returned for your session group.</p>
-          <p>Session <code>group_id</code>: <span className="font-bold select-all">{groupId}</span></p>
-          <p className="mt-1 text-amber-600">Compare this UUID against the <code>group_id</code> column in
-          your <code>metric_logs</code> table. If they differ, log out and log back in with the correct group.</p>
+        {/* ── Row 3: Controls Row (Range Selector + Add Activity) ─── */}
+        <div className="flex items-center justify-between gap-2">
+          <DateRangeSelector activeRange={activeRange} />
+          <AddActivityModal userId={userId} groupId={groupId} />
         </div>
-      )}
 
-      {/* ── Row 5: Primary Chart Card + Breaking News Feed ───────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-5 md:gap-6 mb-5 md:mb-6">
-        <MetricChart
-          dateLabels={dateLabels}
-          series={series}
-          title={chartTitle}
-          unit={activePill.unit}
-          metricLabel={activePill.label}
-          rangeLabel={activeRangeLabel}
-          bucketSize={bucketSize}
-        />
-        <BreakingNewsFeed items={feedItems} />
-      </div>
+        {/* ── Row 4: Horizontal Scrolling Metric Pill Selector ─────── */}
+        <MetricPillSelector activeMetric={activeMetric} />
 
-      {/* ── Peer-Review Voting Panel ──────────────────────────────────── */}
-      <div className="mt-5 md:mt-6">
+        {/* ── Group-ID Debug Banner (only when data is empty) ─────── */}
+        {series.length === 0 && feedRows.length === 0 && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-mono text-amber-800">
+            <p className="font-bold mb-1">⚠️ No data returned for your session group.</p>
+            <p>Session <code>group_id</code>: <span className="font-bold select-all">{groupId}</span></p>
+            <p className="mt-1 text-amber-600">Compare this UUID against the <code>group_id</code> column in
+            your <code>metric_logs</code> table. If they differ, log out and log back in with the correct group.</p>
+          </div>
+        )}
+
+        {/* ── Row 5: Primary Chart Card + Breaking News Feed ─────── */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-5 md:gap-6">
+          <MetricChart
+            dateLabels={dateLabels}
+            series={series}
+            title={chartTitle}
+            unit={activePill.unit}
+            metricLabel={activePill.label}
+            rangeLabel={activeRangeLabel}
+            bucketSize={bucketSize}
+          />
+          <BreakingNewsFeed items={feedItems} />
+        </div>
+
+        {/* ── Peer-Review Voting Panel ─────────────────────────────── */}
         <Suspense fallback={null}>
           <VotingPanel groupId={groupId} userId={userId} />
         </Suspense>
-      </div>
 
+      </div>
     </div>
   );
 }
