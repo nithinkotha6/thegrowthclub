@@ -254,11 +254,16 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
               <span className="text-[11px] font-bold text-[#111827] truncate max-w-full mb-2">
                 {secondPlace.profile.nickname || secondPlace.profile.full_name}
               </span>
-              <div className="relative w-full h-16 bg-white/80 backdrop-blur-sm border-t-2 border-x border-[#C0C0C0] rounded-t-xl flex flex-col items-center justify-center shadow-[0_4px_12px_rgba(0,0,0,0.03)]">
-                {/* Side wings */}
-                <div className="absolute -left-2.5 top-3 bottom-0 w-2.5 bg-[#C0C0C0]/15 border-l border-t border-[#C0C0C0]/50 rounded-l-md transform -skew-y-12 origin-right" />
-                <div className="absolute -right-2.5 top-3 bottom-0 w-2.5 bg-[#C0C0C0]/15 border-r border-t border-[#C0C0C0]/50 rounded-r-md transform skew-y-12 origin-left" />
-                <span className="text-xl md:text-2xl font-black text-slate-600 tabular-nums tracking-tight">
+              <div 
+                className="relative w-full bg-white/80 border border-slate-300/40 flex flex-col items-center justify-center shadow-md p-1"
+                style={{
+                  height: '72px',
+                  clipPath: 'polygon(10% 0%, 90% 0%, 90% 10px, 100% 10px, 100% 100%, 0% 100%, 0% 10px, 10% 10px)',
+                }}
+              >
+                {/* Silver foil top border */}
+                <div className="absolute top-0 left-[10%] right-[10%] h-1.5 bg-gradient-to-r from-slate-400 via-slate-200 to-slate-400 shadow-[0_1px_3px_rgba(200,200,200,0.5)]" />
+                <span className="text-xl md:text-2xl font-black text-slate-600 tabular-nums tracking-tight mt-2">
                   {secondPlace.score}
                 </span>
                 <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
@@ -291,11 +296,16 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
               <span className="text-xs font-black text-[#111827] truncate max-w-full mb-2">
                 {firstPlace.profile.nickname || firstPlace.profile.full_name}
               </span>
-              <div className="relative w-full h-24 bg-white/90 backdrop-blur-sm border-t-2 border-x border-[#FFD700] rounded-t-2xl flex flex-col items-center justify-center shadow-[0_6px_20px_rgba(255,215,0,0.1)] p-1">
-                {/* Side wings */}
-                <div className="absolute -left-3 top-4 bottom-0 w-3 bg-[#FFD700]/15 border-l border-t border-[#FFD700]/50 rounded-l-lg transform -skew-y-12 origin-right" />
-                <div className="absolute -right-3 top-4 bottom-0 w-3 bg-[#FFD700]/15 border-r border-t border-[#FFD700]/50 rounded-r-lg transform skew-y-12 origin-left" />
-                <span className="text-[9px] font-black text-yellow-600 uppercase tracking-widest mb-0.5">Champion</span>
+              <div 
+                className="relative w-full bg-white/90 border border-yellow-500/30 flex flex-col items-center justify-center p-1 shadow-lg"
+                style={{
+                  height: '100px',
+                  clipPath: 'polygon(10% 0%, 90% 0%, 90% 10px, 100% 10px, 100% 100%, 0% 100%, 0% 10px, 10% 10px)',
+                }}
+              >
+                {/* Gold foil top border */}
+                <div className="absolute top-0 left-[10%] right-[10%] h-1.5 bg-gradient-to-r from-yellow-600 via-yellow-400 to-yellow-600 shadow-[0_1px_4px_rgba(250,204,21,0.5)]" />
+                <span className="text-[9px] font-black text-yellow-600 uppercase tracking-widest mt-2 mb-0.5">Champion</span>
                 <span className="text-2xl md:text-3xl font-black text-yellow-600 tabular-nums tracking-tight">
                   {firstPlace.score}
                 </span>
@@ -328,11 +338,16 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
               <span className="text-[11px] font-bold text-[#111827] truncate max-w-full mb-2">
                 {thirdPlace.profile.nickname || thirdPlace.profile.full_name}
               </span>
-              <div className="relative w-full h-12 bg-white/80 backdrop-blur-sm border-t-2 border-x border-[#CD7F32] rounded-t-xl flex flex-col items-center justify-center shadow-[0_4px_10px_rgba(0,0,0,0.02)]">
-                {/* Side wings */}
-                <div className="absolute -left-2 top-2 bottom-0 w-2 bg-[#CD7F32]/15 border-l border-t border-[#CD7F32]/50 rounded-l-md transform -skew-y-12 origin-right" />
-                <div className="absolute -right-2 top-2 bottom-0 w-2 bg-[#CD7F32]/15 border-r border-t border-[#CD7F32]/50 rounded-r-md transform skew-y-12 origin-left" />
-                <span className="text-lg md:text-xl font-black text-amber-800 tabular-nums tracking-tight">
+              <div 
+                className="relative w-full bg-white/80 border border-amber-600/30 flex flex-col items-center justify-center p-1 shadow-md"
+                style={{
+                  height: '56px',
+                  clipPath: 'polygon(10% 0%, 90% 0%, 90% 8px, 100% 8px, 100% 100%, 0% 100%, 0% 8px, 10% 8px)',
+                }}
+              >
+                {/* Bronze foil top border */}
+                <div className="absolute top-0 left-[10%] right-[10%] h-1.5 bg-gradient-to-r from-amber-700 via-amber-400 to-amber-700 shadow-[0_1px_3px_rgba(180,83,9,0.4)]" />
+                <span className="text-lg md:text-xl font-black text-amber-800 tabular-nums tracking-tight mt-1.5">
                   {thirdPlace.score}
                 </span>
                 <span className="text-[8px] font-black text-amber-700 uppercase tracking-wider">

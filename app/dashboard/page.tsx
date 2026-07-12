@@ -139,10 +139,10 @@ export default async function DashboardPage({
     avatar_url:   log.profiles?.avatar_url ?? '',
     message:      formatActivityMessage(log),
     relativeTime: relativeTime(log.logged_at),
-    status:       log.status as 'pending' | 'verified',
+    status:       log.status as 'pending' | 'verified' | 'rejected',
     user_id:      log.user_id,
     vote_count:   log.log_votes?.length || 0,
-    hasVoted:     log.log_votes?.some((v) => v.user_id === userId) || false,
+    hasVoted:     log.log_votes?.some((v) => String(v.user_id) === String(userId)) || false,
   }));
 
   // ── Chart title ──────────────────────────────────────────────────────────

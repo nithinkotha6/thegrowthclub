@@ -1,6 +1,6 @@
 /**
  * LiveAchievementTicker — single-line infinite-scroll achievement feed.
- * Pinned breaking news label + CSS-only linear scrolling track.
+ * Pinned activities tag (25%-30% width) + CSS-only linear scrolling track.
  */
 
 import { createClient } from '@/lib/supabase/server';
@@ -98,7 +98,7 @@ export default async function LiveAchievementTicker({ groupId }: { groupId: stri
 
   return (
     <div
-      className="overflow-hidden whitespace-nowrap flex w-full bg-slate-900 border-y-2 border-yellow-400 py-2.5 relative select-none items-center"
+      className="overflow-hidden whitespace-nowrap flex w-full bg-slate-900 border-y-2 border-emerald-500/30 py-2.5 relative select-none items-center"
       aria-label="Live achievement ticker"
       role="marquee"
     >
@@ -112,26 +112,26 @@ export default async function LiveAchievementTicker({ groupId }: { groupId: stri
           white-space: nowrap;
           animation: marquee 60s linear infinite;
         }
-        @keyframes flashRed {
+        @keyframes flashGreen {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.3; }
         }
-        .flash-red-dot {
-          animation: flashRed 1s infinite;
+        .flash-green-dot {
+          animation: flashGreen 1s infinite;
         }
       `}</style>
 
-      {/* Pinned Broadcast Tag */}
-      <div className="z-10 bg-slate-900 pl-4 pr-3 py-1 flex-shrink-0 flex items-center gap-1.5 font-mono font-black tracking-widest text-red-500 uppercase text-xs md:text-sm border-r border-slate-800">
-        <span className="w-2.5 h-2.5 rounded-full bg-red-600 flash-red-dot flex-shrink-0" />
-        <span>🚨 BREAKING NEWS</span>
+      {/* Pinned Broadcast Tag (compact 25%-30% horizontal space on mobile) */}
+      <div className="z-10 bg-slate-900 pl-3 pr-2 py-1 flex-shrink-0 w-[28%] max-w-[125px] md:w-auto md:max-w-none flex items-center gap-1.5 font-mono font-black tracking-wider text-emerald-400 uppercase text-[9px] md:text-xs border-r border-slate-800">
+        <span className="w-2 h-2 rounded-full bg-emerald-500 flash-green-dot flex-shrink-0" />
+        <span className="truncate">RECENT ACTIVITIES</span>
       </div>
 
       {/* Scrolling Track Content */}
       <div className="flex-grow overflow-hidden flex items-center">
         <div className="animate-ticker-marquee" style={{ willChange: 'transform' }}>
           {doubled.map((sentence, i) => (
-            <span key={i} className="inline-flex items-center gap-2 font-mono font-black tracking-widest text-yellow-300 uppercase text-xs md:text-sm mr-16">
+            <span key={i} className="inline-flex items-center gap-2 font-mono font-bold tracking-wide text-emerald-300 text-sm md:text-base mr-16">
               <span>{sentence}</span>
             </span>
           ))}

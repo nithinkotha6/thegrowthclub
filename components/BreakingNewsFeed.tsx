@@ -128,7 +128,7 @@ export default function BreakingNewsFeed({ items, currentUserId }: BreakingNewsF
           <ul className="flex flex-col gap-4" aria-label="Activity feed">
             {visibleItems.map((item) => {
               const isPending = item.status === 'pending';
-              const isOwner = item.user_id === currentUserId;
+              const isOwner = String(item.user_id) === String(currentUserId);
 
               // Read approval states merging local overrides
               const approvedState = localApprovals[item.id] || {
