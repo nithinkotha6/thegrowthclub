@@ -233,8 +233,8 @@ export default function MemoriesClientPage({
       setActiveIndex(0);
       showToast('Memory uploaded successfully!');
     } catch (err: any) {
-      console.error(err);
-      showToast(err.message || 'Failed to upload image. Make sure memories bucket exists.', 'error');
+      console.error('Upload failed detail:', err);
+      showToast(`Upload failed: ${err.message || 'Unknown error'}`, 'error');
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -302,17 +302,14 @@ export default function MemoriesClientPage({
       <style jsx global>{`
         @keyframes floatUp {
           0% {
-            transform: translateY(100vh) scale(0.6) rotate(0deg);
-            opacity: 0;
+            transform: translateY(100vh) scale(1) rotate(0deg);
+            opacity: 1;
           }
-          10% {
-            opacity: 0.7;
-          }
-          90% {
-            opacity: 0.7;
+          80% {
+            opacity: 1;
           }
           100% {
-            transform: translateY(-20vh) scale(1.1) rotate(15deg);
+            transform: translateY(-80vh) scale(1.5) rotate(15deg);
             opacity: 0;
           }
         }
@@ -322,11 +319,11 @@ export default function MemoriesClientPage({
       `}</style>
 
       {/* ── Mounting Floating Hearts Overlay ──────────────────────────── */}
-      <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden">
+      <div className="pointer-events-none fixed inset-0 z-50 overflow-hidden">
         {hearts.map((h) => (
           <span
             key={h.id}
-            className="absolute floating-heart text-2xl"
+            className="absolute floating-heart text-3xl md:text-4xl"
             style={{
               left: `${h.left}%`,
               animationDelay: `${h.delay}s`,
@@ -478,9 +475,9 @@ export default function MemoriesClientPage({
         /* ── Empty State Showcase ───────────────────────────────────── */
         <div className="bg-white rounded-[24px] border border-white/5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] p-16 text-center flex flex-col items-center justify-center gap-3">
           <Camera size={44} className="text-gray-300 stroke-[1.5]" />
-          <h2 className="text-base font-black text-gray-800">No shared memories yet.</h2>
+          <h2 className="text-base font-black text-gray-800">No memories uploaded for this group yet!</h2>
           <p className="text-xs font-bold text-gray-500 max-w-[280px] leading-relaxed">
-            Click the float button below to upload your group's first memory! Photos will auto-cycle in a cinematic slider.
+            Tap the + button below to add the first photo 💕
           </p>
         </div>
       )}
