@@ -5,10 +5,10 @@ import { CheckCircle, Loader2, ThumbsUp } from 'lucide-react';
 import { castVoteAction } from '@/app/actions/vote';
 
 interface VoteButtonProps {
-  logId:      string;
+  logId: string;
   logOwnerId: string;
-  voterId:    string;
-  hasVoted:   boolean;
+  voterId: string;
+  hasVoted: boolean;
 }
 
 /**
@@ -17,8 +17,8 @@ interface VoteButtonProps {
  * Spec: architecture.md §2 (log_votes insert → trg_auto_verify trigger)
  */
 export default function VoteButton({ logId, logOwnerId, voterId, hasVoted }: VoteButtonProps) {
-  const [voted, setVoted]       = useState(hasVoted);
-  const [error, setError]       = useState<string | null>(null);
+  const [voted, setVoted] = useState(hasVoted);
+  const [error, setError] = useState<string | null>(null);
   const [isPending, startTrans] = useTransition();
 
   async function handleVote() {

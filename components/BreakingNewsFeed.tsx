@@ -7,15 +7,15 @@ import { approveActivityAction, rejectActivityAction, deleteActivityAction } fro
 import UserAvatar from './UserAvatar';
 
 export type FeedItem = {
-  id:          string | number;
-  name:        string;        // display name (nickname ?? full_name)
+  id: string | number;
+  name: string;        // display name (nickname ?? full_name)
   avatar_url?: string;
-  message:     string;        // NL sentence
+  message: string;        // NL sentence
   relativeTime: string;       // "2h ago", "Yesterday", "Jul 4"
-  status:      'pending' | 'verified' | 'rejected';
-  user_id:     string;        // log owner ID
-  vote_count:  number;        // number of approvals
-  hasVoted:    boolean;       // has the logged-in user approved?
+  status: 'pending' | 'verified' | 'rejected';
+  user_id: string;        // log owner ID
+  vote_count: number;        // number of approvals
+  hasVoted: boolean;       // has the logged-in user approved?
 };
 
 interface BreakingNewsFeedProps {
@@ -31,7 +31,7 @@ export default function BreakingNewsFeed({ items, currentUserId }: BreakingNewsF
   const router = useRouter();
   const [isPendingAction, startTransition] = useTransition();
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
-  
+
   // Local state to track optimistic approvals
   const [localApprovals, setLocalApprovals] = useState<Record<string, { count: number; approved: boolean }>>({});
 
@@ -170,8 +170,8 @@ export default function BreakingNewsFeed({ items, currentUserId }: BreakingNewsF
                       <div className="flex items-center gap-2">
                         {/* Approve (✓) */}
                         {approvedState.approved ? (
-                          <span 
-                            className="p-2 rounded-full text-emerald-600 bg-emerald-50 select-none flex items-center justify-center" 
+                          <span
+                            className="p-2 rounded-full text-emerald-600 bg-emerald-50 select-none flex items-center justify-center"
                             title={`Approved (${approvedState.count}/3)`}
                           >
                             <Check size={16} strokeWidth={3} />

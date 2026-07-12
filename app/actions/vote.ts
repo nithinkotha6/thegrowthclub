@@ -2,6 +2,8 @@
 
 import { createClient as createBaseClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
+import { cookies } from 'next/headers';
+import { SESSION_COOKIE, decodeSession } from '@/lib/session';
 
 function getAdminClient() {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -23,80 +25,125 @@ function getAdminClient() {
 export type VoteResult = { success: true } | { success: false; error: string };
 
 /**
- * Inserts a vote row for `logId` by `userId`.
- * Enforces:
- *  - No self-voting (log owner cannot vote).
- *  - No double-voting (unique peers can vote only once).
- *  - Automatically verifies status to 'verified' when >= 3 unique votes exist.
+ * Shared Mutation Handler: verify or reject an activity log.
+ * Enforces strict peer voting rules and unique voting.
  */
-export async function castVoteAction(
-  logId: string,
-  logOwnerId: string,
-  voterId: string,
-): Promise<VoteResult> {
+export async function processVerificationVote({
+  logId,
+  vote,
+}: {
+  logId: string;
+  vote: 'approve' | 'reject';
+}): Promise<VoteResult> {
   try {
-    if (String(logOwnerId) === String(voterId)) {
-      return { success: false, error: 'You cannot verify your own activity.' };
+    const cookieStore = await cookies();
+    const token = cookieStore.get(SESSION_COOKIE)?.value;
+    const session = token ? await decodeSession(token) : null;
+    let voterId = session?.userId;
+
+    // Check supabase auth just in case
+    if (!voterId) {
+      const supabase = getAdminClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      voterId = user?.id;
+    }
+
+    if (!voterId) {
+      return { success: false, error: 'Unauthorized: Session not found.' };
     }
 
     const supabase = getAdminClient();
 
-    // Check if already voted (double-voting check)
-    const { data: existing, error: checkError } = await supabase
-      .from('log_votes')
-      .select('id')
-      .eq('log_id', logId)
-      .eq('user_id', voterId)
+    // Fetch the log details to verify ownership
+    const { data: log, error: fetchErr } = await supabase
+      .from('metric_logs')
+      .select('user_id, status')
+      .eq('id', logId)
       .maybeSingle();
 
-    if (checkError) {
-      console.error('VOTE CHECK ERROR:', checkError.message);
+    if (fetchErr || !log) {
+      return { success: false, error: 'Activity not found.' };
     }
 
-    if (existing) {
-      return { success: false, error: 'You already verified this activity.' };
+    // Strict Peer Voting Rules: Authors cannot approve their own pending logs
+    if (String(log.user_id) === String(voterId)) {
+      return { success: false, error: 'You cannot verify your own activity.' };
     }
 
-    // Insert vote
-    const { error: insertError } = await supabase
-      .from('log_votes')
-      .insert({ log_id: logId, user_id: voterId });
+    if (vote === 'approve') {
+      // Check if already voted (double-voting check)
+      const { data: existing } = await supabase
+        .from('log_votes')
+        .select('id')
+        .eq('log_id', logId)
+        .eq('user_id', voterId)
+        .maybeSingle();
 
-    if (insertError) {
-      console.error('VOTE INSERT ERROR:', insertError.message);
-      return { success: false, error: insertError.message ?? 'Failed to cast vote.' };
-    }
+      if (existing) {
+        return { success: false, error: 'You already verified this activity.' };
+      }
 
-    // Check count of unique votes dynamically
-    const { data: votes, error: votesError } = await supabase
-      .from('log_votes')
-      .select('user_id')
-      .eq('log_id', logId);
+      // Insert vote
+      const { error: insertError } = await supabase
+        .from('log_votes')
+        .insert({ log_id: logId, user_id: voterId });
 
-    if (votesError) {
-      console.error('VOTES COUNT FETCH ERROR:', votesError.message);
-    }
+      if (insertError) {
+        console.error('VOTE INSERT ERROR:', insertError.message);
+        return { success: false, error: insertError.message ?? 'Failed to cast vote.' };
+      }
 
-    const uniqueVoterIds = new Set(votes?.map(v => String(v.user_id)));
+      // Check count of unique votes dynamically
+      const { data: votes } = await supabase
+        .from('log_votes')
+        .select('user_id')
+        .eq('log_id', logId);
 
-    if (uniqueVoterIds.size >= 3) {
-      // Transition status to verified
-      const { error: updateError } = await supabase
+      const uniqueVoterIds = new Set(votes?.map(v => String(v.user_id)));
+
+      if (uniqueVoterIds.size >= 3) {
+        // Transition status to verified
+        await supabase
+          .from('metric_logs')
+          .update({ status: 'verified' })
+          .eq('id', logId);
+      }
+    } else if (vote === 'reject') {
+      // First, delete child records from log_votes
+      await supabase
+        .from('log_votes')
+        .delete()
+        .eq('log_id', logId);
+
+      // Second, delete parent record from metric_logs
+      const { error: logError } = await supabase
         .from('metric_logs')
-        .update({ status: 'verified' })
+        .delete()
         .eq('id', logId);
 
-      if (updateError) {
-        console.error('STATUS UPDATE ERROR:', updateError.message);
+      if (logError) {
+        return { success: false, error: `Failed to reject activity: ${logError.message}` };
       }
     }
 
     revalidatePath('/', 'layout');
     return { success: true };
   } catch (err: any) {
-    console.error('castVoteAction exception:', err);
-    return { success: false, error: err?.message || 'Server error occurred during verification.' };
+    console.error('processVerificationVote exception:', err);
+    return { success: false, error: err?.message || 'Server error occurred.' };
   }
+}
+
+/**
+ * Inserts a vote row for `logId` by `userId`.
+ * Calls processVerificationVote for backwards compatibility.
+ */
+export async function castVoteAction(
+  logId: string,
+  logOwnerId: string,
+  voterId: string,
+): Promise<VoteResult> {
+  return processVerificationVote({ logId, vote: 'approve' });
 }
 
 /**
@@ -107,7 +154,7 @@ export async function approveActivityAction(
   voterId: string,
   logOwnerId: string,
 ): Promise<VoteResult> {
-  return castVoteAction(logId, logOwnerId, voterId);
+  return processVerificationVote({ logId, vote: 'approve' });
 }
 
 /**
@@ -117,36 +164,7 @@ export async function rejectActivityAction(
   logId: string,
   voterId: string,
 ): Promise<VoteResult> {
-  try {
-    const supabase = getAdminClient();
-
-    // 1. Defensively delete child records from log_votes first
-    const { error: votesError } = await supabase
-      .from('log_votes')
-      .delete()
-      .eq('log_id', logId);
-
-    if (votesError) {
-      console.error('[rejectActivityAction] Failed to delete child votes:', votesError.message);
-    }
-
-    // 2. Delete parent record from metric_logs
-    const { error: logError } = await supabase
-      .from('metric_logs')
-      .delete()
-      .eq('id', logId);
-
-    if (logError) {
-      console.error('[rejectActivityAction] Log delete error:', logError.message);
-      return { success: false, error: `Failed to reject activity: ${logError.message}` };
-    }
-
-    revalidatePath('/', 'layout');
-    return { success: true };
-  } catch (err: any) {
-    console.error('[rejectActivityAction] Exception:', err);
-    return { success: false, error: err?.message || 'Server error occurred during rejection.' };
-  }
+  return processVerificationVote({ logId, vote: 'reject' });
 }
 
 /**
@@ -158,24 +176,65 @@ export async function deleteActivityAction(
   userId: string,
 ): Promise<VoteResult> {
   try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get(SESSION_COOKIE)?.value;
+    const session = token ? await decodeSession(token) : null;
+    let currentUserId = session?.userId;
+
+    // Check supabase auth just in case
+    if (!currentUserId) {
+      const supabase = getAdminClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      currentUserId = user?.id;
+    }
+
+    if (!currentUserId) {
+      return { success: false, error: 'Unauthorized: Session not found.' };
+    }
+
     const supabase = getAdminClient();
 
+    // Query target record from metric_logs by id
+    const { data: record, error: fetchError } = await supabase
+      .from('metric_logs')
+      .select('user_id')
+      .eq('id', logId)
+      .maybeSingle();
+
+    if (fetchError || !record) {
+      return { success: false, error: 'Activity record not found.' };
+    }
+
+    // Permission check
+    if (String(record.user_id) !== String(currentUserId)) {
+      return { success: false, error: 'Unauthorized: You can only delete activities you logged.' };
+    }
+
     // 1. Defensively delete child records from log_votes first to prevent foreign key errors
-    const { error: votesError } = await supabase
+    await supabase
       .from('log_votes')
       .delete()
       .eq('log_id', logId);
 
-    if (votesError) {
-      console.error('[deleteActivityAction] Failed to delete child votes:', votesError.message);
-    }
+    // Defensively try deleting approvals, comments, and xp_transactions child rows
+    try {
+      await supabase.from('approvals').delete().eq('log_id', logId);
+    } catch (_) {}
+    try {
+      await supabase.from('comments').delete().eq('log_id', logId);
+    } catch (_) {}
+    try {
+      await supabase.from('memory_comments').delete().eq('memory_id', logId);
+    } catch (_) {}
+    try {
+      await supabase.from('xp_transactions').delete().eq('log_id', logId);
+    } catch (_) {}
 
     // 2. Delete parent record from metric_logs
     const { error: logError } = await supabase
       .from('metric_logs')
       .delete()
-      .eq('id', logId)
-      .eq('user_id', userId);
+      .eq('id', logId);
 
     if (logError) {
       console.error('[deleteActivityAction] Log delete error:', logError.message);
@@ -189,3 +248,4 @@ export async function deleteActivityAction(
     return { success: false, error: err?.message || 'Server error occurred during deletion.' };
   }
 }
+
