@@ -82,11 +82,6 @@ function formatAchievement(log: LogRow): string {
     case 'national_parks':
       return `${name} visited a national park 🏔️ Living the dream!`;
 
-    // ── have partner (boolean) ──────────────────────────────────────────
-    case 'have_partner':
-      return val === 1
-        ? `${name} officially has a partner 💖 Love wins!`
-        : `${name} is flying solo 💀`;
 
     // ── generic fallback ────────────────────────────────────────────────
     default: {

@@ -19,7 +19,6 @@ const LEADERBOARD_METRICS = [
   { id: 'most_beers',      label: 'Most Beers',        unit: 'beers',  isCumulative: false },
   { id: 'catan_wins',      label: 'Catan Wins',        unit: 'wins',   isCumulative: true  },
   { id: 'national_parks',  label: 'National Parks',    unit: 'parks',  isCumulative: true  },
-  { id: 'have_partner',    label: 'Have Partner? 👀',  unit: 'status', isCumulative: false },
   { id: 'total_activities', label: 'Total Activities', unit: 'logs',   isCumulative: true  },
 ];
 

@@ -17,7 +17,6 @@ const PILL_EMOJIS: Record<string, string> = {
   most_beers:     '🍺',
   catan_wins:     '🎲',
   national_parks: '🏔️',
-  have_partner:   '💘',
 };
 
 interface MetricPillSelectorProps {

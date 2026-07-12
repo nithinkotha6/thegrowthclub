@@ -29,19 +29,16 @@ export default function AddActivityModal({ userId, groupId }: AddActivityModalPr
   const [open, setOpen]             = useState(false);
   const [text, setText]             = useState('');
   const [selectedMetric, setSelectedMetric] = useState<MetricSlug | ''>('');
-  const [partnerValue, setPartnerValue]     = useState<1 | 0 | null>(null);
   const [result, setResult]         = useState<CombinedResult | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  // Derived: is the currently selected metric a boolean toggle?
+  // Derived
   const activePill = METRIC_PILLS.find((p) => p.id === selectedMetric);
-  const isBooleanMetric = activePill?.isBoolean === true;
 
   function handleOpen() {
     setOpen(true);
     setText('');
     setSelectedMetric('');
-    setPartnerValue(null);
     setResult(null);
   }
 
@@ -54,23 +51,6 @@ export default function AddActivityModal({ userId, groupId }: AddActivityModalPr
     e.preventDefault();
     setResult(null);
 
-    // ── Boolean toggle path (have_partner) ──────────────────────────────
-    if (isBooleanMetric && activePill) {
-      if (partnerValue === null) return; // guard: must select Yes or No
-      startTransition(async () => {
-        const res = await logDirectActivity(
-          activePill.id,
-          partnerValue,
-          activePill.unit,
-          userId,
-          groupId,
-        );
-        setResult(res);
-        if (res.success) setTimeout(() => setOpen(false), 2000);
-      });
-      return;
-    }
-
     // ── Natural language AI path ────────────────────────────────────────
     if (!text.trim()) return;
     startTransition(async () => {
@@ -80,7 +60,7 @@ export default function AddActivityModal({ userId, groupId }: AddActivityModalPr
     });
   }
 
-  const canSubmit = isBooleanMetric ? partnerValue !== null : text.trim().length > 0;
+  const canSubmit = text.trim().length > 0;
 
   // Build a friendly placeholder based on selected metric
   const placeholderHints: Partial<Record<MetricSlug, string>> = {
@@ -94,7 +74,6 @@ export default function AddActivityModal({ userId, groupId }: AddActivityModalPr
     most_beers:     '"Drank 7 beers at the party last night"',
     catan_wins:     '"Won Catan tonight — 3rd win this month!"',
     national_parks: '"Visited Zion National Park today"',
-    have_partner:   '',
   };
 
   const placeholder = (selectedMetric && placeholderHints[selectedMetric])
@@ -138,7 +117,6 @@ export default function AddActivityModal({ userId, groupId }: AddActivityModalPr
                 value={selectedMetric}
                 onChange={(e) => {
                   setSelectedMetric(e.target.value as MetricSlug | '');
-                  setPartnerValue(null);
                   setText('');
                   setResult(null);
                 }}
@@ -154,59 +132,21 @@ export default function AddActivityModal({ userId, groupId }: AddActivityModalPr
               </select>
             </div>
 
-            {/* ── Input area: conditional on metric type ── */}
-            {isBooleanMetric ? (
-              /* Boolean Toggle: Yes 💖 / No 💀 */
-              <div>
-                <p className="text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-2">
-                  Current Status
-                </p>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setPartnerValue(1)}
-                    className={[
-                      'flex flex-col items-center justify-center gap-1.5 rounded-2xl border-2 py-5 text-sm font-black transition-all duration-150',
-                      partnerValue === 1
-                        ? 'bg-[#FFF1F2] border-[#FB7185] text-[#BE123C] scale-[1.03] shadow-md'
-                        : 'bg-white border-[#E5E7EB] text-[#6B7280] hover:border-[#FB7185]',
-                    ].join(' ')}
-                  >
-                    <span className="text-3xl">💖</span>
-                    <span>Yes</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPartnerValue(0)}
-                    className={[
-                      'flex flex-col items-center justify-center gap-1.5 rounded-2xl border-2 py-5 text-sm font-black transition-all duration-150',
-                      partnerValue === 0
-                        ? 'bg-[#F1F5F9] border-[#64748B] text-[#1E293B] scale-[1.03] shadow-md'
-                        : 'bg-white border-[#E5E7EB] text-[#6B7280] hover:border-[#94A3B8]',
-                    ].join(' ')}
-                  >
-                    <span className="text-3xl">💀</span>
-                    <span>No</span>
-                  </button>
-                </div>
-              </div>
-            ) : (
-              /* Natural language textarea */
-              <div>
-                <label htmlFor="activity-input" className="text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-1.5 block">
-                  Describe your activity
-                </label>
-                <textarea
-                  id="activity-input"
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  placeholder={placeholder}
-                  rows={3}
-                  disabled={isPending}
-                  className="w-full resize-none rounded-xl border border-[#E5E7EB] px-4 py-3 text-base md:text-sm text-[#111827] placeholder:text-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#111827] disabled:opacity-50 transition"
-                />
-              </div>
-            )}
+            {/* ── Input area: natural language textarea ── */}
+            <div>
+              <label htmlFor="activity-input" className="text-xs font-bold text-[#6B7280] uppercase tracking-wider mb-1.5 block">
+                Describe your activity
+              </label>
+              <textarea
+                id="activity-input"
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder={placeholder}
+                rows={3}
+                disabled={isPending}
+                className="w-full resize-none rounded-xl border border-[#E5E7EB] px-4 py-3 text-base md:text-sm text-[#111827] placeholder:text-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#111827] disabled:opacity-50 transition"
+              />
+            </div>
 
             {/* ── Result feedback ── */}
             {result && (
@@ -226,9 +166,7 @@ export default function AddActivityModal({ userId, groupId }: AddActivityModalPr
                 )}
                 <span>
                   {result.success
-                    ? isBooleanMetric
-                      ? `Logged! Status: ${partnerValue === 1 ? 'Yes 💖' : 'No 💀'}`
-                      : `Logged! ${result.value} ${result.unit} of ${result.metric_slug.replace(/_/g, ' ')}.`
+                    ? `Logged! ${result.value} ${result.unit} of ${result.metric_slug.replace(/_/g, ' ')}.`
                     : result.error}
                 </span>
               </div>
@@ -243,7 +181,7 @@ export default function AddActivityModal({ userId, groupId }: AddActivityModalPr
               {isPending ? (
                 <>
                   <Loader2 size={15} className="animate-spin" />
-                  {isBooleanMetric ? 'Saving…' : 'Parsing with AI…'}
+                  Parsing with AI…
                 </>
               ) : (
                 'Save Activity'

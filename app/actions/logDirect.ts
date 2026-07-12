@@ -8,7 +8,7 @@ export type DirectLogResult =
 
 /**
  * Server Action: directly insert a pre-parsed metric log without AI parsing.
- * Used for boolean toggles (have_partner) and future quick-log metrics.
+ * Used for direct logs and future quick-log metrics.
  * userId and groupId come from the HTTP-only session cookie (passed from dashboard).
  *
  * Spec: architecture.md §5 (Manual ingestion path)

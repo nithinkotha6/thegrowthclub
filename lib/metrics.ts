@@ -84,14 +84,6 @@ export const METRIC_PILLS = [
     isBoolean: false,
     bg: 'bg-[#F0FDF4]', color: 'text-[#14532D]', activeBg: 'bg-[#86EFAC]',
   },
-  {
-    id: 'have_partner',
-    label: 'Have Partner? 👀',
-    unit: 'status',
-    isCumulative: false,
-    isBoolean: true,
-    bg: 'bg-[#FFF1F2]', color: 'text-[#BE123C]', activeBg: 'bg-[#FECDD3]',
-  },
 ] as const;
 
 export type MetricSlug = typeof METRIC_PILLS[number]['id'];

@@ -63,10 +63,6 @@ function formatActivityMessage(log: FeedRow): string {
       return `${name} won Catan! 🎲 On a roll…`;
     case 'national_parks':
       return `${name} visited a national park — living the life! 🏔️`;
-    case 'have_partner':
-      return val === 1
-        ? `${name} has a partner! 💖 Love is in the air~`
-        : `${name} is officially single 💀 (no partner logged)`;
     default: {
       const display = slug.replace(/_/g, ' ');
       return `${name} logged ${val} ${unit} of ${display} 🏆`;
