@@ -79,7 +79,7 @@ export default async function CommunityPage() {
                 <div className="mb-4 relative">
                   <UserAvatar
                     user={profile}
-                    size="xl"
+                    size="3xl"
                     className="shadow-inner"
                   />
                   <div className="absolute -bottom-1.5 -right-1.5 bg-[#111827] border-2 border-white text-[10px] font-black text-[#CEFF00] rounded-full w-6 h-6 flex items-center justify-center shadow">
