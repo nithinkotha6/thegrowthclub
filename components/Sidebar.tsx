@@ -10,6 +10,7 @@ import {
   ShoppingBag,
   LogOut,
   Image,
+  Watch,
 } from 'lucide-react';
 import { logoutAction } from '@/app/actions/auth';
 
@@ -18,6 +19,7 @@ const NAV_ITEMS = [
   { icon: Activity,        label: 'Activity',    href: '#' },
   { icon: BarChart2,       label: 'Leaderboard', href: '/dashboard/leaderboard' },
   { icon: Users,           label: 'Gang',        href: '/dashboard/gang' },
+  { icon: Watch,           label: 'Wearables',   href: '/dashboard/wearables' },
   { icon: Image,           label: 'Memories',    href: '/dashboard/memories' },
   { icon: Trophy,          label: 'Challenges',  href: '#' },
   { icon: ShoppingBag,     label: 'Gear',        href: '#' },

@@ -124,7 +124,7 @@ export default function AddActivityModal({ userId, groupId }: AddActivityModalPr
                 className="w-full rounded-xl border border-[#E5E7EB] px-4 py-3 text-base text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-[#111827] disabled:opacity-50 min-h-[44px] appearance-none"
               >
                 <option value="">— Choose a metric —</option>
-                {METRIC_PILLS.map((p) => (
+                {METRIC_PILLS.filter(p => !p.id.startsWith('wearable_')).map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.label}
                   </option>

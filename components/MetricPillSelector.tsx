@@ -46,7 +46,7 @@ export default function MetricPillSelector({ activeMetric }: MetricPillSelectorP
       role="group"
       aria-label="Metric selector"
     >
-      {METRIC_PILLS.map(({ id, label }) => {
+      {METRIC_PILLS.filter(p => !p.id.startsWith('wearable_')).map(({ id, label }) => {
         const isActive = id === activeMetric;
         const emoji    = PILL_EMOJIS[id] ?? '📊';
         return (

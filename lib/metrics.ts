@@ -84,6 +84,30 @@ export const METRIC_PILLS = [
     isBoolean: false,
     bg: 'bg-[#F0FDF4]', color: 'text-[#14532D]', activeBg: 'bg-[#86EFAC]',
   },
+  {
+    id: 'wearable_steps',
+    label: 'Wearable Steps',
+    unit: 'steps',
+    isCumulative: true,
+    isBoolean: false,
+    bg: 'bg-[#FFF7ED]', color: 'text-[#C2410C]', activeBg: 'bg-[#FED7AA]',
+  },
+  {
+    id: 'wearable_sleep',
+    label: 'Wearable Sleep',
+    unit: 'hrs',
+    isCumulative: false,
+    isBoolean: false,
+    bg: 'bg-[#EFF6FF]', color: 'text-[#1D4ED8]', activeBg: 'bg-[#BFDBFE]',
+  },
+  {
+    id: 'wearable_resting_hr',
+    label: 'Wearable Resting HR',
+    unit: 'bpm',
+    isCumulative: false,
+    isBoolean: false,
+    bg: 'bg-[#FFF1F2]', color: 'text-[#BE123C]', activeBg: 'bg-[#FECDD3]',
+  },
 ] as const;
 
 export type MetricSlug = typeof METRIC_PILLS[number]['id'];
