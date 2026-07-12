@@ -1,0 +1,16 @@
+name: Sync Wearables Data
+
+on:
+  schedule:
+    - cron: '0 */6 * * *' # Run automatically every 6 hours
+  workflow_dispatch: # Allow manual trigger from the GitHub Actions UI
+
+jobs:
+  sync-devices:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Wearables Sync Endpoint
+        run: |
+          curl -f -X GET \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://beyond-yesterday-app.vercel.app/api/cron/sync-wearables"
