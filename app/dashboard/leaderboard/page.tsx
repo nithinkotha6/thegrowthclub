@@ -61,12 +61,24 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
     `)
     .eq('group_id', groupId);
 
-  // 3. Fetch all verified logs to compute ranks
-  const { data: logsRaw } = await supabase
+  // 3. Fetch all verified logs for the group, including profiles
+  const logsQuery = supabase
     .from('metric_logs')
-    .select('user_id, value, metric_slug')
+    .select(`
+      user_id,
+      value,
+      metric_slug,
+      profiles!inner ( id, full_name, nickname, avatar_url, total_xp, current_level )
+    `)
     .eq('group_id', groupId)
     .eq('status', 'verified');
+
+  // Filter logs by active metric slug, unless querying total activities
+  if (activeMetric !== 'total_activities') {
+    logsQuery.eq('metric_slug', activeMetric);
+  }
+
+  const { data: logsRaw } = await logsQuery;
 
   interface LeaderboardEntry {
     profile: {
@@ -92,60 +104,89 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
     } | null;
   };
 
-  type MetricLog = {
+  type LogWithProfile = {
     user_id: string;
     value: number;
     metric_slug: string;
+    profiles: {
+      id: string;
+      full_name: string | null;
+      nickname: string | null;
+      avatar_url: string | null;
+      total_xp: number;
+      current_level: number;
+    } | null;
   };
 
   const members = (membersRaw as unknown as MemberProfile[]) ?? [];
-  const logs = (logsRaw as unknown as MetricLog[]) ?? [];
+  const logs = (logsRaw as unknown as LogWithProfile[]) ?? [];
 
-  // ── In-Memory Aggregation ───────────────────────────────────────────────
-  const leaderboard: LeaderboardEntry[] = members.map((m) => {
-    const profile = m.profiles;
-    if (!profile) return null;
+  // Deduplicate and aggregate scores
+  const userMap = new Map<string, LeaderboardEntry>();
 
-    const userLogs = logs.filter((l) => l.user_id === profile.id);
+  // Initialize with all members in the group (so everyone is represented, score defaults to 0)
+  for (const m of members) {
+    if (m.profiles) {
+      userMap.set(m.profiles.id, {
+        profile: m.profiles,
+        score: 0,
+        hasLogged: false,
+      });
+    }
+  }
 
-    let score = 0;
-    let hasLogged = false;
+  const isLowerBetter = activeMetric === 'marathon';
 
-    if (activeMetric === 'total_activities') {
-      score = userLogs.length;
-      hasLogged = score > 0;
-    } else {
-      const metricLogs = userLogs.filter((l) => l.metric_slug === activeMetric);
-      hasLogged = metricLogs.length > 0;
+  // Process logs, reducing each user's records to their best single score (or sum/count)
+  for (const log of logs) {
+    const profile = log.profiles;
+    if (!profile) continue;
 
-      if (hasLogged) {
-        if (metricPill.isCumulative) {
-          score = metricLogs.reduce((sum, l) => sum + Number(l.value), 0);
-        } else {
-          score = Math.max(...metricLogs.map((l) => Number(l.value)));
-        }
-      }
+    const existing = userMap.get(log.user_id);
+    const logValue = Number(log.value);
+
+    if (!existing) {
+      // In case a log is found for a user not explicitly returned in the members list
+      userMap.set(log.user_id, {
+        profile,
+        score: activeMetric === 'total_activities' ? 1 : logValue,
+        hasLogged: true,
+      });
+      continue;
     }
 
-    // Round scores to 1 decimal place if floating
-    const roundedScore = Math.round(score * 10) / 10;
+    if (activeMetric === 'total_activities') {
+      existing.score = existing.hasLogged ? existing.score + 1 : 1;
+      existing.hasLogged = true;
+    } else if (metricPill.isCumulative) {
+      existing.score = existing.hasLogged ? existing.score + logValue : logValue;
+      existing.hasLogged = true;
+    } else {
+      if (!existing.hasLogged) {
+        existing.score = logValue;
+        existing.hasLogged = true;
+      } else {
+        existing.score = isLowerBetter
+          ? Math.min(existing.score, logValue)
+          : Math.max(existing.score, logValue);
+      }
+    }
+  }
 
-    return {
-      profile: {
-        id: profile.id,
-        full_name: profile.full_name,
-        nickname: profile.nickname,
-        avatar_url: profile.avatar_url,
-        total_xp: profile.total_xp,
-        current_level: profile.current_level,
-      },
-      score: roundedScore,
-      hasLogged,
-    };
-  })
-  .filter((entry): entry is LeaderboardEntry => entry !== null)
-  // Sort strictly in descending order
-  .sort((a, b) => b.score - a.score);
+  // Convert map to array, round values, and sort properly
+  const leaderboard: LeaderboardEntry[] = Array.from(userMap.values())
+    .map((entry) => ({
+      ...entry,
+      score: Math.round(entry.score * 10) / 10,
+    }))
+    .sort((a, b) => {
+      // Unlogged athletes sit at the absolute bottom
+      if (a.hasLogged && !b.hasLogged) return -1;
+      if (!a.hasLogged && b.hasLogged) return 1;
+      if (!a.hasLogged && !b.hasLogged) return 0;
+      // Sort logged athletes depending on whether lower is better (marathon) or higher is better
+      return isLowerBetter ? a.score - b.score : b.score - a.score;
+    });
 
   // Distribute into Podium and Table lists
   const podiumAthletes = leaderboard.slice(0, 3);
