@@ -122,16 +122,19 @@ export default async function LiveAchievementTicker({ groupId }: { groupId: stri
       `}</style>
 
       {/* Pinned Broadcast Tag (compact 25%-30% horizontal space on mobile) */}
-      <div className="z-10 bg-slate-900 pl-3 pr-2 py-1 flex-shrink-0 w-[28%] max-w-[125px] md:w-auto md:max-w-none flex items-center gap-1.5 font-mono font-black tracking-wider text-emerald-400 uppercase text-[9px] md:text-xs border-r border-slate-800">
-        <span className="w-2 h-2 rounded-full bg-emerald-500 flash-green-dot flex-shrink-0" />
-        <span className="truncate">RECENT ACTIVITIES</span>
+      <div className="z-10 bg-slate-900 pl-3 pr-2 py-1 flex-shrink-0 w-[28%] max-w-[125px] md:w-auto md:max-w-none flex items-center gap-1.5 font-mono font-black tracking-wider text-[#CEFF00] uppercase text-[9px] md:text-xs border-r border-slate-800">
+        <span className="relative flex h-2 w-2 flex-shrink-0">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+        </span>
+        <span className="truncate">BREAKING NEWS</span>
       </div>
 
       {/* Scrolling Track Content */}
       <div className="flex-grow overflow-hidden flex items-center">
         <div className="animate-ticker-marquee" style={{ willChange: 'transform' }}>
           {doubled.map((sentence, i) => (
-            <span key={i} className="inline-flex items-center gap-2 font-mono font-bold tracking-wide text-emerald-300 text-sm md:text-base mr-16">
+            <span key={i} className="inline-flex items-center gap-2 font-mono font-bold tracking-wide text-white text-sm md:text-base mr-16">
               <span>{sentence}</span>
             </span>
           ))}

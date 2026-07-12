@@ -120,7 +120,7 @@ export default function BreakingNewsFeed({ items, currentUserId }: BreakingNewsF
 
   return (
     <div className="rounded-[24px] bg-white shadow-[0_2px_10px_rgba(0,0,0,0.04)] p-6 flex flex-col max-h-[640px]">
-      <h2 className="text-base font-bold text-[#111827] mb-5">Breaking News</h2>
+      <h2 className="text-base font-bold text-[#111827] mb-5">Recent Activities</h2>
 
       {/* Constrained Vertically Scrollable Container */}
       <div className="flex-1 max-h-[500px] overflow-y-auto pr-1 select-none scrollbar-thin">
@@ -137,74 +137,76 @@ export default function BreakingNewsFeed({ items, currentUserId }: BreakingNewsF
               };
 
               return (
-                <li key={item.id} className="flex items-start gap-3 border-b border-slate-50 pb-3 last:border-0 last:pb-0">
-                  {/* Reusable UserAvatar */}
-                  <UserAvatar
-                    user={{ avatar_url: item.avatar_url, full_name: item.name }}
-                    size="md"
-                  />
-
-                  {/* Log Card Body */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[13px] text-[#111827] leading-snug">
-                      {item.message}
-                    </p>
-
-                    {/* Action buttons section */}
-                    <div className="mt-2 flex items-center gap-1.5 flex-wrap">
-                      {isPending && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide bg-[#FEF3C7] text-[#92400E] rounded-full px-2 py-0.5 select-none">
-                          ⏳ Pending
+                <li key={item.id} className="flex items-center justify-between gap-4 border-b border-slate-50 pb-3 last:border-0 last:pb-0">
+                  {/* Left Side: Avatar + Message */}
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <UserAvatar
+                      user={{ avatar_url: item.avatar_url, full_name: item.name }}
+                      size="md"
+                    />
+                    <div className="min-w-0">
+                      <p className="text-[13px] text-[#111827] leading-snug">
+                        {item.message}
+                      </p>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <span className="text-[11px] text-[#9CA3AF] tabular-nums">
+                          {item.relativeTime}
                         </span>
-                      )}
-
-                      {/* Display deletion options for authors */}
-                      {isOwner ? (
-                        <button
-                          onClick={() => handleDelete(item.id)}
-                          disabled={isPendingAction}
-                          className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wide text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-full px-2.5 py-0.5 transition cursor-pointer active:scale-95 disabled:opacity-50"
-                          type="button"
-                        >
-                          <Trash2 size={10} />
-                          Delete
-                        </button>
-                      ) : isPending ? (
-                        // Peer voting options
-                        approvedState.approved ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5 select-none">
-                            ✅ Approved • {approvedState.count}/3
-                          </span>
-                        ) : (
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              onClick={() => handleApprove(item.id, item.user_id)}
-                              disabled={isPendingAction}
-                              className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wide text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-full px-2.5 py-0.5 transition cursor-pointer active:scale-95 disabled:opacity-50"
-                              type="button"
-                            >
-                              <Check size={10} strokeWidth={3} />
-                              Approve ({approvedState.count}/3)
-                            </button>
-                            <button
-                              onClick={() => handleReject(item.id)}
-                              disabled={isPendingAction}
-                              className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wide text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-full px-2.5 py-0.5 transition cursor-pointer active:scale-95 disabled:opacity-50"
-                              type="button"
-                            >
-                              <X size={10} strokeWidth={3} />
-                              Reject
-                            </button>
-                          </div>
-                        )
-                      ) : null}
+                        {isPending && (
+                          <>
+                            <span className="text-slate-300 select-none text-[10px]">•</span>
+                            <span className="inline-flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wide bg-[#FEF3C7] text-[#92400E] rounded-full px-1.5 py-0.2 select-none">
+                              ⏳ Pending
+                            </span>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
 
-                  {/* Relative time */}
-                  <span className="text-[11px] text-[#9CA3AF] flex-shrink-0 tabular-nums mt-0.5">
-                    {item.relativeTime}
-                  </span>
+                  {/* Right Side: Action buttons */}
+                  <div className="flex-shrink-0 flex items-center gap-1.5">
+                    {/* Display deletion options for authors */}
+                    {isOwner ? (
+                      <button
+                        onClick={() => handleDelete(item.id)}
+                        disabled={isPendingAction}
+                        className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wide text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-full px-2.5 py-1 transition cursor-pointer active:scale-95 disabled:opacity-50"
+                        type="button"
+                      >
+                        <Trash2 size={10} />
+                        Delete
+                      </button>
+                    ) : isPending ? (
+                      // Peer voting options
+                      approvedState.approved ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-1 select-none">
+                          ✅ Approved • {approvedState.count}/3
+                        </span>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => handleApprove(item.id, item.user_id)}
+                            disabled={isPendingAction}
+                            className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wide text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-full px-2.5 py-1 transition cursor-pointer active:scale-95 disabled:opacity-50"
+                            type="button"
+                          >
+                            <Check size={10} strokeWidth={3} />
+                            Approve ({approvedState.count}/3)
+                          </button>
+                          <button
+                            onClick={() => handleReject(item.id)}
+                            disabled={isPendingAction}
+                            className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wide text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-full px-2.5 py-1 transition cursor-pointer active:scale-95 disabled:opacity-50"
+                            type="button"
+                          >
+                            <X size={10} strokeWidth={3} />
+                            Reject
+                          </button>
+                        </div>
+                      )
+                    ) : null}
+                  </div>
                 </li>
               );
             })}
