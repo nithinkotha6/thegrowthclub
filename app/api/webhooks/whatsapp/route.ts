@@ -77,25 +77,50 @@ export async function POST(req: Request) {
       body.messageData?.extendedTextMessageData?.text || 
       '';
 
-    // Trigger detection
-    const lowerMessage = incomingMessage.toLowerCase();
-    const triggers = ['@bot', '@ref', 'stats', 'leaderboard', 'who is winning'];
-    const hasTrigger = triggers.some((t) => lowerMessage.includes(t));
+    // Trigger detection: match triggers ignoring punctuation, leading/trailing spaces, and case
+    const triggerRegex = /@(bot|ref)\b|\b(stats|leaderboard|who is winning)\b/i;
+    const hasTrigger = triggerRegex.test(incomingMessage);
 
     if (!hasTrigger) {
       return NextResponse.json({ ok: true, ignored: 'message does not target referee' });
     }
 
-    console.log(`[webhook/whatsapp] Triggered by message: "${incomingMessage}" from ${body.senderData?.senderName}`);
+    // Verbose logging of senderData structure (Pillar 2)
+    console.log('[webhook/whatsapp] body.senderData structure:', JSON.stringify(body.senderData, null, 2));
 
-    // ── 3. Database Context Gathering ───────────────────────────────────────
+    const rawSender = body.senderData?.sender || '';
+    console.log(`[webhook/whatsapp] Triggered by message: "${incomingMessage}" from JID: ${rawSender} (${body.senderData?.senderName})`);
+
+    // ── 3. Database Context Gathering & Sender Verification ─────────────────
     const supabaseAdmin = getAdminClient();
 
+    // Resolve sender profile by sanitizing phone JID (Pillar 2)
+    let senderProfile = null;
+    if (rawSender) {
+      const cleanSenderPhone = rawSender.replace(/@c\.us$/, '').replace(/\D/g, '');
+      const { data: matchedProfile, error: matchError } = await supabaseAdmin
+        .from('profiles')
+        .select('id, nickname, full_name')
+        .or(`phone_number.eq.${cleanSenderPhone},phone_number.eq.+${cleanSenderPhone}`)
+        .maybeSingle();
+
+      if (matchError) {
+        console.error('[webhook/whatsapp] Error matching sender JID to profile:', matchError);
+      } else if (matchedProfile) {
+        senderProfile = matchedProfile;
+        console.log(`[webhook/whatsapp] Matched sender profile: ${senderProfile.nickname || senderProfile.full_name}`);
+      }
+    }
+
     // Look for group in DB (default to Texas Buds or fallback to first group)
-    const { data: groups } = await supabaseAdmin
+    const { data: groups, error: groupsError } = await supabaseAdmin
       .from('groups')
       .select('*')
       .order('created_at', { ascending: true });
+
+    if (groupsError) {
+      console.error('[webhook/whatsapp] groups query error:', groupsError);
+    }
 
     const targetGroup = groups?.find(g => g.name === 'Texas Buds' || g.invite_code === 'TEXASBUDS') || groups?.[0];
     if (!targetGroup) {
@@ -105,7 +130,7 @@ export async function POST(req: Request) {
     const groupId = targetGroup.id;
 
     // A. Query latest 5 verified activities for the group
-    const { data: recentLogs } = await supabaseAdmin
+    const { data: recentLogs, error: recentLogsError } = await supabaseAdmin
       .from('metric_logs')
       .select(`
         id,
@@ -120,8 +145,12 @@ export async function POST(req: Request) {
       .order('logged_at', { ascending: false })
       .limit(5);
 
+    if (recentLogsError) {
+      console.error('[webhook/whatsapp] recentLogs query error:', recentLogsError);
+    }
+
     // B. Query group members and verified top_golf logs for leaderboard calculation
-    const { data: membersRaw } = await supabaseAdmin
+    const { data: membersRaw, error: membersError } = await supabaseAdmin
       .from('group_members')
       .select(`
         user_id,
@@ -129,12 +158,20 @@ export async function POST(req: Request) {
       `)
       .eq('group_id', groupId);
 
-    const { data: topGolfLogs } = await supabaseAdmin
+    if (membersError) {
+      console.error('[webhook/whatsapp] group_members query error:', membersError);
+    }
+
+    const { data: topGolfLogs, error: topGolfLogsError } = await supabaseAdmin
       .from('metric_logs')
       .select('user_id, value')
       .eq('group_id', groupId)
       .eq('status', 'verified')
       .eq('metric_slug', 'top_golf');
+
+    if (topGolfLogsError) {
+      console.error('[webhook/whatsapp] top_golf logs query error:', topGolfLogsError);
+    }
 
     interface LeaderboardEntry {
       nickname: string;
@@ -180,7 +217,7 @@ export async function POST(req: Request) {
         return b.score - a.score;
       });
 
-    // C. Format contexts into text block
+    // C. Format contexts into text block (Pillar 1 Empty/Null Safeties)
     const recentActivitiesText = (recentLogs || []).map((log: any) => {
       const name = log.profiles?.nickname || log.profiles?.full_name || 'Someone';
       return `- ${name} logged ${log.value} ${log.unit || ''} of ${log.metric_slug} at ${new Date(log.logged_at).toLocaleDateString()}`;
@@ -201,10 +238,13 @@ export async function POST(req: Request) {
     // ── 4. AI Invocations & Dispatch ────────────────────────────────────────
     let text = '';
     try {
+      const senderName = senderProfile?.nickname || senderProfile?.full_name || body.senderData?.senderName || 'Someone';
+      const promptText = `Message from ${senderName}: ${incomingMessage}`;
+
       const result = await generateText({
         model: googleProvider('gemini-2.5-flash'),
         system: buildGroupAssistantPrompt(dbContext),
-        prompt: incomingMessage,
+        prompt: promptText,
       });
       text = result.text;
     } catch (llmError) {
@@ -218,9 +258,8 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: true, rateLimited: true });
       }
 
-      const internalErrField = `⚠️ "Ref here. My gears are grinding (Internal LLM Error). Let me recover."`;
-      await sendWhatsAppGroupMessage(internalErrField);
-      return NextResponse.json({ ok: true, error: errorStr });
+      // Re-throw to be captured by the verbose debug handler during auditing
+      throw llmError;
     }
 
     // Send LLM response back to the group
@@ -228,8 +267,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, sent: true });
   } catch (error: any) {
-    console.error('[webhook/whatsapp] Fatal route error:', error);
-    // Return 200 to prevent webhook request retries from breaking Vercel execution bounds
-    return NextResponse.json({ ok: true, error: error.message });
+    console.error("[Webhook Audit Crash]:", error);
+    const debugErrorMessage = `⚠️ Ref here. Database/LLM Error: ${error.message || JSON.stringify(error)}`;
+    await sendWhatsAppGroupMessage(debugErrorMessage);
+    return NextResponse.json({ success: false, error: error.message }, { status: 200 });
   }
 }
