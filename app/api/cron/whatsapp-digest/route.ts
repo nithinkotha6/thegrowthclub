@@ -99,6 +99,27 @@ function formatHighlight(log: HighlightLog): string {
 // Shared request handler for GET/POST
 async function handleRequest(req: Request) {
   try {
+    // ── 0. Pre-Flight Environment Variable Validation ───────────────────────
+    const requiredKeys = [
+      'GREEN_API_INSTANCE_ID',
+      'GREEN_API_TOKEN',
+      'WHATSAPP_GROUP_ID',
+      'SUPABASE_SERVICE_ROLE_KEY',
+    ];
+    const missingKeys = requiredKeys.filter((key) => !process.env[key]);
+
+    if (missingKeys.length > 0) {
+      console.error('[whatsapp-digest] Pre-flight validation failed. Missing keys:', missingKeys);
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Missing required environment variables',
+          missingKeys,
+        },
+        { status: 400 }
+      );
+    }
+
     // ── 1. Security Authorization ───────────────────────────────────────────
     const authHeader = req.headers.get('Authorization');
     const secret = process.env.CRON_SECRET;
