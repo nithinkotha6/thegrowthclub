@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { generateText } from 'ai';
-import { google } from '@ai-sdk/google';
+import { googleProvider } from '@/lib/ai/google';
 import { sendWhatsAppGroupMessage } from '@/lib/whatsapp';
 import { buildGroupAssistantPrompt } from '@/lib/ai/prompts';
 
@@ -226,7 +226,7 @@ async function handleRequest(req: Request) {
 
     try {
       const result = await generateText({
-        model: google('gemini-2.5-flash'),
+        model: googleProvider('gemini-2.5-flash'),
         system: buildGroupAssistantPrompt(dbContext),
         prompt: `Write today's morning sports broadcast for The Growth Club. Summarize yesterday's stats, congratulate the leader, and add a funny roast for anyone who logged 0 activities yesterday. Use emojis. Log today's activity link is: ${appUrl}`,
       });

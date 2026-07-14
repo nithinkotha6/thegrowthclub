@@ -18,7 +18,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient }              from '@supabase/supabase-js';
-import { google }                    from '@ai-sdk/google';
+import { googleProvider }                    from '@/lib/ai/google';
 import { generateObject }            from 'ai';
 import { z }                         from 'zod';
 
@@ -140,7 +140,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   let extracted: z.infer<typeof ExtractionSchema>;
   try {
     const { object } = await generateObject({
-      model:  google('gemini-2.5-flash'),
+      model:  googleProvider('gemini-2.5-flash'),
       schema: ExtractionSchema,
       system: SYSTEM_PROMPT,
       prompt: rawText,

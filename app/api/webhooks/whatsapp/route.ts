@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { generateText } from 'ai';
-import { google } from '@ai-sdk/google';
+import { googleProvider } from '@/lib/ai/google';
 import { sendWhatsAppGroupMessage } from '@/lib/whatsapp';
 import { buildGroupAssistantPrompt } from '@/lib/ai/prompts';
 
@@ -202,7 +202,7 @@ export async function POST(req: Request) {
     let text = '';
     try {
       const result = await generateText({
-        model: google('gemini-2.5-flash'),
+        model: googleProvider('gemini-2.5-flash'),
         system: buildGroupAssistantPrompt(dbContext),
         prompt: incomingMessage,
       });
