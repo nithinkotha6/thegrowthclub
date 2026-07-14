@@ -1,6 +1,19 @@
-# The Growth Club — Kiosk Web Application
+# Beyond Yesterday: The Growth Club
 
-Welcome to **The Growth Club**, a mobile-first workout tracking and competitive dashboard. Designed for fitness groups, teams, and families to track activities, view progress, and compete on dynamic leaderboards.
+<p align="center">
+  <img src="https://img.shields.io/badge/Next.js-16-black?style=for-the-badge&logo=next.dot.js" alt="Next.js" />
+  <img src="https://img.shields.io/badge/TypeScript-5-blue?style=for-the-badge&logo=typescript" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/Supabase-Database-green?style=for-the-badge&logo=supabase" alt="Supabase" />
+  <img src="https://img.shields.io/badge/Vercel_AI_SDK-latest-black?style=for-the-badge&logo=vercel" alt="Vercel AI SDK" />
+  <img src="https://img.shields.io/badge/Google_Gemini-3.5_Flash-orange?style=for-the-badge&logo=google-gemini" alt="Google Gemini" />
+</p>
+
+---
+
+## 🎯 The Growth Club Philosophy
+**Beyond Yesterday** is a mobile-first workout tracking and competitive dashboard built for friend groups, sports clubs, teams, and families. It empowers members to log activities, view real-time scores, and compete on a dynamic leaderboard. 
+
+To prevent slacking, it integrates **The Referee**—an automated, AI-driven WhatsApp agent that sends daily morning sports broadcasts and provides real-time banter and stat tracking directly inside the group chat.
 
 ---
 
@@ -8,10 +21,10 @@ Welcome to **The Growth Club**, a mobile-first workout tracking and competitive 
 
 ### 1. PIN-Based Authentication Scoping (Kiosk Auth)
 - The app operates on a "Kiosk Auth" model. Users enter a personal 4-digit PIN matched against their profile within a specific group.
-- **Session Scoping:** Successful login decodes and sets an HTTP-only secure cookie `app_session` storing the `userId` and `groupId`. All queries and mutations are dynamically scoped to this session's `groupId`.
+- **Session Scoping:** Successful login decodes and sets an HTTP-only secure cookie `app_session` storing the `userId` and `groupId`. All queries and mutations are dynamically scoped to this session's `groupId` to enforce tenancy boundaries.
 
 ### 2. Dual-Mode Activity Logging Engine
-- **AI Assist Mode:** Powered by Google Gemini 2.0 Flash (`ingestActivity`). Extracts structured `{ metric_slug, value, unit }` from freeform natural language text (e.g. *"Ran 5.2 miles in 45m"*).
+- **AI Assist Mode:** Powered by Google Gemini (`gemini-3.5-flash` via `@ai-sdk/google`). Extracts structured `{ metric_slug, value, unit }` from freeform natural language text (e.g. *"Ran 5.2 miles in 45m"*).
 - **Manual Log Mode:** Default structured forms. Supports standard numerical metrics and endurance/time-based metrics (which render a distance field and a structured **[ HH ] [ MM ] [ SS ]** duration picker). Total seconds are compressed and appended to the comment block.
 
 ### 3. Targeted Peer-Review Verification Lifecycle
@@ -21,7 +34,50 @@ Welcome to **The Growth Club**, a mobile-first workout tracking and competitive 
 
 ### 4. Wearables Auto-Sync Engine & Google Fit Integration
 - **Google Fit integration:** End-to-end OAuth flow (`/api/wearables/connect/google` and `/api/wearables/callback/google`) linking Google accounts to profile rows, saving the `refresh_token` securely.
-- **Automated Sync Cron:** Runs via `/api/api/cron/sync-wearables`. Refreshes access tokens and aggregates steps, sleep hours, and resting heart rates (min daily BPM fallback) into the database, setting them directly to `'verified'` to update scoreboard states.
+- **Automated Sync Cron:** Runs via `/api/cron/sync-wearables`. Refreshes access tokens and aggregates steps, sleep hours, and resting heart rates (min daily BPM fallback) into the database, setting them directly to `'verified'` to update scoreboard states.
+
+---
+
+## 🗺️ High-Level System Architecture
+
+```mermaid
+graph TD
+    subgraph Users ["WhatsApp Group (The Growth Club)"]
+        W[Group Members]
+    end
+
+    subgraph Infrastructure ["Vercel Serverless Architecture"]
+        UI[Next.js Web Dashboard]
+        CRON["/api/cron/whatsapp-digest"]
+        WEBHOOK["/api/webhooks/whatsapp"]
+    end
+
+    subgraph External ["External Cloud Services"]
+        GH[GitHub Actions Scheduler]
+        GA[Green API WhatsApp Bridge]
+        SB[(Supabase PostgreSQL DB)]
+        GEM[Google Gemini AI Studio]
+    end
+
+    %% Web UI Flows
+    W -->|Log Activities & Check Leaderboard| UI
+    UI <-->|Anonymized / RLS Queries| SB
+
+    %% Cron Flow (Morning Digest)
+    GH -->|13:00 UTC Trigger + CRON_SECRET| CRON
+    CRON -->|Service Role Fetch| SB
+    CRON -->|Generate Sports Broadcast| GEM
+    CRON -->|POST Outgoing Broadcast| GA
+    GA -->|Deliver WhatsApp Message| W
+
+    %% Webhook Flow (Real-Time Referee)
+    W -->|Text: @ref / stats| GA
+    GA -->|Incoming Message Webhook| WEBHOOK
+    WEBHOOK -->|Verify Chat ID & Filter Noise| WEBHOOK
+    WEBHOOK -->|Service Role Fetch| SB
+    WEBHOOK -->|Injected Context + Persona| GEM
+    WEBHOOK -->|POST Witty Roast| GA
+```
 
 ---
 
@@ -45,30 +101,49 @@ Welcome to **The Growth Club**, a mobile-first workout tracking and competitive 
 ---
 
 ## 🛠️ Technology Stack
-- **Frontend:** Next.js 16 (App Router, Turbopack), Tailwind CSS, Vanilla CSS
+- **Frontend & Routing:** Next.js 16 (App Router, Turbopack)
 - **Database:** Supabase Cloud (PostgreSQL 15, Row Level Security, pg_cron)
-- **AI Processing:** Google Gemini 2.0 Flash (`@ai-sdk/google`)
+- **AI Processing:** Google Gemini (`gemini-3.5-flash` via `@ai-sdk/google` provider)
 - **Data Visualization:** Apache ECharts (`echarts`, `echarts-for-react`)
+- **Styling:** Tailwind CSS, Vanilla CSS
 
 ---
 
 ## 💻 Local Development Workflow
 
-1. Install dependencies:
-   ```bash
-   npm install
-   ```
-2. Configure `.env.local`:
-   ```env
-   NEXT_PUBLIC_SUPABASE_URL="https://your-project.supabase.co"
-   NEXT_PUBLIC_SUPABASE_ANON_KEY="your-anon-key"
-   SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
-   SESSION_SECRET="jwt-secret-min-32-chars"
-   GOOGLE_CLIENT_ID="google-client-id"
-   GOOGLE_CLIENT_SECRET="google-client-secret"
-   NEXT_PUBLIC_APP_URL="http://localhost:3000"
-   ```
-3. Start the dev server:
-   ```bash
-   npm run dev
-   ```
+### 1. Install dependencies
+```bash
+npm install
+```
+
+### 2. Configure Environment Variables
+Create a `.env.local` file from the provided template:
+```bash
+cp .env.local.example .env.local
+```
+Fill in the following variables:
+```env
+NEXT_PUBLIC_SUPABASE_URL="https://your-project-ref.supabase.co"
+NEXT_PUBLIC_SUPABASE_ANON_KEY="your-anon-key"
+SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
+TELEGRAM_BOT_TOKEN="your-telegram-bot-token"
+GEMINI_API_KEY="your-gemini-api-key"
+GOOGLE_GENERATIVE_AI_API_KEY="your-gemini-api-key-if-different"
+
+# Green API WhatsApp Gateway
+GREEN_API_INSTANCE_ID="your-green-api-instance-id"
+GREEN_API_TOKEN="your-green-api-token"
+WHATSAPP_GROUP_ID="your-whatsapp-group-chat-id"
+
+# Secrets
+SESSION_SECRET="your-secure-jwt-signing-key-32-chars"
+CRON_SECRET="your-cron-secret-token"
+NEXT_PUBLIC_APP_URL="http://localhost:3000"
+TELEGRAM_WEBHOOK_SECRET="your-telegram-webhook-secret-token"
+```
+
+### 3. Start the dev server
+```bash
+npm run dev
+```
+The dashboard is now running at `http://localhost:3000`.
