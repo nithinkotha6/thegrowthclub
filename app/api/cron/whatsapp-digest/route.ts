@@ -226,7 +226,7 @@ async function handleRequest(req: Request) {
 
     try {
       const result = await generateText({
-        model: googleProvider('gemini-2.5-flash'),
+        model: googleProvider('gemini-3.5-flash'),
         system: buildGroupAssistantPrompt(dbContext),
         prompt: `Write today's morning sports broadcast for The Growth Club. Summarize yesterday's stats, congratulate the leader, and add a funny roast for anyone who logged 0 activities yesterday. Use emojis. Log today's activity link is: ${appUrl}`,
       });
