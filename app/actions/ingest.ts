@@ -49,7 +49,7 @@ export async function ingestActivity(
   try {
     const { generateText } = await import('ai');
     const { text } = await generateText({
-      model: google('gemini-2.0-flash'),
+      model: google('gemini-2.5-flash'),
       prompt: `You are a fitness data parser. Extract the metric from the user's text and return ONLY a raw JSON object with no markdown, no code fences, no explanation.
 
 Required JSON shape:

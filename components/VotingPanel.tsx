@@ -98,7 +98,7 @@ export default async function VotingPanel({
       {/* Pending log list */}
       <ul className="flex flex-col gap-3" aria-label="Pending activities for review">
         {pending.map((log) => {
-          const name  = log.profiles?.nickname || log.profiles?.full_name?.split(' ')[0] || 'Athlete';
+          const name  = log.profiles?.nickname || log.profiles?.full_name || 'Athlete';
           const slug  = log.metric_slug.replace(/_/g, ' ');
           const date  = new Date(log.logged_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
           const hasVoted = myVotedSet.has(log.id);

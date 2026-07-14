@@ -26,7 +26,7 @@ import LiveAchievementTicker   from '@/components/LiveAchievementTicker';
 /* ── Natural Language Feed Formatter ───────────────────────────────────────── */
 
 function formatActivityMessage(log: FeedRow): string {
-  const name = log.profiles?.nickname ?? log.profiles?.full_name?.split(' ')[0] ?? 'Someone';
+  const name = log.profiles?.nickname || log.profiles?.full_name || 'Someone';
   const val  = Number(log.value);
   const unit = log.unit ?? '';
   const slug = log.metric_slug ?? '';
@@ -177,7 +177,7 @@ export default async function DashboardPage({
   // ── Feed items with NL messages ─────────────────────────────────────────
   const feedItems: FeedItem[] = feedRows.map((log) => ({
     id:           log.id,
-    name:         log.profiles?.nickname ?? log.profiles?.full_name ?? 'Athlete',
+    name:         log.profiles?.nickname || log.profiles?.full_name || 'Athlete',
     full_name:    log.profiles?.full_name ?? '',
     nickname:     log.profiles?.nickname ?? '',
     avatar_url:   log.profiles?.avatar_url ?? '',

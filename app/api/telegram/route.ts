@@ -140,7 +140,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   let extracted: z.infer<typeof ExtractionSchema>;
   try {
     const { object } = await generateObject({
-      model:  google('gemini-2.0-flash'),
+      model:  google('gemini-2.5-flash'),
       schema: ExtractionSchema,
       system: SYSTEM_PROMPT,
       prompt: rawText,

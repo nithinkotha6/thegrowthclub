@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { generateText } from 'ai';
+import { google } from '@ai-sdk/google';
 import { sendWhatsAppGroupMessage } from '@/lib/whatsapp';
+import { buildGroupAssistantPrompt } from '@/lib/ai/prompts';
 
 // Admin client using service role key (required to query scoped/system tables in cron context)
 function getAdminClient() {
@@ -38,69 +41,12 @@ interface GroupMemberRow {
   profiles: ProfileDetails | null;
 }
 
-// Sports-center natural language highlights formatter
-function formatHighlight(log: HighlightLog): string {
-  const nickname = log.profiles?.nickname || log.profiles?.full_name?.split(' ')[0] || 'Someone';
-  const val = Number(log.value);
-  const unit = log.unit || '';
-  const slug = log.metric_slug || '';
-
-  switch (slug) {
-    case 'car_top_speed':
-    case 'top_speed':
-      return `⚡ *${nickname}* logged ${val} ${unit} Car Top Speed!`;
-    case 'top_golf':
-      return `🏌️ *${nickname}* crushed a ${val} ${unit} Top Golf shot!`;
-    case 'long_run':
-      return `🏃 *${nickname}* completed a ${val} ${unit} Long Run!`;
-    case 'deadlift':
-      return `🏋️ *${nickname}* deadlifted ${val} ${unit}!`;
-    case 'weight':
-      return `⚖️ *${nickname}* logged a ${val} ${unit} body weight check-in!`;
-    case 'calories':
-      return `🔥 *${nickname}* burned ${val} ${unit}!`;
-    case 'beers':
-    case 'most_beers':
-      return `🍺 *${nickname}* put away ${val} beer${val !== 1 ? 's' : ''}!`;
-    case 'squat':
-      return `🏋️ *${nickname}* squatted ${val} ${unit}!`;
-    case 'bench_press':
-      return `🏋️ *${nickname}* benched ${val} ${unit}!`;
-    case 'push_ups':
-      return `💪 *${nickname}* completed ${val} push-ups!`;
-    case 'pull_ups':
-      return `💪 *${nickname}* completed ${val} pull-ups!`;
-    case 'cycling_distance':
-      return `🚴 *${nickname}* cycled ${val} ${unit}!`;
-    case 'longest_swim':
-    case 'underwater_swim':
-      return `🏊 *${nickname}* swam ${val} ${unit}!`;
-    case 'sleep':
-    case 'wearable_sleep':
-      return `😴 *${nickname}* logged ${val} ${unit} of sleep!`;
-    case '5k_time':
-      return `⚡ *${nickname}* ran a 5K in ${val} ${unit}!`;
-    case 'highest_steps':
-    case 'wearable_steps':
-      return `👟 *${nickname}* walked ${val.toLocaleString()} ${unit}!`;
-    case 'wearable_resting_hr':
-      return `❤️ *${nickname}* logged a resting heart rate of ${val} ${unit}!`;
-    case 'catan_wins':
-      return `🎲 *${nickname}* won Catan!`;
-    case 'national_parks':
-      return `🏔️ *${nickname}* visited a national park!`;
-    default: {
-      const display = slug.replace(/_/g, ' ');
-      return `🏆 *${nickname}* logged ${val} ${unit} of ${display}!`;
-    }
-  }
-}
-
 // Shared request handler for GET/POST
 async function handleRequest(req: Request) {
   try {
     // ── 0. Pre-Flight Environment Variable Validation ───────────────────────
     const requiredKeys = [
+      'GEMINI_API_KEY',
       'GREEN_API_INSTANCE_ID',
       'GREEN_API_TOKEN',
       'WHATSAPP_GROUP_ID',
@@ -177,12 +123,13 @@ async function handleRequest(req: Request) {
     }
 
     // Format highlights string list
-    let highlightsSection = '';
+    let recentActivitiesText = 'None';
     if (recentLogs && recentLogs.length > 0) {
       const typedLogs = recentLogs as unknown as HighlightLog[];
-      highlightsSection = typedLogs.map(formatHighlight).join('\n');
-    } else {
-      highlightsSection = `💤 _No activities logged yesterday! Who is setting the pace today?_`;
+      recentActivitiesText = typedLogs.map((log: HighlightLog) => {
+        const name = log.profiles?.nickname || log.profiles?.full_name || 'Someone';
+        return `- ${name} logged ${log.value} ${log.unit || ''} of ${log.metric_slug} at ${new Date(log.logged_at).toLocaleDateString()}`;
+      }).join('\n');
     }
 
     // ── 4. PVP Leaderboard Standings (Calculated by Deduplicated Best-Score) ─
@@ -260,46 +207,55 @@ async function handleRequest(req: Request) {
         return b.score - a.score;
       });
 
-    // Extract top 3 positions
-    const podiumMedals = ['🥇', '🥈', '🥉'];
-    const podiumLines: string[] = [];
+    const leaderboardText = leaderboard.map((entry, index) => {
+      return `${index + 1}. ${entry.nickname}: ${entry.hasLogged ? `${entry.score} Yards` : 'No score logged'}`;
+    }).join('\n');
 
-    for (let i = 0; i < 3; i++) {
-      const entry = leaderboard[i];
-      const medal = podiumMedals[i];
-      const ordinal = i === 0 ? '1st' : i === 1 ? '2nd' : '3rd';
-      if (entry) {
-        const scoreStr = entry.hasLogged ? `${entry.score} Yards` : '—';
-        podiumLines.push(`${medal} ${ordinal}: *${entry.nickname}* — ${scoreStr}`);
-      } else {
-        podiumLines.push(`${medal} ${ordinal}: _Empty_ — —`);
-      }
-    }
-
-    // ── 5. Build Copywriting Digest Payload ──────────────────────────────────
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-    const message = [
-      `🚨 *THE GROWTH CLUB • DAILY DROP* 🚨`,
+    // ── 5. Build Copywriting Database Context ────────────────────────────────
+    const dbContext = [
+      `Recent Activities (last 24 hours):`,
+      recentActivitiesText,
       ``,
-      `*Yesterday's Highlights:*`,
-      highlightsSection,
-      ``,
-      `*Current Leaderboard Podium:*`,
-      ...podiumLines,
-      ``,
-      `👉 Log today's activity: ${appUrl}`,
+      `Top Golf Leaderboard Standings:`,
+      leaderboardText,
     ].join('\n');
 
-    console.log('[whatsapp-digest] Prepared payload:\n', message);
+    // ── 6. Execute AI Sports Broadcast Generation ───────────────────────────
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    let broadcastText = '';
 
-    // ── 6. Execute Broadcast ────────────────────────────────────────────────
-    const success = await sendWhatsAppGroupMessage(message);
+    try {
+      const result = await generateText({
+        model: google('gemini-2.5-flash'),
+        system: buildGroupAssistantPrompt(dbContext),
+        prompt: `Write today's morning sports broadcast for The Growth Club. Summarize yesterday's stats, congratulate the leader, and add a funny roast for anyone who logged 0 activities yesterday. Use emojis. Log today's activity link is: ${appUrl}`,
+      });
+      broadcastText = result.text;
+    } catch (llmError) {
+      console.error('[whatsapp-digest] Daily digest LLM generation error:', llmError);
+      const errorStr = String(llmError).toLowerCase();
+      const isRateLimit = errorStr.includes('429') || errorStr.includes('rate limit') || errorStr.includes('quota exceeded');
+
+      if (isRateLimit) {
+        const fallbackMsg = `🤖 "Whoa, slow down! Rate limit hit. Give me 60 seconds to catch my breath."`;
+        await sendWhatsAppGroupMessage(fallbackMsg);
+        return NextResponse.json({ success: false, error: 'Rate limit hit' }, { status: 429 });
+      }
+
+      const errorMsg = llmError instanceof Error ? llmError.message : String(llmError);
+      return NextResponse.json({ error: errorMsg }, { status: 500 });
+    }
+
+    console.log('[whatsapp-digest] Broadcast summary prepared:\n', broadcastText);
+
+    // ── 7. Execute Broadcast ────────────────────────────────────────────────
+    const success = await sendWhatsAppGroupMessage(broadcastText);
 
     return NextResponse.json({
       success,
       broadcasted: success,
       targetGroup: targetGroup.name,
-      messageLength: message.length,
+      messageLength: broadcastText.length,
     });
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);

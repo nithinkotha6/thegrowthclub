@@ -9,41 +9,38 @@ export async function sendWhatsAppGroupMessage(message: string): Promise<boolean
   const chatId = process.env.WHATSAPP_GROUP_ID;
 
   if (!instanceId || !token || !chatId) {
-    console.error('[whatsapp] Missing Green API credentials in environment variables:', {
+    const errMsg = 'Missing Green API credentials in environment variables';
+    console.error(`[whatsapp] ${errMsg}:`, {
       hasInstanceId: !!instanceId,
       hasToken: !!token,
       hasChatId: !!chatId,
     });
-    return false;
+    throw new Error(errMsg);
   }
 
   const url = `https://api.green-api.com/waInstance${instanceId}/sendMessage/${token}`;
 
-  try {
-    console.log(`[whatsapp] Constructing payload for Green API chat ${chatId}...`);
-    
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        chatId,
-        message,
-      }),
-    });
+  console.log(`[whatsapp] Constructing payload for Green API chat ${chatId}...`);
+  
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      chatId,
+      message,
+    }),
+  });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[whatsapp] Green API request failed with status ${response.status}:`, errorText);
-      return false;
-    }
-
-    const data = await response.json();
-    console.log('[whatsapp] Message broadcasted successfully via Green API:', data);
-    return true;
-  } catch (error) {
-    console.error('[whatsapp] Fatal exception encountered during Green API fetch dispatch:', error);
-    return false;
+  if (!response.ok) {
+    const errorText = await response.text();
+    const errMsg = `Green API request failed with status ${response.status}: ${errorText}`;
+    console.error(`[whatsapp] ${errMsg}`);
+    throw new Error(errMsg);
   }
+
+  const data = await response.json();
+  console.log('[whatsapp] Message broadcasted successfully via Green API:', data);
+  return true;
 }

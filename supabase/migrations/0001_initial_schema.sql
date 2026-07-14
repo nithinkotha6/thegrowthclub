@@ -386,7 +386,7 @@ create policy "log_votes: anon can insert"
 -- SEED DATA — metrics catalogue
 -- ===========================================================================
 insert into public.metrics_config (slug, display_name, unit, sort_order, xp_reward) values
-  ('long_run',          'Long Run',          'mi',      'desc', 50),
+  ('top_golf',          'Top Golf Shot',     'Yards',   'desc', 50),
   ('deadlift',          'Deadlift',          'lbs',     'desc', 75),
   ('top_speed',         'Top Speed',         'mph',     'desc', 60),
   ('weight',            'Weight',            'lbs',     'asc',  40),

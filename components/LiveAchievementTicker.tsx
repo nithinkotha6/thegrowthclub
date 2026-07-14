@@ -15,7 +15,7 @@ type LogRow = {
 };
 
 function formatAchievement(log: LogRow): string {
-  const name = log.profiles?.nickname ?? log.profiles?.full_name?.split(' ')[0] ?? 'Someone';
+  const name = log.profiles?.nickname || log.profiles?.full_name || 'Someone';
   const val  = Number(log.value);
   const slug = log.metric_slug ?? '';
   const unit = log.unit ?? '';
