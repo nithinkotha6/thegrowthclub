@@ -1,7 +1,7 @@
 import React from 'react';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/server';
 import { decodeSession, SESSION_COOKIE } from '@/lib/session';
 import WearablesClientPage from '@/components/WearablesClientPage';
 
@@ -14,7 +14,7 @@ export default async function WearablesPage() {
 
   const { groupId, userId, userName } = session;
 
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
   // 1. Fetch connection status for active user
   const { data: connection } = await supabase

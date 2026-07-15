@@ -2,7 +2,7 @@ import React from 'react';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { Users } from 'lucide-react';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/server';
 import { decodeSession, SESSION_COOKIE } from '@/lib/session';
 import UserAvatar from '@/components/UserAvatar';
 
@@ -16,7 +16,7 @@ export default async function GangPage() {
   const { groupId } = session;
 
   // ── Fetch Roster Data from Supabase ─────────────────────────────────────
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
   // 1. Fetch group details for the roster header
   const { data: group } = await supabase

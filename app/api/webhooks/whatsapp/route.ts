@@ -1,24 +1,10 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { generateText } from 'ai';
 import { googleProvider } from '@/lib/ai/google';
 import { sendWhatsAppGroupMessage } from '@/lib/whatsapp';
 import { buildGroupAssistantPrompt } from '@/lib/ai/prompts';
-
-// Admin client to query database bypassing RLS constraints in cron/webhook context
-function getAdminClient() {
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  if (!serviceKey) {
-    throw new Error('SUPABASE_SERVICE_ROLE_KEY environment variable is not defined.');
-  }
-  return createClient(url, serviceKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
-  });
-}
+import { createAdminClient } from '@/lib/supabase/server';
+import { safeCompare } from '@/lib/security';
 
 interface ProfileDetails {
   id: string;
@@ -61,6 +47,13 @@ export async function POST(req: Request) {
     const chatId = body.senderData?.chatId;
     const typeMessage = body.messageData?.typeMessage;
 
+    // Secure webhook: verify it originates from our configured instance
+    const idInstance = body.instanceData?.idInstance;
+    const targetInstance = process.env.GREEN_API_INSTANCE_ID;
+    if (!targetInstance || !idInstance || !safeCompare(String(idInstance), String(targetInstance))) {
+      return NextResponse.json({ error: 'Unauthorized Green API instance' }, { status: 401 });
+    }
+
     // Check webhook and message type
     if (typeWebhook !== 'incomingMessageReceived' || (typeMessage !== 'textMessage' && typeMessage !== 'extendedTextMessage')) {
       return NextResponse.json({ ok: true, ignored: 'not an incoming text message' });
@@ -92,7 +85,7 @@ export async function POST(req: Request) {
     console.log(`[webhook/whatsapp] Triggered by message: "${incomingMessage}" from JID: ${rawSender} (${body.senderData?.senderName})`);
 
     // ── 3. Database Context Gathering & Sender Verification ─────────────────
-    const supabaseAdmin = getAdminClient();
+    const supabaseAdmin = createAdminClient();
 
     // Look for group in DB (default to Texas Buds or fallback to first group)
     const { data: groups, error: groupsError } = await supabaseAdmin

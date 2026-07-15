@@ -1,12 +1,12 @@
 'use server';
 
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
-
+ 
 export type DirectLogResult =
   | { success: true; metric_slug: string; value: number; unit: string }
   | { success: false; error: string };
-
+ 
 /**
  * Server Action: directly insert a pre-parsed metric log without AI parsing.
  * Used for direct logs and future quick-log metrics.
@@ -27,9 +27,9 @@ export async function logDirectActivity(
   if (!metricSlug) {
     return { success: false, error: 'No metric selected.' };
   }
-
-  const supabase = await createClient();
-
+ 
+  const supabase = createAdminClient();
+ 
   const { error: insertErr } = await supabase.from('metric_logs').insert({
     user_id:     userId,
     group_id:    groupId,
@@ -38,16 +38,16 @@ export async function logDirectActivity(
     unit,
     status:      (metricSlug === 'car_top_speed' || metricSlug === 'most_beers') ? 'pending' : 'verified',
   });
-
+ 
   if (insertErr) {
     console.error('[logDirectActivity] Insert error:', insertErr);
     return { success: false, error: 'Failed to save activity. Please try again.' };
   }
-
+ 
   revalidatePath('/', 'layout');
   return { success: true, metric_slug: metricSlug, value, unit };
 }
-
+ 
 /**
  * Server Action: insert a manual metric log with defensive column probing for caption.
  */
@@ -65,8 +65,8 @@ export async function logActivityManual(
   if (!metricSlug) {
     return { success: false, error: 'No metric selected.' };
   }
-
-  const supabase = await createClient();
+ 
+  const supabase = createAdminClient();
 
   // Try inserting with caption
   const { error: insertErr } = await supabase.from('metric_logs').insert({

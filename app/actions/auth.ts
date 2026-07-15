@@ -1,30 +1,14 @@
 'use server';
-
+ 
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { createClient as createBaseClient } from '@supabase/supabase-js';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { safeCompare } from '@/lib/security';
 import {
   encodeSession,
   SESSION_COOKIE,
   COOKIE_OPTIONS,
 } from '@/lib/session';
-
-// Helper to get an admin/service-role client if possible, fallback to anon client
-async function getAdminClient() {
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  if (serviceKey) {
-    return createBaseClient(url, serviceKey, {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-      }
-    });
-  }
-  // Fallback to standard client
-  return createClient();
-}
 
 /**
  * Server Actions for Kiosk Auth flow.
@@ -103,18 +87,18 @@ export async function loginWithPersonalPinAction(
 
   try {
     console.log("LOGIN ATTEMPT:", { groupId, pin });
-    const supabase = await getAdminClient();
+    const supabase = createAdminClient();
 
     // Step 1: Find a profile with this PIN that belongs to the given group.
-    // We query group_members joined with profiles, filtering on the PIN directly
-    // on the profiles table by doing an inner-join select on profiles.
+    // Filter directly on profiles.pin in the query to avoid downloading other users' PINs
     const { data: members, error: membersError } = await supabase
       .from('group_members')
       .select(`
         group_id,
         profiles!inner ( id, full_name, nickname, pin )
       `)
-      .eq('group_id', groupId);
+      .eq('group_id', groupId)
+      .eq('profiles.pin', sanitizedPin);
 
     if (membersError) {
       console.error('[loginWithPersonalPinAction] members query error:', membersError);
@@ -136,22 +120,25 @@ export async function loginWithPersonalPinAction(
       }[] | null;
     };
 
-    // Filter in application code: find the member whose profile PIN matches
+    // Filter in application code with timing-safe comparison
     const membersTyped = (members as unknown as MemberRow[]) ?? [];
     const match = membersTyped.find((m) => {
       const profiles = Array.isArray(m.profiles) ? m.profiles : [m.profiles];
-      return profiles.some((p) => p?.pin === sanitizedPin);
+      return profiles.some((p) => p && p.pin && safeCompare(p.pin, sanitizedPin));
     });
 
     if (!match) {
+      // Delay to mitigate brute force PIN cracking attempts
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       return { success: false, error: 'Invalid PIN. Please try again.' };
     }
 
     // Extract the matched profile (handle both array and object shapes)
     const profilesArr = Array.isArray(match.profiles) ? match.profiles : [match.profiles];
-    const profile = profilesArr.find((p) => p?.pin === sanitizedPin);
+    const profile = profilesArr.find((p) => p && p.pin && safeCompare(p.pin, sanitizedPin));
 
     if (!profile) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       return { success: false, error: 'Invalid PIN. Please try again.' };
     }
 
@@ -222,7 +209,7 @@ export async function signUpAction(
   const sanitizedInvite = inviteCode.trim();
 
   try {
-    const supabase = await getAdminClient();
+    const supabase = createAdminClient();
 
     // 1. Look up the group by invite_code
     const { data: group, error: groupError } = await supabase

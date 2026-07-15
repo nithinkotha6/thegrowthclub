@@ -99,7 +99,7 @@ export default function WearablesClientPage({
       );
 
       let score = 0;
-      let hasLogged = userLogs.length > 0;
+      const hasLogged = userLogs.length > 0;
 
       if (hasLogged) {
         const values = userLogs.map((l) => Number(l.value));

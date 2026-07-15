@@ -1,10 +1,9 @@
 'use client';
-
-import React, { useState, useEffect, useTransition } from 'react';
-import { createClient } from '@/lib/supabase/client';
+ 
+import React, { useState, useTransition } from 'react';
 import { createMetricDefinition } from '@/app/actions/metrics';
 import { Sliders, Plus, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
-
+ 
 interface MetricDefinition {
   id: string;
   name: string;
@@ -12,30 +11,20 @@ interface MetricDefinition {
   sort_direction: 'asc' | 'desc';
   created_at: string;
 }
-
-export default function SettingsClient({ session }: { session: any }) {
+ 
+export default function SettingsClient({
+  session,
+  initialDefinitions,
+}: {
+  session: any;
+  initialDefinitions: MetricDefinition[];
+}) {
   const [name, setName] = useState('');
   const [unit, setUnit] = useState('');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
-  const [definitions, setDefinitions] = useState<MetricDefinition[]>([]);
+  const [definitions, setDefinitions] = useState<MetricDefinition[]>(initialDefinitions);
   const [isPending, startTransition] = useTransition();
   const [status, setStatus] = useState<{ success: boolean; message: string } | null>(null);
-
-  const supabase = createClient();
-
-  useEffect(() => {
-    async function loadDefinitions() {
-      const { data, error } = await supabase
-        .from('metric_definitions')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (!error && data) {
-        setDefinitions(data as MetricDefinition[]);
-      }
-    }
-    loadDefinitions();
-  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,7 +69,7 @@ export default function SettingsClient({ session }: { session: any }) {
             Create Custom Tracker
           </h2>
           <p className="text-slate-500 text-xs">
-            Add a new tracker like "Pushups" or "Book Pages". New metrics immediately integrate with the dynamic dashboard selectors and leaderboard scores.
+            Add a new tracker like &quot;Pushups&quot; or &quot;Book Pages&quot;. New metrics immediately integrate with the dynamic dashboard selectors and leaderboard scores.
           </p>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4 mt-2">

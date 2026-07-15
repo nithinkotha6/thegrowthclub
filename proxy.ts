@@ -10,14 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { jwtVerify }                  from 'jose';
-
-const SESSION_COOKIE = 'app_session';
-
-function getSecret(): Uint8Array | null {
-  const raw = process.env.SESSION_SECRET;
-  if (!raw || raw.length < 32) return null;
-  return new TextEncoder().encode(raw);
-}
+import { SESSION_COOKIE, getSecret }   from './lib/session';
 
 export async function proxy(req: NextRequest): Promise<NextResponse> {
   const { pathname } = req.nextUrl;

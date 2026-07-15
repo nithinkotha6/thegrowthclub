@@ -1,8 +1,7 @@
 import { Suspense } from 'react';
 import { cookies }   from 'next/headers';
 import { redirect }  from 'next/navigation';
-import { createClient as createBaseClient } from '@supabase/supabase-js';
-import { createClient }  from '@/lib/supabase/server';
+import { createAdminClient }  from '@/lib/supabase/server';
 import { decodeSession, SESSION_COOKIE } from '@/lib/session';
 import { METRIC_PILLS, RANGE_OPTIONS, type MetricSlug, type RangeValue } from '@/lib/metrics';
 import { getChartData, getFeedItems } from '@/lib/queries';
@@ -103,7 +102,7 @@ export default async function DashboardPage({
 
   // ── Resolve URL params ───────────────────────────────────────────────────
   const params = await searchParams;
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
   // Query custom dynamic metric definitions from database (Pillar 4)
   const { data: dbDefinitions } = await supabase
@@ -137,13 +136,7 @@ export default async function DashboardPage({
 
   // ── Database Auto-Migration: transition long_run -> top_golf ──────────────────
   try {
-    const supabaseAdmin = process.env.SUPABASE_SERVICE_ROLE_KEY
-      ? createBaseClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.SUPABASE_SERVICE_ROLE_KEY,
-          { auth: { persistSession: false, autoRefreshToken: false } }
-        )
-      : supabase;
+    const supabaseAdmin = supabase;
 
     const { data: hasTopGolf } = await supabaseAdmin
       .from('metrics_config')

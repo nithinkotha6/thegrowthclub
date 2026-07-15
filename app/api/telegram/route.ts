@@ -17,15 +17,14 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient }              from '@supabase/supabase-js';
 import { googleProvider }                    from '@/lib/ai/google';
 import { generateObject }            from 'ai';
 import { z }                         from 'zod';
+import { createAdminClient } from '@/lib/supabase/server';
+import { safeCompare } from '@/lib/security';
 
 /* ── Environment ──────────────────────────────────────────────────────────── */
 
-const SUPABASE_URL    = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_SECRET = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const WEBHOOK_SECRET  = process.env.TELEGRAM_WEBHOOK_SECRET!;
 
 /* ── Strict extraction schema ─────────────────────────────────────────────── */
@@ -86,7 +85,7 @@ type TelegramUpdate = {
 export async function POST(req: NextRequest): Promise<NextResponse> {
   // ── 1. Verify Telegram secret token ──────────────────────────────────────
   const secretHeader = req.headers.get('x-telegram-bot-api-secret-token');
-  if (!WEBHOOK_SECRET || secretHeader !== WEBHOOK_SECRET) {
+  if (!WEBHOOK_SECRET || !secretHeader || !safeCompare(secretHeader, WEBHOOK_SECRET)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -111,7 +110,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   // ── 3. Service-role Supabase client (server-only) ─────────────────────────
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SECRET);
+  const supabase = createAdminClient();
 
   // ── 4. Resolve user by telegram_user_id ──────────────────────────────────
   const { data: profile, error: profileErr } = await supabase

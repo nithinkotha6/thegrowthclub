@@ -36,9 +36,19 @@ interface SidebarProps {
 export default function Sidebar({ userName, groupName, totalXp, currentLevel }: SidebarProps) {
   const pathname = usePathname();
 
-  // XP within the current level (each level = 1000 XP)
-  const xpInLevel       = totalXp % 1000;
-  const xpBarPct        = Math.min(100, xpInLevel / 10); // 0–100
+  // Quadratic XP level progression (matching award_xp_on_verify trigger formula)
+  // Level = floor(1 + sqrt(xp / 500)) + 1
+  const currentLvl = currentLevel ?? 1;
+  let xpBarPct = 0;
+  if (currentLvl >= 2) {
+    const xpMinCurrent = 500 * Math.pow(currentLvl - 2, 2);
+    const xpMinNext    = 500 * Math.pow(currentLvl - 1, 2);
+    const xpRange      = xpMinNext - xpMinCurrent;
+    const xpProgress   = totalXp - xpMinCurrent;
+    xpBarPct = xpRange > 0 ? Math.min(100, Math.max(0, (xpProgress / xpRange) * 100)) : 0;
+  } else {
+    xpBarPct = 100;
+  }
   const initials = userName?.charAt(0)?.toUpperCase() ?? '?';
 
   return (

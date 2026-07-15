@@ -1,20 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-// Get admin client helper
-function getAdminClient() {
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  if (!serviceKey) {
-    throw new Error('SUPABASE_SERVICE_ROLE_KEY environment variable is not defined.');
-  }
-  return createClient(url, serviceKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
-  });
-}
+import { createAdminClient } from '@/lib/supabase/server';
+import { safeCompare } from '@/lib/security';
 
 /**
  * Proactively refreshes the Google Fit Access Token if expired or expiring within 5 minutes.
@@ -64,7 +50,7 @@ async function refreshGoogleAccessToken(connection: any) {
   const newExpiresAt = new Date(Date.now() + data.expires_in * 1000).toISOString();
 
   // Save updated credentials
-  const supabaseAdmin = getAdminClient();
+  const supabaseAdmin = createAdminClient();
   const { error: updateErr } = await supabaseAdmin
     .from('wearable_connections')
     .update({
@@ -84,7 +70,7 @@ async function refreshGoogleAccessToken(connection: any) {
  * Processes live Google Fit REST pulls or mock provider simulation.
  */
 async function fetchAndProcessWearableData(connection: any) {
-  const supabaseAdmin = getAdminClient();
+  const supabaseAdmin = createAdminClient();
   const userId = connection.user_id;
 
   // 1. Resolve user group
@@ -360,11 +346,11 @@ export async function GET(req: Request) {
     const authHeader = req.headers.get('Authorization');
     const secret = process.env.CRON_SECRET;
     
-    if (!authHeader || authHeader !== `Bearer ${secret}`) {
+    if (!secret || !authHeader || !safeCompare(authHeader, `Bearer ${secret}`)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const supabaseAdmin = getAdminClient();
+    const supabaseAdmin = createAdminClient();
 
     // Query all active connections
     const { data: connections, error: connErr } = await supabaseAdmin

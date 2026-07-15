@@ -1,7 +1,7 @@
 import React from 'react';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/server';
 import { decodeSession, SESSION_COOKIE } from '@/lib/session';
 import MemoriesClientPage from '@/components/MemoriesClientPage';
 
@@ -14,7 +14,7 @@ export default async function MemoriesPage() {
 
   const { groupId, userId, userName } = session;
 
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
   // Fetch all group memories explicitly with expected columns
   const { data: memoriesRaw, error: memoriesErr } = await supabase

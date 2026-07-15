@@ -1,24 +1,10 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { generateText } from 'ai';
 import { googleProvider } from '@/lib/ai/google';
 import { sendWhatsAppGroupMessage } from '@/lib/whatsapp';
 import { buildGroupAssistantPrompt } from '@/lib/ai/prompts';
-
-// Admin client using service role key (required to query scoped/system tables in cron context)
-function getAdminClient() {
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  if (!serviceKey) {
-    throw new Error('SUPABASE_SERVICE_ROLE_KEY environment variable is not defined.');
-  }
-  return createClient(url, serviceKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
-  });
-}
+import { createAdminClient } from '@/lib/supabase/server';
+import { safeCompare } from '@/lib/security';
 
 interface ProfileDetails {
   id: string;
@@ -70,12 +56,12 @@ async function handleRequest(req: Request) {
     const authHeader = req.headers.get('Authorization');
     const secret = process.env.CRON_SECRET;
 
-    if (!authHeader || authHeader !== `Bearer ${secret}`) {
+    if (!secret || !authHeader || !safeCompare(authHeader, `Bearer ${secret}`)) {
       console.warn('[whatsapp-digest] Unauthorized request attempt');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const supabaseAdmin = getAdminClient();
+    const supabaseAdmin = createAdminClient();
 
     // ── 2. Resolve Active Group ─────────────────────────────────────────────
     // Fetch all groups and resolve the target group ("Texas Buds" first, or fallback to the first group)

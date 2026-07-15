@@ -24,7 +24,7 @@ export type AppSession = {
   userName:  string;
 };
 
-function getSecret(): Uint8Array | null {
+export function getSecret(): Uint8Array | null {
   let raw = process.env.SESSION_SECRET;
   if (!raw || raw.length < 32) {
     if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV !== 'production') {

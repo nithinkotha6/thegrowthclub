@@ -12,13 +12,3 @@ CREATE TABLE IF NOT EXISTS public.metric_definitions (
 
 -- Enable RLS
 ALTER TABLE public.metric_definitions ENABLE ROW LEVEL SECURITY;
-
--- Select policy
-CREATE POLICY "metric_definitions: select public"
-  ON public.metric_definitions FOR SELECT
-  USING (true);
-
--- Insert policy
-CREATE POLICY "metric_definitions: insert public"
-  ON public.metric_definitions FOR INSERT
-  WITH CHECK (true);

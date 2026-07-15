@@ -2,7 +2,7 @@ import React from 'react';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { Trophy } from 'lucide-react';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/server';
 import { decodeSession, SESSION_COOKIE } from '@/lib/session';
 import UserAvatar from '@/components/UserAvatar';
 import CheerButton from '@/components/CheerButton';
@@ -35,7 +35,7 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
   const { groupId, userId } = session;
 
   // ── Search Parameter Resolution ─────────────────────────────────────────
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
   // Query custom dynamic metric definitions from database (Pillar 4)
   const { data: dbDefinitions } = await supabase

@@ -174,9 +174,19 @@ set search_path = public
 as $$
 declare
   v_xp integer := 25;
+  v_should_award boolean := false;
 begin
-  if OLD.status <> 'verified' and NEW.status = 'verified' then
+  if TG_OP = 'INSERT' then
+    if NEW.status = 'verified' then
+      v_should_award := true;
+    end if;
+  elsif TG_OP = 'UPDATE' then
+    if OLD.status <> 'verified' and NEW.status = 'verified' then
+      v_should_award := true;
+    end if;
+  end if;
 
+  if v_should_award then
     select coalesce(xp_reward, 25)
       into v_xp
       from public.metrics_config
@@ -187,15 +197,15 @@ begin
        set total_xp      = total_xp + v_xp,
            current_level = floor(1 + sqrt((total_xp + v_xp)::float / 500)) + 1
      where id = NEW.user_id;
-
   end if;
+
   return NEW;
 end;
 $$;
 
 drop trigger if exists trg_award_xp on public.metric_logs;
 create trigger trg_award_xp
-  after update of status on public.metric_logs
+  after insert or update on public.metric_logs
   for each row
   execute function public.award_xp_on_verify();
 
@@ -309,42 +319,16 @@ create policy "groups: anon can read"
 
 -- ── group_members ────────────────────────────────────────────────────────────
 alter table public.group_members enable row level security;
-
--- Server actions need to read group membership to resolve the group for a user.
 drop policy if exists "group_members: anon can read" on public.group_members;
-create policy "group_members: anon can read"
-  on public.group_members for select
-  to anon
-  using (true);
-
--- Allow anonymous users to insert group membership during signup
 drop policy if exists "group_members: anon can insert" on public.group_members;
-create policy "group_members: anon can insert"
-  on public.group_members for insert
-  to anon
-  with check (true);
 
 -- ── profiles ─────────────────────────────────────────────────────────────────
 alter table public.profiles enable row level security;
-
--- verifyPinAction reads profiles to show member cards on the landing page.
--- getDashboardData reads profiles to show names on charts and the feed.
 drop policy if exists "profiles: anon can read" on public.profiles;
-create policy "profiles: anon can read"
-  on public.profiles for select
-  to anon
-  using (true);
-
--- Allow anonymous users to insert profiles during signup
 drop policy if exists "profiles: anon can insert" on public.profiles;
-create policy "profiles: anon can insert"
-  on public.profiles for insert
-  to anon
-  with check (true);
 
 -- ── metrics_config ───────────────────────────────────────────────────────────
 alter table public.metrics_config enable row level security;
-
 drop policy if exists "metrics_config: anon can read" on public.metrics_config;
 create policy "metrics_config: anon can read"
   on public.metrics_config for select
@@ -353,34 +337,13 @@ create policy "metrics_config: anon can read"
 
 -- ── metric_logs ──────────────────────────────────────────────────────────────
 alter table public.metric_logs enable row level security;
-
--- Dashboard reads logs; server actions insert logs via anon key + cookie session.
 drop policy if exists "metric_logs: anon can read" on public.metric_logs;
-create policy "metric_logs: anon can read"
-  on public.metric_logs for select
-  to anon
-  using (true);
-
 drop policy if exists "metric_logs: anon can insert" on public.metric_logs;
-create policy "metric_logs: anon can insert"
-  on public.metric_logs for insert
-  to anon
-  with check (true);
 
 -- ── log_votes ────────────────────────────────────────────────────────────────
 alter table public.log_votes enable row level security;
-
 drop policy if exists "log_votes: anon can read" on public.log_votes;
-create policy "log_votes: anon can read"
-  on public.log_votes for select
-  to anon
-  using (true);
-
 drop policy if exists "log_votes: anon can insert" on public.log_votes;
-create policy "log_votes: anon can insert"
-  on public.log_votes for insert
-  to anon
-  with check (true);
 
 -- ===========================================================================
 -- SEED DATA — metrics catalogue
