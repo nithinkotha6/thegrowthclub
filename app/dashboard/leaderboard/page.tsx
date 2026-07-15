@@ -7,129 +7,7 @@ import { decodeSession, SESSION_COOKIE } from '@/lib/session';
 import UserAvatar from '@/components/UserAvatar';
 import CheerButton from '@/components/CheerButton';
 
-function PodiumWreath({ className }: { className?: string }) {
-  // Generate 8 pairs of leaves along the curve
-  const nodes = [];
-  const nodeCount = 9;
-  for (let i = 0; i < nodeCount; i++) {
-    const t = i / (nodeCount - 1);
-    // Angle from bottom-left (approx 1.75 rad) to top-left (approx 4.1 rad)
-    const angle = 1.75 + t * 2.35;
-    const radius = 62;
-    const x = 100 + radius * Math.cos(angle);
-    const y = 92 + radius * Math.sin(angle);
-    const rot = (angle * 180) / Math.PI + 90;
-    nodes.push({ x, y, rot });
-  }
-
-  return (
-    <svg className={className} viewBox="0 0 200 200" fill="currentColor">
-      {/* Left Branch */}
-      <g>
-        {/* Stem curve */}
-        <path 
-          d="M 100,162 C 58,162 33,130 33,92 C 33,54 58,22 100,22" 
-          fill="none" 
-          stroke="currentColor" 
-          strokeWidth="2.5" 
-          strokeLinecap="round" 
-          opacity="0.85" 
-        />
-        {/* Leaf pairs */}
-        {nodes.map((node, i) => (
-          <g key={i} transform={`translate(${node.x}, ${node.y}) rotate(${node.rot})`}>
-            {/* Outer leaf */}
-            <path 
-              d="M0,0 C-4,-8 -9,-15 -3,-22 C1,-22 4,-12 0,0" 
-              transform="rotate(-20) scale(0.95)"
-            />
-            {/* Inner leaf */}
-            <path 
-              d="M0,0 C4,-8 9,-15 3,-22 C-1,-22 -4,-12 0,0" 
-              transform="rotate(20) scale(0.95)"
-            />
-          </g>
-        ))}
-      </g>
-
-      {/* Right Branch (Mirrored across x = 100 center line) */}
-      <g transform="translate(200, 0) scale(-1, 1)">
-        {/* Stem curve */}
-        <path 
-          d="M 100,162 C 58,162 33,130 33,92 C 33,54 58,22 100,22" 
-          fill="none" 
-          stroke="currentColor" 
-          strokeWidth="2.5" 
-          strokeLinecap="round" 
-          opacity="0.85" 
-        />
-        {/* Leaf pairs */}
-        {nodes.map((node, i) => (
-          <g key={i} transform={`translate(${node.x}, ${node.y}) rotate(${node.rot})`}>
-            {/* Outer leaf */}
-            <path 
-              d="M0,0 C-4,-8 -9,-15 -3,-22 C1,-22 4,-12 0,0" 
-              transform="rotate(-20) scale(0.95)"
-            />
-            {/* Inner leaf */}
-            <path 
-              d="M0,0 C4,-8 9,-15 3,-22 C-1,-22 -4,-12 0,0" 
-              transform="rotate(20) scale(0.95)"
-            />
-          </g>
-        ))}
-      </g>
-    </svg>
-  );
-}
-
-function RibbonBanner({ 
-  className, 
-  text, 
-  colorMain = '#EF4444', 
-  colorDark = '#B91C1C', 
-  colorDarkest = '#7F1D1D' 
-}: { 
-  className?: string; 
-  text: string;
-  colorMain?: string;
-  colorDark?: string;
-  colorDarkest?: string;
-}) {
-  return (
-    <svg className={className} viewBox="0 0 200 60">
-      {/* Left Swallow-Tail Wing */}
-      <polygon points="50,15 15,15 28,28 15,40 50,40" fill={colorDark} />
-      
-      {/* Right Swallow-Tail Wing */}
-      <polygon points="150,15 185,15 172,28 185,40 150,40" fill={colorDark} />
-      
-      {/* Left Shadow Fold triangle */}
-      <polygon points="50,40 62,40 62,48" fill={colorDarkest} />
-      
-      {/* Right Shadow Fold triangle */}
-      <polygon points="150,40 138,40 138,48" fill={colorDarkest} />
-      
-      {/* Center Main Banner Plate */}
-      <polygon points="58,8 142,8 142,40 58,40" fill={colorMain} />
-      
-      {/* Banner Text overlay */}
-      <text 
-        x="100" 
-        y="26" 
-        fill="white" 
-        fontSize="9" 
-        fontWeight="900" 
-        letterSpacing="1.2" 
-        textAnchor="middle" 
-        dominantBaseline="middle"
-        className="font-sans select-none tracking-widest font-black"
-      >
-        {text}
-      </text>
-    </svg>
-  );
-}
+// Podium styles have been transitioned to Rosette Medal Badges and solid 3D trophy stands.
 
 function RankBadge({ rank }: { rank: number }) {
   if (rank === 1) {
@@ -423,46 +301,43 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
         <div className="flex flex-col items-center order-1 w-1/3 max-w-[150px]">
           {secondPlace ? (
             <div className="flex flex-col items-center w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="relative flex flex-col items-center justify-center w-36 h-40 mb-2">
-                {/* 1. The Laurel Wreath Background */}
-                <PodiumWreath className="absolute inset-0 w-full h-full text-[#94A3B8] drop-shadow-md z-0 pointer-events-none" />
+              <div className="relative flex flex-col items-center mb-3 select-none">
+                {/* Ribbon Tails hanging down behind the badge */}
+                <div className="absolute top-10 left-[25%] w-5 h-12 bg-slate-500 z-0 origin-top -rotate-12 shadow-sm" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 80%, 0 100%)' }} />
+                <div className="absolute top-10 right-[25%] w-5 h-12 bg-slate-500 z-0 origin-top rotate-12 shadow-sm" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 80%, 0 100%)' }} />
 
-                {/* 2. Center Profile Avatar */}
-                <div className="z-10 relative">
+                {/* 1. Medallion Avatar Frame */}
+                <div className="relative z-10 rounded-full border-[5px] border-slate-300 bg-zinc-900 shadow-xl overflow-hidden p-0.5">
                   <UserAvatar 
                     user={secondPlace.profile} 
                     size="xl" 
-                    className="shadow-md border-4 border-slate-300 hover:scale-105 transition-transform"
+                    className="hover:scale-105 transition-transform"
                   />
                 </div>
 
-                {/* 3. The Folded Award Ribbon */}
-                <div className="z-20 -mt-2.5 w-full flex justify-center">
-                  <RibbonBanner 
-                    text="2ND PLACE" 
-                    className="w-full h-10 drop-shadow-md" 
-                    colorMain="#64748B" 
-                    colorDark="#475569" 
-                    colorDarkest="#334155" 
-                  />
+                {/* 2. Hanging Badge Ribbon */}
+                <div className="relative z-20 -mt-3 flex justify-center">
+                  <div className="px-4 py-1 bg-gradient-to-r from-slate-500 to-slate-600 text-white font-extrabold text-[9px] tracking-widest uppercase rounded-sm shadow-md border-b-2 border-slate-700">
+                    2ND PLACE
+                  </div>
                 </div>
               </div>
               <span className="text-[11px] font-bold text-[#111827] truncate max-w-full mb-2">
                 {secondPlace.profile.nickname || secondPlace.profile.full_name}
               </span>
               <div 
-                className="relative w-full bg-white/80 border border-slate-300/40 flex flex-col items-center justify-center shadow-md p-1"
+                className="relative w-full bg-gradient-to-b from-slate-300 to-slate-400 flex flex-col items-center justify-center shadow-md p-1 rounded-t-md border-x border-t border-slate-400"
                 style={{
                   height: '72px',
                   clipPath: 'polygon(10% 0%, 90% 0%, 90% 10px, 100% 10px, 100% 100%, 0% 100%, 0% 10px, 10% 10px)',
                 }}
               >
                 {/* Silver foil top border */}
-                <div className="absolute top-0 left-[10%] right-[10%] h-1.5 bg-gradient-to-r from-slate-400 via-slate-200 to-slate-400 shadow-[0_1px_3px_rgba(200,200,200,0.5)]" />
-                <span className="text-xl md:text-2xl font-black text-slate-600 tabular-nums tracking-tight mt-2">
+                <div className="absolute top-0 left-[10%] right-[10%] h-1.5 bg-gradient-to-r from-slate-200 via-white to-slate-200" />
+                <span className="text-xl md:text-2xl font-black text-slate-800 tabular-nums tracking-tight mt-2">
                   {secondPlace.score}
                 </span>
-                <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                <span className="text-[9px] font-bold text-slate-700 uppercase tracking-wider">
                   {metricPill.unit}
                 </span>
               </div>
@@ -478,48 +353,44 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
         <div className="flex flex-col items-center order-2 w-1/3 max-w-[180px]">
           {firstPlace ? (
             <div className="flex flex-col items-center w-full animate-in fade-in slide-in-from-bottom-6 duration-700">
-              <div className="relative flex flex-col items-center justify-center w-40 h-44 mb-2">
-                {/* 1. The Laurel Wreath Background */}
-                <PodiumWreath className="absolute inset-0 w-full h-full text-[#FACC15] drop-shadow-md z-0 pointer-events-none" />
+              <div className="relative flex flex-col items-center mb-3 select-none">
+                {/* Ribbon Tails hanging down behind the badge */}
+                <div className="absolute top-12 left-[25%] w-6 h-14 bg-red-700 z-0 origin-top -rotate-12 shadow-sm" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 80%, 0 100%)' }} />
+                <div className="absolute top-12 right-[25%] w-6 h-14 bg-red-700 z-0 origin-top rotate-12 shadow-sm" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 80%, 0 100%)' }} />
 
-                {/* 2. Center Profile Avatar */}
-                <div className="z-10 relative">
-                  <span className="absolute -top-5 left-1/2 -translate-x-1/2 z-20 text-xl animate-bounce" role="img" aria-label="Gold Trophy">🏆</span>
+                {/* 1. Medallion Avatar Frame */}
+                <div className="relative z-10 rounded-full border-[5px] border-yellow-400 bg-zinc-900 shadow-xl overflow-hidden p-0.5">
                   <UserAvatar 
                     user={firstPlace.profile} 
                     size="2xl" 
-                    className="shadow-xl border-4 border-yellow-400 hover:scale-105 transition-transform"
+                    className="hover:scale-105 transition-transform"
                   />
                 </div>
 
-                {/* 3. The Folded Award Ribbon */}
-                <div className="z-20 -mt-2.5 w-full flex justify-center">
-                  <RibbonBanner 
-                    text="CHAMPION" 
-                    className="w-full h-11 drop-shadow-md" 
-                    colorMain="#EF4444" 
-                    colorDark="#B91C1C" 
-                    colorDarkest="#7F1D1D" 
-                  />
+                {/* 2. Hanging Badge Ribbon */}
+                <div className="relative z-20 -mt-3.5 flex justify-center">
+                  <div className="px-5 py-1 bg-gradient-to-r from-red-600 to-red-700 text-white font-extrabold text-[10px] tracking-widest uppercase rounded-sm shadow-md border-b-2 border-red-800">
+                    CHAMPION
+                  </div>
                 </div>
               </div>
               <span className="text-xs font-black text-[#111827] truncate max-w-full mb-2">
                 {firstPlace.profile.nickname || firstPlace.profile.full_name}
               </span>
               <div 
-                className="relative w-full bg-white/90 border border-yellow-500/30 flex flex-col items-center justify-center p-1 shadow-lg"
+                className="relative w-full bg-gradient-to-b from-yellow-400 to-yellow-500 flex flex-col items-center justify-center p-1 shadow-lg rounded-t-lg border-x border-t border-yellow-500"
                 style={{
                   height: '100px',
                   clipPath: 'polygon(10% 0%, 90% 0%, 90% 10px, 100% 10px, 100% 100%, 0% 100%, 0% 10px, 10% 10px)',
                 }}
               >
                 {/* Gold foil top border */}
-                <div className="absolute top-0 left-[10%] right-[10%] h-1.5 bg-gradient-to-r from-yellow-600 via-yellow-400 to-yellow-600 shadow-[0_1px_4px_rgba(250,204,21,0.5)]" />
-                <span className="text-[9px] font-black text-yellow-600 uppercase tracking-widest mt-2 mb-0.5">Champion</span>
-                <span className="text-2xl md:text-3xl font-black text-yellow-600 tabular-nums tracking-tight">
+                <div className="absolute top-0 left-[10%] right-[10%] h-1.5 bg-gradient-to-r from-yellow-300 via-white to-yellow-300" />
+                <span className="text-[9px] font-black text-yellow-900 uppercase tracking-widest mt-2 mb-0.5">Champion</span>
+                <span className="text-2xl md:text-3xl font-black text-yellow-900 tabular-nums tracking-tight">
                   {firstPlace.score}
                 </span>
-                <span className="text-[10px] font-black text-yellow-500 uppercase tracking-wider">
+                <span className="text-[10px] font-black text-yellow-800 uppercase tracking-wider">
                   {metricPill.unit}
                 </span>
               </div>
@@ -535,46 +406,43 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
         <div className="flex flex-col items-center order-3 w-1/3 max-w-[150px]">
           {thirdPlace ? (
             <div className="flex flex-col items-center w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="relative flex flex-col items-center justify-center w-36 h-40 mb-2">
-                {/* 1. The Laurel Wreath Background */}
-                <PodiumWreath className="absolute inset-0 w-full h-full text-[#D97706] drop-shadow-md z-0 pointer-events-none" />
+              <div className="relative flex flex-col items-center mb-3 select-none">
+                {/* Ribbon Tails hanging down behind the badge */}
+                <div className="absolute top-10 left-[25%] w-5 h-12 bg-amber-800 z-0 origin-top -rotate-12 shadow-sm" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 80%, 0 100%)' }} />
+                <div className="absolute top-10 right-[25%] w-5 h-12 bg-amber-800 z-0 origin-top rotate-12 shadow-sm" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%, 50% 80%, 0 100%)' }} />
 
-                {/* 2. Center Profile Avatar */}
-                <div className="z-10 relative">
+                {/* 1. Medallion Avatar Frame */}
+                <div className="relative z-10 rounded-full border-[5px] border-amber-600 bg-zinc-900 shadow-xl overflow-hidden p-0.5">
                   <UserAvatar 
                     user={thirdPlace.profile} 
                     size="xl" 
-                    className="shadow-md border-4 border-amber-600 hover:scale-105 transition-transform"
+                    className="hover:scale-105 transition-transform"
                   />
                 </div>
 
-                {/* 3. The Folded Award Ribbon */}
-                <div className="z-20 -mt-2.5 w-full flex justify-center">
-                  <RibbonBanner 
-                    text="3RD PLACE" 
-                    className="w-full h-10 drop-shadow-md" 
-                    colorMain="#B45309" 
-                    colorDark="#92400E" 
-                    colorDarkest="#78350F" 
-                  />
+                {/* 2. Hanging Badge Ribbon */}
+                <div className="relative z-20 -mt-3 flex justify-center">
+                  <div className="px-4 py-1 bg-gradient-to-r from-amber-600 to-amber-700 text-white font-extrabold text-[9px] tracking-widest uppercase rounded-sm shadow-md border-b-2 border-amber-800">
+                    3RD PLACE
+                  </div>
                 </div>
               </div>
               <span className="text-[11px] font-bold text-[#111827] truncate max-w-full mb-2">
                 {thirdPlace.profile.nickname || thirdPlace.profile.full_name}
               </span>
               <div 
-                className="relative w-full bg-white/80 border border-amber-600/30 flex flex-col items-center justify-center p-1 shadow-md"
+                className="relative w-full bg-gradient-to-b from-amber-500 to-amber-600 flex flex-col items-center justify-center p-1 shadow-md rounded-t-md border-x border-t border-amber-600"
                 style={{
                   height: '56px',
                   clipPath: 'polygon(10% 0%, 90% 0%, 90% 8px, 100% 8px, 100% 100%, 0% 100%, 0% 8px, 10% 8px)',
                 }}
               >
                 {/* Bronze foil top border */}
-                <div className="absolute top-0 left-[10%] right-[10%] h-1.5 bg-gradient-to-r from-amber-700 via-amber-400 to-amber-700 shadow-[0_1px_3px_rgba(180,83,9,0.4)]" />
-                <span className="text-lg md:text-xl font-black text-amber-800 tabular-nums tracking-tight mt-1.5">
+                <div className="absolute top-0 left-[10%] right-[10%] h-1.5 bg-gradient-to-r from-amber-400 via-white to-amber-400" />
+                <span className="text-lg md:text-xl font-black text-amber-950 tabular-nums tracking-tight mt-1.5">
                   {thirdPlace.score}
                 </span>
-                <span className="text-[8px] font-black text-amber-700 uppercase tracking-wider">
+                <span className="text-[8px] font-black text-amber-900 uppercase tracking-wider">
                   {metricPill.unit}
                 </span>
               </div>
