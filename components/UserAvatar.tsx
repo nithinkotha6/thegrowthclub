@@ -62,6 +62,7 @@ function getStaticAvatarPath(user: UserAvatarProps['user']): string | null {
  */
 export default function UserAvatar({ user, size = 'md', className = '', borderColor }: UserAvatarProps) {
   const [imgError, setImgError] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   const displayName = user.nickname || user.full_name || 'Athlete';
 
@@ -93,8 +94,10 @@ export default function UserAvatar({ user, size = 'md', className = '', borderCo
 
   return (
     <div
-      className={`rounded-full flex-shrink-0 flex items-center justify-center font-black select-none overflow-hidden transition-transform duration-200 ease-out ${sizeClass} ${
-        showImage ? 'bg-zinc-800' : 'bg-gradient-to-br from-zinc-900 to-black text-[#CEFF00] border border-white/10'
+      className={`rounded-full flex-shrink-0 flex items-center justify-center font-black select-none overflow-hidden transition-transform duration-200 ease-out relative ${sizeClass} ${
+        showImage 
+          ? (loaded ? 'bg-zinc-800' : 'bg-slate-800 animate-pulse') 
+          : 'bg-gradient-to-br from-zinc-900 to-black text-[#CEFF00] border border-white/10'
       } ${className}`}
       style={borderStyles}
       aria-label={displayName}
@@ -104,7 +107,8 @@ export default function UserAvatar({ user, size = 'md', className = '', borderCo
         <img
           src={imgSrc!}
           alt={displayName}
-          className="w-full h-full object-cover"
+          className={`w-full h-full object-cover transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`}
+          onLoad={() => setLoaded(true)}
           onError={() => setImgError(true)}
         />
       ) : (

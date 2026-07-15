@@ -369,9 +369,9 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
                 </div>
 
                 {/* 2. Hanging Badge Ribbon */}
-                <div className="relative z-20 -mt-3.5 flex justify-center">
-                  <div className="px-5 py-1 bg-gradient-to-r from-red-600 to-red-700 text-white font-extrabold text-[10px] tracking-widest uppercase rounded-sm shadow-md border-b-2 border-red-800">
-                    CHAMPION
+                <div className="relative z-20 -mt-2.5 flex justify-center w-full">
+                  <div className="px-5 py-1 bg-gradient-to-r from-red-600 via-red-500 to-red-700 text-white font-black text-xs tracking-widest uppercase rounded-sm shadow-md border-b-2 border-red-800 whitespace-nowrap">
+                    WINNER
                   </div>
                 </div>
               </div>

@@ -1,5 +1,6 @@
 'use client';
 
+import React, { useState, useTransition, useCallback } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { METRIC_PILLS, type MetricSlug } from '@/lib/metrics';
 
@@ -25,20 +26,32 @@ interface MetricPillSelectorProps {
 
 /**
  * Client-side metric pill toggle row.
- * Horizontally scrollable on mobile — swipe through all 11 metrics.
- * On click, pushes `?metric=<slug>` to the URL.
- * Spec: Features.md §3 — metric toggles drive chart re-fetch.
+ * Memoized to eliminate redundant renders.
+ * Uses Optimistic UI to toggle active states instantly (<100ms) while Next.js fetches data.
  */
-export default function MetricPillSelector({ activeMetric, customPills }: MetricPillSelectorProps) {
+function MetricPillSelector({ activeMetric, customPills }: MetricPillSelectorProps) {
   const router       = useRouter();
   const pathname     = usePathname();
   const searchParams = useSearchParams();
+  const [, startTransition] = useTransition();
 
-  function select(slug: string) {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set('metric', slug);
-    router.push(`${pathname}?${params.toString()}`);
+  const [prevActiveMetric, setPrevActiveMetric] = useState<string>(activeMetric);
+  const [localActive, setLocalActive] = useState<string>(activeMetric);
+
+  // Sync state during render when prop changes
+  if (activeMetric !== prevActiveMetric) {
+    setPrevActiveMetric(activeMetric);
+    setLocalActive(activeMetric);
   }
+
+  const select = useCallback((slug: string) => {
+    setLocalActive(slug);
+    startTransition(() => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('metric', slug);
+      router.push(`${pathname}?${params.toString()}`);
+    });
+  }, [searchParams, pathname, router]);
 
   const allPills = [
     ...METRIC_PILLS.filter(p => !p.id.startsWith('wearable_')),
@@ -53,7 +66,7 @@ export default function MetricPillSelector({ activeMetric, customPills }: Metric
       aria-label="Metric selector"
     >
       {allPills.map(({ id, label }) => {
-        const isActive = id === activeMetric;
+        const isActive = id === localActive;
         const emoji    = PILL_EMOJIS[id] ?? '📊';
         return (
           <button
@@ -78,3 +91,5 @@ export default function MetricPillSelector({ activeMetric, customPills }: Metric
     </div>
   );
 }
+
+export default React.memo(MetricPillSelector);

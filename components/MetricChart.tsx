@@ -84,7 +84,7 @@ const getAvatarSvgUri = (name: string, avatarUrl: string | null, color: string) 
  * Hardened to support missing/null data without zero-plunging.
  * Styled with Robinhood/TradingView stock market UX aesthetics.
  */
-export default function MetricChart({
+function MetricChart({
   dateLabels,
   series,
   title,
@@ -407,3 +407,5 @@ export default function MetricChart({
     </div>
   );
 }
+
+export default React.memo(MetricChart);

@@ -154,6 +154,8 @@ Do not use hashtags or markdown formatting (like bold, italics). Just plain text
           console.error('[WhatsApp AI Caption] Failed to generate AI caption, using fallback:', aiErr);
         }
 
+        const formattedCaption = `📸 *${uploaderName} added a new Memory!*\n\n💬 "${aiCaption || 'No caption provided'}"\n\n👉 Check the gang scoreboard on the dashboard!`;
+
         const mirrorUrl = `https://api.green-api.com/waInstance${instanceId}/sendFileByUrl/${token}`;
         
         // Non-blocking fire-and-forget fetch call
@@ -164,7 +166,7 @@ Do not use hashtags or markdown formatting (like bold, italics). Just plain text
             chatId: waChatId,
             urlFile: publicUrl,
             fileName: fileName,
-            caption: aiCaption,
+            caption: formattedCaption,
           }),
         }).then(res => {
           if (!res.ok) {
