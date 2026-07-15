@@ -175,6 +175,7 @@ as $$
 declare
   v_xp integer := 25;
   v_should_award boolean := false;
+  v_should_deduct boolean := false;
 begin
   if TG_OP = 'INSERT' then
     if NEW.status = 'verified' then
@@ -183,6 +184,12 @@ begin
   elsif TG_OP = 'UPDATE' then
     if OLD.status <> 'verified' and NEW.status = 'verified' then
       v_should_award := true;
+    elsif OLD.status = 'verified' and NEW.status <> 'verified' then
+      v_should_deduct := true;
+    end if;
+  elsif TG_OP = 'DELETE' then
+    if OLD.status = 'verified' then
+      v_should_deduct := true;
     end if;
   end if;
 
@@ -195,17 +202,31 @@ begin
 
     update public.profiles
        set total_xp      = total_xp + v_xp,
-           current_level = floor(1 + sqrt((total_xp + v_xp)::float / 500)) + 1
+           current_level = floor(1 + sqrt(greatest(0, total_xp + v_xp)::float / 500)) + 1
      where id = NEW.user_id;
+  elsif v_should_deduct then
+    select coalesce(xp_reward, 25)
+      into v_xp
+      from public.metrics_config
+     where slug = OLD.metric_slug
+     limit 1;
+
+    update public.profiles
+       set total_xp      = greatest(0, total_xp - v_xp),
+           current_level = floor(1 + sqrt(greatest(0, total_xp - v_xp)::float / 500)) + 1
+     where id = OLD.user_id;
   end if;
 
+  if TG_OP = 'DELETE' then
+    return OLD;
+  end if;
   return NEW;
 end;
 $$;
 
 drop trigger if exists trg_award_xp on public.metric_logs;
 create trigger trg_award_xp
-  after insert or update on public.metric_logs
+  after insert or update or delete on public.metric_logs
   for each row
   execute function public.award_xp_on_verify();
 
