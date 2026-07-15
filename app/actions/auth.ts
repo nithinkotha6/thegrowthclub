@@ -196,10 +196,13 @@ export async function signUpAction(
   nickname: string,
   email: string,
   pin: string,
+  phoneNumber: string,
+  gender: string,
 ): Promise<SignUpResult> {
   const sanitizedName = fullName.replace(/\s+/g, '').trim();
-  if (!inviteCode || !sanitizedName || !pin) {
-    return { success: false, error: 'Invite code, First Name, and PIN are required.' };
+  const sanitizedPhone = phoneNumber.replace(/[^\d+]/g, '').trim();
+  if (!inviteCode || !sanitizedName || !pin || !sanitizedPhone) {
+    return { success: false, error: 'Invite code, First Name, Phone Number, and PIN are required.' };
   }
 
   const sanitizedPin = pin.replace(/\s/g, '').trim();
@@ -224,60 +227,22 @@ export async function signUpAction(
       return { success: false, error: 'Invalid Group Code' };
     }
 
-    // 2. Prevent duplicate accounts in the specific group
-    // Query group roster (group_members joined with profiles)
-    const { data: existingMembers, error: checkError } = await supabase
-      .from('group_members')
-      .select('user_id, profiles!inner(full_name, email)')
-      .eq('group_id', group.id);
+    // 2. Prevent duplicate accounts by phone_number across the entire platform
+    const { data: phoneDuplicate, error: phoneDupError } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('phone_number', sanitizedPhone)
+      .maybeSingle();
 
-    if (checkError) {
-      console.error('[signUpAction] Duplicate check query failed:', checkError);
+    if (phoneDupError) {
+      console.error('[signUpAction] Phone duplicate check failed:', phoneDupError);
       return { success: false, error: 'Failed to verify unique account.' };
     }
-
-    type SignUpCheckMember = {
-      user_id: string;
-      profiles: {
-        full_name: string | null;
-        email: string | null;
-      } | {
-        full_name: string | null;
-        email: string | null;
-      }[] | null;
-    };
-
-    const existingTyped = (existingMembers as unknown as SignUpCheckMember[]) ?? [];
-    if (existingTyped.length > 0) {
-      const hasDuplicate = existingTyped.some((m) => {
-        const rawProfiles = m.profiles;
-        if (!rawProfiles) return false;
-
-        const profilesList = Array.isArray(rawProfiles) ? rawProfiles : [rawProfiles];
-
-        return profilesList.some((p) => {
-          if (!p) return false;
-
-          // Strictly compare trimmed lowercase names
-          const dbName = p.full_name?.toLowerCase().trim();
-          const inputName = sanitizedName.toLowerCase().trim();
-          const nameMatch = !!(dbName && inputName && dbName === inputName);
-
-          // Strictly compare trimmed lowercase emails only if both are set and non-empty
-          const dbEmail = p.email?.toLowerCase().trim();
-          const inputEmail = email?.toLowerCase().trim();
-          const emailMatch = !!(dbEmail && inputEmail && dbEmail === inputEmail);
-
-          return nameMatch || emailMatch;
-        });
-      });
-
-      if (hasDuplicate) {
-        return { success: false, error: 'An account with this name/email already exists in this group.' };
-      }
+    if (phoneDuplicate) {
+      return { success: false, error: 'This phone number is already registered.' };
     }
 
-    // 3. Generate a new profile
+    // 3. Generate a new profile with phone_number and gender
     const { data: newProfile, error: profileError } = await supabase
       .from('profiles')
       .insert({
@@ -285,6 +250,8 @@ export async function signUpAction(
         nickname: nickname.trim() || null,
         email: email.trim() || null,
         pin: sanitizedPin,
+        phone_number: sanitizedPhone,
+        gender: gender || null,
       })
       .select('id, full_name, nickname')
       .single();

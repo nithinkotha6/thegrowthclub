@@ -43,6 +43,18 @@ function extractMessageText(body: any): string {
 
 export async function POST(req: Request) {
   try {
+    const supabaseAdmin = createAdminClient();
+    const { data: muteData } = await supabaseAdmin
+      .from('system_settings')
+      .select('value')
+      .eq('key', 'bot_muted')
+      .maybeSingle();
+
+    if (muteData?.value === 'true') {
+      console.log('[webhook/whatsapp] Bot is muted. Returning early.');
+      return NextResponse.json({ status: 'muted' }, { status: 200 });
+    }
+
     // ── 1. Pre-Flight Environment Variable Validation ───────────────────────
     const requiredKeys = [
       'GEMINI_API_KEY',
@@ -255,9 +267,6 @@ export async function POST(req: Request) {
 
         // E. AI Invocations & Dispatch
         let text = '';
-        const lowerMsg = incomingMessage.toLowerCase();
-        const needsLink = lowerMsg.includes('link') || lowerMsg.includes('dashboard') || lowerMsg.includes('website') || lowerMsg.includes('how to log') || lowerMsg.includes('where to log');
-        const appUrl = needsLink ? (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000') : undefined;
         const promptText = `Message from ${senderName}: ${incomingMessage}`;
 
         const finalMessages = [
@@ -268,7 +277,7 @@ export async function POST(req: Request) {
         try {
           const result = await generateText({
             model: googleProvider('gemini-3.5-flash'),
-            system: buildGroupAssistantPrompt(dbContext, appUrl),
+            system: buildGroupAssistantPrompt(dbContext),
             messages: finalMessages,
           });
           text = result.text;

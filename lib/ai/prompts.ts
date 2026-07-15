@@ -13,7 +13,7 @@ export const CUSTOM_SYSTEM_RULES: string[] = [
   "Use emojis natively and naturally (e.g., 😂, 🔥, 😭, 💀, 🤫).",
 ];
 
-export function buildGroupAssistantPrompt(dbContext: string, appUrl?: string): string {
+export function buildGroupAssistantPrompt(dbContext: string): string {
   const rulesList = CUSTOM_SYSTEM_RULES.map((rule, idx) => `${idx + 1}. ${rule}`).join('\n');
 
   return [
@@ -29,9 +29,7 @@ export function buildGroupAssistantPrompt(dbContext: string, appUrl?: string): s
     rulesList,
     ``,
     `=== WHATSAPP URL INSTRUCTION ===`,
-    appUrl 
-      ? `If the user explicitly asks for the link, dashboard, website, or how/where to log data, provide this URL: ${appUrl}. Otherwise, do NOT output or mention this URL at all.`
-      : `Do NOT include any dashboard links or URLs in your response.`,
+    `Do NOT include any dashboard links, website links, or URLs (such as beyond-yesterday-app.vercel.app or localhost) in your response under any circumstances.`,
     ``,
     `=== STRICT LEADERBOARD RULES ===`,
     `1. NEVER invent or hallucinate statistics, achievements, or events.`,

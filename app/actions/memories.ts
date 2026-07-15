@@ -155,7 +155,7 @@ Do not use hashtags or markdown formatting (like bold, italics). Just plain text
         }
 
         const displayCaption = caption?.trim() || aiCaption || 'No caption provided';
-        const formattedCaption = `📸 *${uploaderName} added a new Memory!*\n\n💬 "${displayCaption}"\n\n👉 Check the gang scoreboard on the dashboard!`;
+        const formattedCaption = `📸 *${uploaderName} just added a new Memory!*\n\n💬 "${displayCaption}"`;
 
         const mirrorUrl = `https://api.green-api.com/waInstance${instanceId}/sendFileByUrl/${token}`;
         

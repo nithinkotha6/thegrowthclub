@@ -49,6 +49,8 @@ export default function LandingPage() {
   const [signUpNickname, setSignUpNickname] = useState('');
   const [signUpEmail, setSignUpEmail]   = useState('');
   const [signUpPin, setSignUpPin]       = useState('');
+  const [signUpPhone, setSignUpPhone]   = useState('');
+  const [signUpGender, setSignUpGender] = useState('Prefer not to say');
   const [signUpError, setSignUpError]   = useState<string | null>(null);
   const [hasPlayedNameAudio, setHasPlayedNameAudio] = useState(false);
 
@@ -116,6 +118,12 @@ export default function LandingPage() {
     e.preventDefault();
     setSignUpError(null);
 
+    if (!signUpPhone.trim()) {
+      playAudio('who-are-you.mp3');
+      setSignUpError('Phone Number is required.');
+      return;
+    }
+
     if (signUpPin.length !== 4) {
       playAudio('who-are-you.mp3');
       setSignUpError('PIN must be exactly 4 digits.');
@@ -128,7 +136,9 @@ export default function LandingPage() {
         signUpName,
         signUpNickname,
         signUpEmail,
-        signUpPin
+        signUpPin,
+        signUpPhone,
+        signUpGender
       );
 
       if (result.success) {
@@ -397,7 +407,7 @@ export default function LandingPage() {
 
                 {/* Email */}
                 <div>
-                  <label className="block text-[11px] font-bold tracking-wider text-[#6B7280] uppercase mb-1.5">
+                   <label className="block text-[11px] font-bold tracking-wider text-[#6B7280] uppercase mb-1.5">
                     Email (Optional)
                   </label>
                   <input
@@ -408,6 +418,44 @@ export default function LandingPage() {
                     disabled={isPending}
                     className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-base md:text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#CEFF00]/40 disabled:opacity-50 transition-colors duration-150 ease-out"
                   />
+                </div>
+
+                {/* Phone Number */}
+                <div>
+                  <label className="block text-[11px] font-bold tracking-wider text-[#6B7280] uppercase mb-1.5">
+                    Phone Number
+                  </label>
+                  <input
+                    type="tel"
+                    value={signUpPhone}
+                    onChange={e => {
+                      const cleaned = e.target.value.replace(/[^\d+]/g, '');
+                      setSignUpPhone(cleaned);
+                      setSignUpError(null);
+                    }}
+                    required
+                    placeholder="e.g. +1234567890"
+                    disabled={isPending}
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-base md:text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#CEFF00]/40 disabled:opacity-50 transition-colors duration-150 ease-out"
+                  />
+                </div>
+
+                {/* Gender */}
+                <div>
+                  <label className="block text-[11px] font-bold tracking-wider text-[#6B7280] uppercase mb-1.5">
+                    Gender
+                  </label>
+                  <select
+                    value={signUpGender}
+                    onChange={e => { setSignUpGender(e.target.value); setSignUpError(null); }}
+                    disabled={isPending}
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-base md:text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#CEFF00]/40 disabled:opacity-50 transition-colors duration-150 ease-out cursor-pointer [&>option]:bg-zinc-950 [&>option]:text-white"
+                  >
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Non-Binary">Non-Binary</option>
+                    <option value="Prefer not to say">Prefer not to say</option>
+                  </select>
                 </div>
 
                 {/* Create 4-Digit PIN */}

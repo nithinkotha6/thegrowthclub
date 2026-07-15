@@ -227,6 +227,9 @@ Keep it under 100 words. Use natural Gen-Z slang, abbreviations, and emojis. Do 
         continue;
       }
 
+      // Append the dashboard link exception at the very bottom
+      const finalMessage = `${broadcastText}\n\n👉 Check the updated scoreboard: https://beyond-yesterday-app.vercel.app`;
+
       // ── 8. Dispatch to WhatsApp ───────────────────────────────────────────
       const url = `https://api.green-api.com/waInstance${instanceId}/sendMessage/${token}`;
       try {
@@ -237,7 +240,7 @@ Keep it under 100 words. Use natural Gen-Z slang, abbreviations, and emojis. Do 
           },
           body: JSON.stringify({
             chatId: waChatId,
-            message: broadcastText,
+            message: finalMessage,
           }),
         });
 
