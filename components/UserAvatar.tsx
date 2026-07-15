@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Image from 'next/image';
 
 interface UserAvatarProps {
   user: {
@@ -11,6 +12,7 @@ interface UserAvatarProps {
   size?: 'sm' | 'md' | 'lg' | 'lg2' | 'xl' | '2xl' | '3xl';
   className?: string;
   borderColor?: string; // Optional custom border color for podium/leaderboard matching
+  priority?: boolean;   // Next.js Image priority preloading
 }
 
 const SIZE_MAP = {
@@ -23,44 +25,27 @@ const SIZE_MAP = {
   '3xl': 'w-24 h-24 text-[32px]',
 };
 
-/**
- * Converts a display name or nickname to a candidate static avatar URL.
- *
- * Resolution order:
- *  1. `user.avatar_url` — explicit DB value (Supabase storage or external URL)
- *  2. `/avatars/<firstname>.jpg` — local static file matched by first name (lowercase)
- *  3. Initials circle fallback (CEFF00 on dark bg)
- *
- * All 8 local photos are stored in `public/avatars/` with lowercase filenames:
- *   ashray.jpg  mourya.jpg  narri.jpg  nithin.jpg
- *   rahul.jpg   rakesh.jpg  srihitha.jpg  vinay.jpg
- *
- * The `getStaticAvatarPath` helper tries the first name extracted from
- * `full_name` or `nickname` — e.g. "Nithin Kotha" → "/avatars/nithin.jpg".
- * Next.js serves anything in `public/` at the root path with no import needed.
- */
+const SIZE_NUMBERS = {
+  sm: 32,
+  md: 36,
+  lg: 40,
+  lg2: 48,
+  xl: 64,
+  '2xl': 80,
+  '3xl': 96,
+};
+
 function getStaticAvatarPath(user: UserAvatarProps['user']): string | null {
   const rawName = user.full_name || user.nickname || '';
   if (!rawName) return null;
 
-  // Use the first token of the full name or nickname
   const firstName = rawName.trim().split(/\s+/)[0].toLowerCase();
   if (!firstName) return null;
 
-  // Try .jpg first (all our current assets are JPEG)
   return `/avatars/${firstName}.jpg`;
 }
 
-/**
- * Reusable user avatar badge with three-tier resolution:
- *  1. Explicit avatar_url from DB
- *  2. Static local photo matched by first name
- *  3. Initials circle fallback
- *
- * Uses an `imgError` state to catch broken image loads and instantly
- * fall back to initials — no broken image icon ever shown.
- */
-export default function UserAvatar({ user, size = 'md', className = '', borderColor }: UserAvatarProps) {
+export default function UserAvatar({ user, size = 'md', className = '', borderColor, priority = false }: UserAvatarProps) {
   const [imgError, setImgError] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
@@ -111,13 +96,16 @@ export default function UserAvatar({ user, size = 'md', className = '', borderCo
       aria-label={displayName}
     >
       {showImage ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
+        <Image
           src={imgSrc!}
           alt={displayName}
+          width={SIZE_NUMBERS[size]}
+          height={SIZE_NUMBERS[size]}
+          priority={priority}
           className={`w-full h-full object-cover transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`}
           onLoad={() => setLoaded(true)}
           onError={() => setImgError(true)}
+          unoptimized
         />
       ) : (
         <span className="tracking-tight">{initials}</span>

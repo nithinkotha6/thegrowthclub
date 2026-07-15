@@ -313,6 +313,7 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
                     user={secondPlace.profile} 
                     size="xl" 
                     className="hover:scale-105 transition-transform"
+                    priority={true}
                   />
                 </div>
 
@@ -365,6 +366,7 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
                     user={firstPlace.profile} 
                     size="2xl" 
                     className="hover:scale-105 transition-transform"
+                    priority={true}
                   />
                 </div>
 
@@ -418,6 +420,7 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
                     user={thirdPlace.profile} 
                     size="xl" 
                     className="hover:scale-105 transition-transform"
+                    priority={true}
                   />
                 </div>
 

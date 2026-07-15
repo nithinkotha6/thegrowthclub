@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 
 export const maxDuration = 60; // Allow up to 60 seconds for LLM processing
+
 import { generateText } from 'ai';
 import { googleProvider } from '@/lib/ai/google';
 import { sendWhatsAppGroupMessage } from '@/lib/whatsapp';
@@ -17,6 +18,27 @@ interface ProfileDetails {
 interface GroupMemberRow {
   user_id: string;
   profiles: ProfileDetails | null;
+}
+
+// Robust text extractor checking all possible Green API structures
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function extractMessageText(body: any): string {
+  if (!body?.messageData) return '';
+  
+  const textMessage = body.messageData?.textMessageData?.textMessage;
+  if (textMessage) return textMessage;
+  
+  const extendedText = body.messageData?.extendedTextMessageData?.text;
+  if (extendedText) return extendedText;
+  
+  const quotedText = body.messageData?.quotedMessage?.textMessage || 
+                     body.messageData?.quotedMessage?.extendedTextMessageData?.text;
+  if (quotedText) return quotedText;
+
+  const templateText = body.messageData?.templateMessageData?.contentText;
+  if (templateText) return templateText;
+
+  return '';
 }
 
 export async function POST(req: Request) {
@@ -39,7 +61,7 @@ export async function POST(req: Request) {
           error: 'Missing required environment variables',
           missingKeys,
         },
-        { status: 400 }
+        { status: 200 } // Always return 200 to halt retries
       );
     }
 
@@ -53,7 +75,7 @@ export async function POST(req: Request) {
     const idInstance = body.instanceData?.idInstance;
     const targetInstance = process.env.GREEN_API_INSTANCE_ID;
     if (!targetInstance || !idInstance || !safeCompare(String(idInstance), String(targetInstance))) {
-      return NextResponse.json({ error: 'Unauthorized Green API instance' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized Green API instance' }, { status: 200 });
     }
 
     // Check webhook and message type
@@ -66,202 +88,226 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, ignored: 'non-target chat ID' });
     }
 
-    // Extract text message
-    const incomingMessage = 
-      body.messageData?.textMessageData?.textMessage || 
-      body.messageData?.extendedTextMessageData?.text || 
-      '';
-
-    // Trigger detection: match triggers ignoring punctuation, leading/trailing spaces, and case (Pillar 1 Rebranding)
-    const triggerRegex = /@(bot|fisky)\b|\b(stats|leaderboard|who is winning)\b/i;
-    const hasTrigger = triggerRegex.test(incomingMessage);
-
-    if (!hasTrigger) {
-      return NextResponse.json({ ok: true, ignored: 'message does not target fisky' });
+    // Extract text message using robust parser
+    const incomingMessage = extractMessageText(body);
+    if (!incomingMessage) {
+      console.warn('[webhook/whatsapp] No text found in incoming webhook payload:', JSON.stringify(body));
+      return NextResponse.json({ ok: true, ignored: 'no text content extracted' });
     }
-
-    // Verbose logging of senderData structure (Pillar 2)
-    console.log('[webhook/whatsapp] body.senderData structure:', JSON.stringify(body.senderData, null, 2));
 
     const rawSender = body.senderData?.sender || '';
     const senderName = body.senderData?.senderName || 'A group member';
     console.log(`[webhook/whatsapp] Triggered by message: "${incomingMessage}" from JID: ${rawSender} (${senderName})`);
 
-    // ── 3. Synchronous Execution ───────────────────────────────────────────
-    try {
-      console.log('[webhook/whatsapp] Sync processing started...');
-      const supabaseAdmin = createAdminClient();
+    // ── 3. Asynchronous Background Execution (waitUntil / after) ────────────
+    after(async () => {
+      try {
+        console.log('[webhook/whatsapp] Background processing started...');
+        const supabaseAdmin = createAdminClient();
 
-      // Look for group in DB (default to Texas Buds or fallback to first group)
-      const { data: groups, error: groupsError } = await supabaseAdmin
-        .from('groups')
-        .select('*')
-        .order('created_at', { ascending: true });
+        // Look for group in DB (default to Texas Buds or fallback to first group)
+        const { data: groups, error: groupsError } = await supabaseAdmin
+          .from('groups')
+          .select('*')
+          .order('created_at', { ascending: true });
 
-      if (groupsError) {
-        console.error('[webhook/whatsapp] groups query error:', groupsError);
-      }
+        if (groupsError) {
+          console.error('[webhook/whatsapp] groups query error:', groupsError);
+        }
 
-      const targetGroup = groups?.find(g => g.name === 'Texas Buds' || g.invite_code === 'TEXASBUDS') || groups?.[0];
-      if (!targetGroup) {
-        console.error('[webhook/whatsapp] No groups resolved in database');
-        return NextResponse.json({ error: 'No groups resolved in database' }, { status: 200 });
-      }
+        const targetGroup = groups?.find(g => g.name === 'Texas Buds' || g.invite_code === 'TEXASBUDS') || groups?.[0];
+        if (!targetGroup) {
+          console.error('[webhook/whatsapp] No groups resolved in database');
+          return;
+        }
 
-      const groupId = targetGroup.id;
+        const groupId = targetGroup.id;
 
-      // A. Query latest 5 verified activities for the group
-      const { data: recentLogs, error: recentLogsError } = await supabaseAdmin
-        .from('metric_logs')
-        .select(`
-          id,
-          value,
-          unit,
-          metric_slug,
-          logged_at,
-          profiles!inner ( nickname, full_name )
-        `)
-        .eq('group_id', groupId)
-        .eq('status', 'verified')
-        .order('logged_at', { ascending: false })
-        .limit(5);
+        // A. Context Trimming: fetch last 9 chat logs to leave 1 space for current prompt (total 10)
+        let formattedHistory: { role: 'user' | 'assistant'; content: string }[] = [];
+        try {
+          const { data: dbHistory, error: dbHistError } = await supabaseAdmin
+            .from('chat_history')
+            .select('role, content')
+            .eq('group_id', groupId)
+            .order('created_at', { ascending: false })
+            .limit(9); // Limit strictly to last 9 entries
 
-      if (recentLogsError) {
-        console.error('[webhook/whatsapp] recentLogs query error:', recentLogsError);
-      }
+          if (!dbHistError && dbHistory) {
+            // Reverse to keep chronological order
+            formattedHistory = dbHistory
+              .reverse()
+              .map((h) => ({
+                role: h.role as 'user' | 'assistant',
+                content: h.content,
+              }));
+          }
+        } catch (dbHistErr) {
+          console.warn('[webhook/whatsapp] Failed to fetch chat history from DB:', dbHistErr);
+        }
 
-      // B. Query group members and verified top_golf logs for leaderboard calculation
-      const { data: membersRaw, error: membersError } = await supabaseAdmin
-        .from('group_members')
-        .select(`
-          user_id,
-          profiles!inner ( id, full_name, nickname )
-        `)
-        .eq('group_id', groupId);
+        // B. Query latest 5 verified activities for the group
+        const { data: recentLogs, error: recentLogsError } = await supabaseAdmin
+          .from('metric_logs')
+          .select(`
+            id,
+            value,
+            unit,
+            metric_slug,
+            logged_at,
+            profiles!inner ( nickname, full_name )
+          `)
+          .eq('group_id', groupId)
+          .eq('status', 'verified')
+          .order('logged_at', { ascending: false })
+          .limit(5);
 
-      if (membersError) {
-        console.error('[webhook/whatsapp] group_members query error:', membersError);
-      }
+        if (recentLogsError) {
+          console.error('[webhook/whatsapp] recentLogs query error:', recentLogsError);
+        }
 
-      const { data: topGolfLogs, error: topGolfLogsError } = await supabaseAdmin
-        .from('metric_logs')
-        .select('user_id, value')
-        .eq('group_id', groupId)
-        .eq('status', 'verified')
-        .eq('metric_slug', 'top_golf');
+        // C. Query group members and verified top_golf logs for leaderboard calculation
+        const { data: membersRaw, error: membersError } = await supabaseAdmin
+          .from('group_members')
+          .select(`
+            user_id,
+            profiles!inner ( id, full_name, nickname )
+          `)
+          .eq('group_id', groupId);
 
-      if (topGolfLogsError) {
-        console.error('[webhook/whatsapp] top_golf logs query error:', topGolfLogsError);
-      }
+        if (membersError) {
+          console.error('[webhook/whatsapp] group_members query error:', membersError);
+        }
 
-      interface LeaderboardEntry {
-        nickname: string;
-        score: number;
-        hasLogged: boolean;
-      }
+        const { data: topGolfLogs, error: topGolfLogsError } = await supabaseAdmin
+          .from('metric_logs')
+          .select('user_id, value')
+          .eq('group_id', groupId)
+          .eq('status', 'verified')
+          .eq('metric_slug', 'top_golf');
 
-      const members = (membersRaw || []) as unknown as GroupMemberRow[];
-      const userMap = new Map<string, LeaderboardEntry>();
+        if (topGolfLogsError) {
+          console.error('[webhook/whatsapp] top_golf logs query error:', topGolfLogsError);
+        }
 
-      for (const m of members) {
-        if (m.profiles) {
-          userMap.set(m.user_id, {
-            nickname: m.profiles.nickname || m.profiles.full_name || 'Athlete',
-            score: 0,
-            hasLogged: false,
+        interface LeaderboardEntry {
+          nickname: string;
+          score: number;
+          hasLogged: boolean;
+        }
+
+        const members = (membersRaw || []) as unknown as GroupMemberRow[];
+        const userMap = new Map<string, LeaderboardEntry>();
+
+        for (const m of members) {
+          if (m.profiles) {
+            userMap.set(m.user_id, {
+              nickname: m.profiles.nickname || m.profiles.full_name || 'Athlete',
+              score: 0,
+              hasLogged: false,
+            });
+          }
+        }
+
+        for (const log of topGolfLogs || []) {
+          const existing = userMap.get(log.user_id);
+          if (!existing) continue;
+
+          const val = Number(log.value);
+          if (!existing.hasLogged) {
+            existing.score = val;
+            existing.hasLogged = true;
+          } else {
+            existing.score = Math.max(existing.score, val);
+          }
+        }
+
+        const leaderboard = Array.from(userMap.values())
+          .map(entry => ({
+            ...entry,
+            score: Math.round(entry.score * 10) / 10,
+          }))
+          .sort((a, b) => {
+            if (a.hasLogged && !b.hasLogged) return -1;
+            if (!a.hasLogged && b.hasLogged) return 1;
+            if (!a.hasLogged && !b.hasLogged) return 0;
+            return b.score - a.score;
           });
+
+        // D. Format contexts into text block (Pillar 1 Empty/Null Safeties)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const recentActivitiesText = (recentLogs || []).map((log: any) => {
+          const name = log.profiles?.nickname || log.profiles?.full_name || 'Someone';
+          return `- ${name} logged ${log.value} ${log.unit || ''} of ${log.metric_slug} at ${new Date(log.logged_at).toLocaleDateString()}`;
+        }).join('\n');
+
+        const leaderboardText = leaderboard.map((entry, index) => {
+          return `${index + 1}. ${entry.nickname}: ${entry.hasLogged ? `${entry.score} Yards` : 'No score logged'}`;
+        }).join('\n');
+
+        const dbContext = [
+          `Recent Activities:`,
+          recentActivitiesText || 'None',
+          ``,
+          `Top Golf Leaderboard Standings:`,
+          leaderboardText || 'None',
+        ].join('\n');
+
+        // E. AI Invocations & Dispatch
+        let text = '';
+        const lowerMsg = incomingMessage.toLowerCase();
+        const needsLink = lowerMsg.includes('link') || lowerMsg.includes('dashboard') || lowerMsg.includes('website') || lowerMsg.includes('how to log') || lowerMsg.includes('where to log');
+        const appUrl = needsLink ? (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000') : undefined;
+        const promptText = `Message from ${senderName}: ${incomingMessage}`;
+
+        const finalMessages = [
+          ...formattedHistory,
+          { role: 'user' as const, content: promptText }
+        ];
+
+        try {
+          const result = await generateText({
+            model: googleProvider('gemini-3.5-flash'),
+            system: buildGroupAssistantPrompt(dbContext, appUrl),
+            messages: finalMessages,
+          });
+          text = result.text;
+        } catch (llmError) {
+          console.error('[webhook/whatsapp] LLM execution error:', llmError);
+          const errorStr = String(llmError).toLowerCase();
+          const isRateLimit = errorStr.includes('429') || errorStr.includes('rate limit') || errorStr.includes('quota exceeded');
+
+          if (isRateLimit) {
+            text = `🤖 "Hold on, I'm analyzing too many stats at once. Let me catch my breath—ask me again in 60 seconds."`;
+          } else {
+            text = `🤖 "Hold on, my circuits are slightly warm right now. Give me a brief moment!"`;
+          }
         }
-      }
 
-      for (const log of topGolfLogs || []) {
-        const existing = userMap.get(log.user_id);
-        if (!existing) continue;
+        // Send LLM response back to the group
+        await sendWhatsAppGroupMessage(text);
+        console.log('[webhook/whatsapp] Background processing completed successfully.');
 
-        const val = Number(log.value);
-        if (!existing.hasLogged) {
-          existing.score = val;
-          existing.hasLogged = true;
-        } else {
-          existing.score = Math.max(existing.score, val);
+        // F. Save messages to database chat_history
+        try {
+          await supabaseAdmin.from('chat_history').insert([
+            { group_id: groupId, role: 'user', sender_name: senderName, content: promptText },
+            { group_id: groupId, role: 'assistant', sender_name: 'Fisky', content: text },
+          ]);
+        } catch (dbSaveErr) {
+          console.error('[webhook/whatsapp] Failed to save conversation logs:', dbSaveErr);
         }
+      } catch (backgroundErr) {
+        const bgError = backgroundErr as Error;
+        console.error('[webhook/whatsapp] Background processing crashed:', bgError);
       }
+    });
 
-      const leaderboard = Array.from(userMap.values())
-        .map(entry => ({
-          ...entry,
-          score: Math.round(entry.score * 10) / 10,
-        }))
-        .sort((a, b) => {
-          if (a.hasLogged && !b.hasLogged) return -1;
-          if (!a.hasLogged && b.hasLogged) return 1;
-          if (!a.hasLogged && !b.hasLogged) return 0;
-          return b.score - a.score;
-        });
-
-      // C. Format contexts into text block (Pillar 1 Empty/Null Safeties)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const recentActivitiesText = (recentLogs || []).map((log: any) => {
-        const name = log.profiles?.nickname || log.profiles?.full_name || 'Someone';
-        return `- ${name} logged ${log.value} ${log.unit || ''} of ${log.metric_slug} at ${new Date(log.logged_at).toLocaleDateString()}`;
-      }).join('\n');
-
-      const leaderboardText = leaderboard.map((entry, index) => {
-        return `${index + 1}. ${entry.nickname}: ${entry.hasLogged ? `${entry.score} Yards` : 'No score logged'}`;
-      }).join('\n');
-
-      const dbContext = [
-        `Recent Activities:`,
-        recentActivitiesText || 'None',
-        ``,
-        `Top Golf Leaderboard Standings:`,
-        leaderboardText || 'None',
-      ].join('\n');
-
-      // D. AI Invocations & Dispatch
-      let text = '';
-      const lowerMsg = incomingMessage.toLowerCase();
-      const needsLink = lowerMsg.includes('link') || lowerMsg.includes('dashboard') || lowerMsg.includes('website') || lowerMsg.includes('how to log') || lowerMsg.includes('where to log');
-      const appUrl = needsLink ? (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000') : undefined;
-      const promptText = `Message from ${senderName}: ${incomingMessage}`;
-
-      try {
-        const result = await generateText({
-          model: googleProvider('gemini-3.5-flash'),
-          system: buildGroupAssistantPrompt(dbContext, appUrl),
-          prompt: promptText,
-        });
-        text = result.text;
-      } catch (llmError) {
-        console.error('[webhook/whatsapp] LLM execution error:', llmError);
-        const errorStr = String(llmError).toLowerCase();
-        const isRateLimit = errorStr.includes('429') || errorStr.includes('rate limit') || errorStr.includes('quota exceeded');
-
-        if (isRateLimit) {
-          text = `🤖 "Hold on, I'm analyzing too many stats at once. Let me catch my breath—ask me again in 60 seconds."`;
-        } else {
-          text = `🤖 "Hold on, my circuits are slightly warm right now. Give me a brief moment!"`;
-        }
-      }
-
-      // Send LLM response back to the group
-      await sendWhatsAppGroupMessage(text);
-      console.log('[webhook/whatsapp] Sync processing completed successfully.');
-
-      return NextResponse.json({ success: true, processed: true }, { status: 200 });
-    } catch (backgroundErr) {
-      const bgError = backgroundErr as Error;
-      console.error('[webhook/whatsapp] Sync processing crashed:', bgError);
-      const errorMsg = bgError.message || JSON.stringify(bgError);
-      try {
-        await sendWhatsAppGroupMessage(`⚠️ Ref here. Database/LLM Error: ${errorMsg}`);
-      } catch (waErr) {
-        console.error('[webhook/whatsapp] Failed to send error toast to WhatsApp:', waErr);
-      }
-      return NextResponse.json({ success: false, error: errorMsg }, { status: 200 });
-    }
+    // Return 200 OK immediately
+    return NextResponse.json({ success: true, queued: true }, { status: 200 });
   } catch (error) {
     const err = error as Error;
     console.error("[Webhook Audit Crash]:", err);
-    return NextResponse.json({ success: false, error: err.message }, { status: 200 });
+    return NextResponse.json({ success: false, error: err.message }, { status: 200 }); // Always 200 to halt retries
   }
 }

@@ -139,7 +139,7 @@ export default async function LiveAchievementTicker({ groupId }: { groupId: stri
       <div className="flex-grow overflow-hidden flex items-center">
         <div className="animate-ticker-marquee" style={{ willChange: 'transform' }}>
           {doubled.map((sentence, i) => (
-            <span key={i} className="inline-flex items-center gap-2 font-mono font-bold tracking-wide text-white text-sm md:text-base mr-16">
+            <span key={i} className="inline-flex items-center gap-2 font-mono font-normal tracking-wide text-white text-sm md:text-base mr-16">
               <span>{sentence}</span>
             </span>
           ))}

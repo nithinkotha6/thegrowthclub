@@ -81,6 +81,7 @@ export default async function GangPage() {
                     user={profile}
                     size="3xl"
                     className="shadow-inner"
+                    priority={index < 4}
                   />
                   <div className="absolute -bottom-1.5 -right-1.5 bg-[#111827] border-2 border-white text-[10px] font-black text-[#CEFF00] rounded-full w-6 h-6 flex items-center justify-center shadow tabular-nums">
                     {profile.current_level}

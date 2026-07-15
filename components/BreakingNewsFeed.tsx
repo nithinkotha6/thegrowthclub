@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import React, { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronRight, Newspaper, Check, X, MoreHorizontal } from 'lucide-react';
 import { processVerificationVote, deleteActivityAction } from '@/app/actions/vote';
@@ -36,7 +36,7 @@ interface BreakingNewsFeedProps {
  * Real-time activities feed — interactive scrollable ledger list
  * with peer approvals, peer rejections, and author ellipsis menu option deletion.
  */
-export default function BreakingNewsFeed({ items, currentUserId }: BreakingNewsFeedProps) {
+function BreakingNewsFeed({ items, currentUserId }: BreakingNewsFeedProps) {
   const router = useRouter();
   const [isPendingAction, startTransition] = useTransition();
   const [deletingItem, setDeletingItem] = useState<FeedItem | null>(null);
@@ -236,3 +236,5 @@ export default function BreakingNewsFeed({ items, currentUserId }: BreakingNewsF
     </div>
   );
 }
+
+export default React.memo(BreakingNewsFeed);
