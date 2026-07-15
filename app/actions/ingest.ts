@@ -13,13 +13,20 @@ import { SESSION_COOKIE, decodeSession } from '@/lib/session';
  */
 const MetricSchema = z.object({
   metric_slug: z
-    .string()
+    .any()
+    .transform(v => (v !== null && v !== undefined) ? String(v).trim() : 'unknown')
     .describe('Snake_case metric identifier, e.g. long_run, deadlift, beers'),
   value: z
-    .number()
+    .any()
+    .transform(v => {
+      if (v === null || v === undefined) return 0;
+      const num = Number(v);
+      return isNaN(num) ? 0 : num;
+    })
     .describe('The numeric value extracted from the text'),
   unit: z
-    .string()
+    .any()
+    .transform(v => (v !== null && v !== undefined) ? String(v).trim() : '')
     .describe('Unit of measurement, e.g. miles, kg, mph, lbs, kcal, reps'),
 });
  
