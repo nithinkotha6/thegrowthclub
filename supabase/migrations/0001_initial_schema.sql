@@ -194,23 +194,31 @@ begin
   end if;
 
   if v_should_award then
-    select coalesce(xp_reward, 25)
+    v_xp := 25;
+    select xp_reward
       into v_xp
       from public.metrics_config
      where slug = NEW.metric_slug
      limit 1;
-
+    if v_xp is null then
+      v_xp := 25;
+    end if;
+ 
     update public.profiles
        set total_xp      = total_xp + v_xp,
            current_level = floor(1 + sqrt(greatest(0, total_xp + v_xp)::float / 500)) + 1
      where id = NEW.user_id;
   elsif v_should_deduct then
-    select coalesce(xp_reward, 25)
+    v_xp := 25;
+    select xp_reward
       into v_xp
       from public.metrics_config
      where slug = OLD.metric_slug
      limit 1;
-
+    if v_xp is null then
+      v_xp := 25;
+    end if;
+ 
     update public.profiles
        set total_xp      = greatest(0, total_xp - v_xp),
            current_level = floor(1 + sqrt(greatest(0, total_xp - v_xp)::float / 500)) + 1
