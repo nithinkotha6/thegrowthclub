@@ -458,8 +458,8 @@ export default function LandingPage() {
         </div>
 
         {/* Footer */}
-        <p className="text-center text-[#6B7280] text-[10px] mt-6 tracking-widest">
-          Built with Love by Nithin Kotha ❤️
+        <p className="text-center text-xs font-medium text-slate-500 mt-6 tracking-wide">
+          Built with Love by Nithin Kotha <span className="text-red-500 animate-pulse">❤️</span>
         </p>
       </div>
     </div>
