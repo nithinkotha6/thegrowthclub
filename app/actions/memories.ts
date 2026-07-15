@@ -3,6 +3,8 @@
 import { createClient as createBaseClient } from '@supabase/supabase-js';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
+import { cookies } from 'next/headers';
+import { SESSION_COOKIE, decodeSession } from '@/lib/session';
 
 /**
  * Helper to build an admin/service-role client bypassing RLS, or fallback to anon client.
@@ -34,6 +36,13 @@ export async function uploadAndCreateMemoryAction(
 ) {
   if (!base64Image || !fileName || !groupId || !userId) {
     return { success: false, error: 'Missing required parameters for upload.' };
+  }
+
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+  const session = token ? await decodeSession(token) : null;
+  if (!session || String(session.userId) !== String(userId) || String(session.groupId) !== String(groupId)) {
+    return { success: false, error: 'Unauthorized: Session credentials mismatch.' };
   }
 
   try {
@@ -145,6 +154,13 @@ export async function uploadAndCreateMemoryAction(
 export async function addMemoryComment(memoryId: string, content: string, userId: string) {
   if (!memoryId || !content || !userId) {
     return { success: false, error: 'Missing required parameters.' };
+  }
+
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+  const session = token ? await decodeSession(token) : null;
+  if (!session || String(session.userId) !== String(userId)) {
+    return { success: false, error: 'Unauthorized: Session credentials mismatch.' };
   }
 
   try {

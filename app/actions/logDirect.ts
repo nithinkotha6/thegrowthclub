@@ -2,6 +2,8 @@
 
 import { createAdminClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
+import { cookies } from 'next/headers';
+import { SESSION_COOKIE, decodeSession } from '@/lib/session';
  
 export type DirectLogResult =
   | { success: true; metric_slug: string; value: number; unit: string }
@@ -28,6 +30,13 @@ export async function logDirectActivity(
     return { success: false, error: 'No metric selected.' };
   }
  
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+  const session = token ? await decodeSession(token) : null;
+  if (!session || String(session.userId) !== String(userId) || String(session.groupId) !== String(groupId)) {
+    return { success: false, error: 'Unauthorized: Session credentials mismatch.' };
+  }
+
   const supabase = createAdminClient();
  
   const { error: insertErr } = await supabase.from('metric_logs').insert({
@@ -58,6 +67,7 @@ export async function logActivityManual(
   userId: string,
   groupId: string,
   caption?: string,
+  durationSeconds?: number,
 ): Promise<DirectLogResult> {
   if (!userId || !groupId) {
     return { success: false, error: 'Session expired. Please return to the home screen.' };
@@ -66,9 +76,16 @@ export async function logActivityManual(
     return { success: false, error: 'No metric selected.' };
   }
  
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+  const session = token ? await decodeSession(token) : null;
+  if (!session || String(session.userId) !== String(userId) || String(session.groupId) !== String(groupId)) {
+    return { success: false, error: 'Unauthorized: Session credentials mismatch.' };
+  }
+
   const supabase = createAdminClient();
 
-  // Try inserting with caption
+  // Try inserting with caption and durationSeconds
   const { error: insertErr } = await supabase.from('metric_logs').insert({
     user_id:     userId,
     group_id:    groupId,
@@ -77,12 +94,13 @@ export async function logActivityManual(
     unit,
     status:      (metricSlug === 'car_top_speed' || metricSlug === 'most_beers') ? 'pending' : 'verified',
     caption:     caption || null,
+    duration_seconds: durationSeconds || null,
   });
 
   if (insertErr) {
-    // If error is due to missing caption column, retry without caption
-    if (insertErr.message.includes('column') && insertErr.message.includes('caption')) {
-      console.warn('[logActivityManual] caption column missing, falling back to insert without caption.');
+    // If error is due to missing columns (e.g. caption or duration_seconds), retry without them
+    if (insertErr.message.includes('column')) {
+      console.warn('[logActivityManual] column missing, falling back to insert without caption/duration.');
       const { error: retryErr } = await supabase.from('metric_logs').insert({
         user_id:     userId,
         group_id:    groupId,

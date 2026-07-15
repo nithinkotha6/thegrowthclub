@@ -2,6 +2,8 @@
  
 import { createAdminClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
+import { cookies } from 'next/headers';
+import { SESSION_COOKIE, decodeSession } from '@/lib/session';
  
 /**
  * Server Action: Creates a mock wearable connection for testing.
@@ -9,6 +11,13 @@ import { revalidatePath } from 'next/cache';
 export async function connectWearableAction(userId: string) {
   if (!userId) {
     return { success: false, error: 'User session invalid.' };
+  }
+
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+  const session = token ? await decodeSession(token) : null;
+  if (!session || String(session.userId) !== String(userId)) {
+    return { success: false, error: 'Unauthorized: Session credentials mismatch.' };
   }
  
   const supabase = createAdminClient();
@@ -44,6 +53,13 @@ export async function connectWearableAction(userId: string) {
  */
 export async function disconnectWearableAction(userId: string) {
   if (!userId) return { success: false };
+
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+  const session = token ? await decodeSession(token) : null;
+  if (!session || String(session.userId) !== String(userId)) {
+    return { success: false, error: 'Unauthorized: Session credentials mismatch.' };
+  }
  
   const supabase = createAdminClient();
   const { error } = await supabase

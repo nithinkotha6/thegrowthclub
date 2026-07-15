@@ -94,11 +94,12 @@ export default function AddActivityModal({ userId, groupId, customPills }: AddAc
       startTransition(async () => {
         let finalCaption = manualCaption.trim();
 
+        let totalSeconds = 0;
         if (isEnduranceMetric) {
           const hh = Number(manualHrs) || 0;
           const mm = Number(manualMins) || 0;
           const ss = Number(manualSecs) || 0;
-          const totalSeconds = (hh * 3600) + (mm * 60) + ss;
+          totalSeconds = (hh * 3600) + (mm * 60) + ss;
 
           if (totalSeconds > 0) {
             const formattedDuration = `${hh.toString().padStart(2, '0')}:${mm.toString().padStart(2, '0')}:${ss.toString().padStart(2, '0')}`;
@@ -108,7 +109,15 @@ export default function AddActivityModal({ userId, groupId, customPills }: AddAc
           }
         }
 
-        const res = await logActivityManual(selectedMetric, val, unit, userId, groupId, finalCaption);
+        const res = await logActivityManual(
+          selectedMetric,
+          val,
+          unit,
+          userId,
+          groupId,
+          finalCaption,
+          isEnduranceMetric ? totalSeconds : undefined
+        );
         setResult(res);
         if (res.success) {
           setOpen(false);
