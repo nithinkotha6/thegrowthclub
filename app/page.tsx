@@ -25,7 +25,13 @@ export default function LandingPage() {
   const [isPending, startTransition] = useTransition();
 
   // Tab State
-  const [activeTab, setActiveTab] = useState<Tab>('login');
+  const [activeTab, setActiveTab] = useState<Tab>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('tab') === 'signup' ? 'signup' : 'login';
+    }
+    return 'login';
+  });
 
   // Shared Group List State
   const [groups, setGroups]           = useState<Group[]>([]);
