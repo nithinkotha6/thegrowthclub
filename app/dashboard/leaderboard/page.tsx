@@ -7,6 +7,73 @@ import { decodeSession, SESSION_COOKIE } from '@/lib/session';
 import UserAvatar from '@/components/UserAvatar';
 import CheerButton from '@/components/CheerButton';
 
+function RankBadge({ rank }: { rank: number }) {
+  if (rank === 1) {
+    return (
+      <div className="flex items-center justify-center gap-0.5 bg-white px-2 py-0.5 rounded-full border border-yellow-400 shadow-sm select-none">
+        <svg className="h-6 w-3 -scale-x-100 transform fill-[#FACC15] text-[#FACC15]" viewBox="0 0 24 48">
+          <path d="M12 4C10 8 4 12 4 18C4 24 10 28 12 32C10 36 4 40 4 44C8 44 14 40 16 36C14 32 8 28 8 22C8 16 14 12 16 8C14 4 12 4 12 4Z" />
+          <path d="M18 14C15 17 12 21 13 25C16 23 19 19 18 14Z" />
+          <path d="M18 28C15 31 12 35 13 39C16 37 19 33 18 28Z" />
+        </svg>
+        <span className="text-xs font-black text-[#FACC15] px-0.5">1</span>
+        <svg className="h-6 w-3 fill-[#FACC15] text-[#FACC15]" viewBox="0 0 24 48">
+          <path d="M12 4C10 8 4 12 4 18C4 24 10 28 12 32C10 36 4 40 4 44C8 44 14 40 16 36C14 32 8 28 8 22C8 16 14 12 16 8C14 4 12 4 12 4Z" />
+          <path d="M18 14C15 17 12 21 13 25C16 23 19 19 18 14Z" />
+          <path d="M18 28C15 31 12 35 13 39C16 37 19 33 18 28Z" />
+        </svg>
+      </div>
+    );
+  }
+  if (rank === 2) {
+    return (
+      <div className="flex items-center justify-center gap-0.5 bg-white px-2 py-0.5 rounded-full border border-slate-300 shadow-sm select-none">
+        <svg className="h-6 w-3 -scale-x-100 transform fill-[#94A3B8] text-[#94A3B8]" viewBox="0 0 24 48">
+          <path d="M12 4C10 8 4 12 4 18C4 24 10 28 12 32C10 36 4 40 4 44C8 44 14 40 16 36C14 32 8 28 8 22C8 16 14 12 16 8C14 4 12 4 12 4Z" />
+          <path d="M18 14C15 17 12 21 13 25C16 23 19 19 18 14Z" />
+          <path d="M18 28C15 31 12 35 13 39C16 37 19 33 18 28Z" />
+        </svg>
+        <span className="text-xs font-black text-[#94A3B8] px-0.5">2</span>
+        <svg className="h-6 w-3 fill-[#94A3B8] text-[#94A3B8]" viewBox="0 0 24 48">
+          <path d="M12 4C10 8 4 12 4 18C4 24 10 28 12 32C10 36 4 40 4 44C8 44 14 40 16 36C14 32 8 28 8 22C8 16 14 12 16 8C14 4 12 4 12 4Z" />
+          <path d="M18 14C15 17 12 21 13 25C16 23 19 19 18 14Z" />
+          <path d="M18 28C15 31 12 35 13 39C16 37 19 33 18 28Z" />
+        </svg>
+      </div>
+    );
+  }
+  if (rank === 3) {
+    return (
+      <div className="flex items-center justify-center gap-0.5 bg-white px-2 py-0.5 rounded-full border border-amber-600 shadow-sm select-none">
+        <svg className="h-6 w-3 -scale-x-100 transform fill-[#D97706] text-[#D97706]" viewBox="0 0 24 48">
+          <path d="M12 4C10 8 4 12 4 18C4 24 10 28 12 32C10 36 4 40 4 44C8 44 14 40 16 36C14 32 8 28 8 22C8 16 14 12 16 8C14 4 12 4 12 4Z" />
+          <path d="M18 14C15 17 12 21 13 25C16 23 19 19 18 14Z" />
+          <path d="M18 28C15 31 12 35 13 39C16 37 19 33 18 28Z" />
+        </svg>
+        <span className="text-xs font-black text-[#D97706] px-0.5">3</span>
+        <svg className="h-6 w-3 fill-[#D97706] text-[#D97706]" viewBox="0 0 24 48">
+          <path d="M12 4C10 8 4 12 4 18C4 24 10 28 12 32C10 36 4 40 4 44C8 44 14 40 16 36C14 32 8 28 8 22C8 16 14 12 16 8C14 4 12 4 12 4Z" />
+          <path d="M18 14C15 17 12 21 13 25C16 23 19 19 18 14Z" />
+          <path d="M18 28C15 31 12 35 13 39C16 37 19 33 18 28Z" />
+        </svg>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-1.5 select-none flex-shrink-0">
+      <div 
+        className="w-8 h-8 flex items-center justify-center font-black text-xs text-white relative bg-slate-800 shadow-sm"
+        style={{
+          clipPath: 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)',
+        }}
+      >
+        {rank}
+      </div>
+      <span className="text-base" role="img" aria-label="Medal">🏅</span>
+    </div>
+  );
+}
+
 // Curated list of metrics for ranking
 const LEADERBOARD_METRICS = [
   { id: 'top_golf',         label: 'Top Golf Shot',     unit: 'Yards',  isCumulative: false },
@@ -154,7 +221,7 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
     }
   }
 
-  const isLowerBetter = activeMetric === 'marathon' || (metricPill as any).sort_direction === 'asc';
+  const isLowerBetter = activeMetric === 'marathon' || (metricPill as { sort_direction?: string }).sort_direction === 'asc';
 
   // Process logs, reducing each user's records to their best single score (or sum/count)
   for (const log of logs) {
@@ -268,8 +335,8 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
                   size="xl" 
                   className="shadow-md border-4 border-slate-300 hover:scale-105"
                 />
-                <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-[#F8FAFC] text-base rounded-full w-6 h-6 flex items-center justify-center shadow border border-slate-300 select-none">
-                  🥈
+                <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 z-20">
+                  <RankBadge rank={2} />
                 </div>
               </div>
               <span className="text-[11px] font-bold text-[#111827] truncate max-w-full mb-2">
@@ -310,8 +377,8 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
                   size="2xl" 
                   className="shadow-xl border-4 border-yellow-400 hover:scale-105"
                 />
-                <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 bg-[#FFFDF0] text-base rounded-full w-6 h-6 flex items-center justify-center shadow border border-yellow-400 select-none">
-                  🥇
+                <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 z-20">
+                  <RankBadge rank={1} />
                 </div>
               </div>
               <span className="text-xs font-black text-[#111827] truncate max-w-full mb-2">
@@ -352,8 +419,8 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
                   size="xl" 
                   className="shadow-md border-4 border-amber-600 hover:scale-105"
                 />
-                <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-[#FFFBEB] text-base rounded-full w-6 h-6 flex items-center justify-center shadow border border-amber-600 select-none">
-                  🥉
+                <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 z-20">
+                  <RankBadge rank={3} />
                 </div>
               </div>
               <span className="text-[11px] font-bold text-[#111827] truncate max-w-full mb-2">
@@ -403,15 +470,8 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    {/* Rank Badge - Premium Dark Slate Shield */}
-                    <div 
-                      className="w-8 h-8 flex items-center justify-center font-black text-xs text-white select-none relative bg-slate-800 shadow-sm flex-shrink-0"
-                      style={{
-                        clipPath: 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)',
-                      }}
-                    >
-                      {rank}
-                    </div>
+                    {/* Rank Badge with Medal Emoji for rank >= 4 */}
+                    <RankBadge rank={rank} />
                     {/* Avatar */}
                     <UserAvatar user={athlete.profile} size="lg2" />
                     {/* Profile Details */}
