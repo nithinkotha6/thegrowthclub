@@ -103,19 +103,37 @@ export default async function DashboardPage({
 
   // ── Resolve URL params ───────────────────────────────────────────────────
   const params = await searchParams;
+  const supabase = await createClient();
 
-  const validSlugs   = METRIC_PILLS.map((p) => p.id) as string[];
-  const rawMetric    = params.metric ?? 'top_golf';
-  const activeMetric = validSlugs.includes(rawMetric) ? (rawMetric as MetricSlug) : 'top_golf';
+  // Query custom dynamic metric definitions from database (Pillar 4)
+  const { data: dbDefinitions } = await supabase
+    .from('metric_definitions')
+    .select('*')
+    .order('created_at', { ascending: true });
+
+  const customPills = (dbDefinitions || []).map((def) => ({
+    id: def.id,
+    label: def.name,
+    unit: def.unit,
+    isCumulative: true,
+    isBoolean: false,
+    bg: 'bg-slate-100',
+    color: 'text-slate-700',
+    activeBg: 'bg-[#CEFF00]',
+    sort_direction: def.sort_direction
+  }));
+
+  const allPills = [...METRIC_PILLS, ...customPills];
+  const validSlugs = allPills.map((p) => p.id) as string[];
+  const rawMetric = params.metric ?? 'top_golf';
+  const activeMetric = validSlugs.includes(rawMetric) ? rawMetric : 'top_golf';
 
   const validRanges  = RANGE_OPTIONS.map((r) => r.value) as string[];
   const rawRange     = params.range ?? '7d';
   const activeRange  = validRanges.includes(rawRange) ? (rawRange as RangeValue) : '7d';
 
-  const activePill  = METRIC_PILLS.find((p) => p.id === activeMetric)!;
+  const activePill  = allPills.find((p) => p.id === activeMetric)!;
   const activeRangeLabel = RANGE_OPTIONS.find((r) => r.value === activeRange)?.label ?? 'Last 7 Days';
-
-  const supabase = await createClient();
 
   // ── Database Auto-Migration: transition long_run -> top_golf ──────────────────
   try {
@@ -229,11 +247,11 @@ export default async function DashboardPage({
         {/* ── Row 3: Controls Row (Range Selector + Add Activity) ─── */}
         <div className="flex items-center justify-between gap-2">
           <DateRangeSelector activeRange={activeRange} />
-          <AddActivityModal userId={userId} groupId={groupId} />
+          <AddActivityModal userId={userId} groupId={groupId} customPills={customPills} />
         </div>
 
         {/* ── Row 4: Horizontal Scrolling Metric Pill Selector ─────── */}
-        <MetricPillSelector activeMetric={activeMetric} />
+        <MetricPillSelector activeMetric={activeMetric} customPills={customPills} />
 
         {/* ── Group-ID Debug Banner (only when data is empty) ─────── */}
         {series.length === 0 && feedRows.length === 0 && (

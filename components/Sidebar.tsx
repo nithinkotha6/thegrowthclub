@@ -11,6 +11,7 @@ import {
   LogOut,
   Image,
   Watch,
+  Settings,
 } from 'lucide-react';
 import { logoutAction } from '@/app/actions/auth';
 
@@ -21,6 +22,7 @@ const NAV_ITEMS = [
   { icon: Users,           label: 'Gang',        href: '/dashboard/gang' },
   { icon: Watch,           label: 'Wearables',   href: '/dashboard/wearables' },
   { icon: Image,           label: 'Memories',    href: '/dashboard/memories' },
+  { icon: Settings,        label: 'Settings',    href: '/settings/metrics' },
   { icon: Trophy,          label: 'Challenges',  href: '#' },
   { icon: ShoppingBag,     label: 'Gear',        href: '#' },
 ];

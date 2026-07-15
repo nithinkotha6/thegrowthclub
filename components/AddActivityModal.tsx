@@ -17,18 +17,19 @@ import { logActivityManual, type DirectLogResult } from '@/app/actions/logDirect
 interface AddActivityModalProps {
   userId:  string;
   groupId: string;
+  customPills?: { id: string; label: string; unit: string }[];
 }
 
 type CombinedResult = IngestResult | DirectLogResult;
 
-export default function AddActivityModal({ userId, groupId }: AddActivityModalProps) {
+export default function AddActivityModal({ userId, groupId, customPills }: AddActivityModalProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<'ai' | 'manual'>('manual');
   const [isPending, startTransition] = useTransition();
 
   // Shared state
-  const [selectedMetric, setSelectedMetric] = useState<MetricSlug | ''>('');
+  const [selectedMetric, setSelectedMetric] = useState<string>('');
   const [result, setResult] = useState<CombinedResult | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -43,7 +44,8 @@ export default function AddActivityModal({ userId, groupId }: AddActivityModalPr
   const [manualSecs, setManualSecs] = useState('');
   const [manualCaption, setManualCaption] = useState('');
 
-  const activePill = METRIC_PILLS.find((p) => p.id === selectedMetric);
+  const allPills = [...METRIC_PILLS, ...(customPills || [])];
+  const activePill = allPills.find((p) => p.id === selectedMetric);
   const isEnduranceMetric = selectedMetric === 'underwater_swim';
 
   function handleOpen() {
@@ -124,7 +126,7 @@ export default function AddActivityModal({ userId, groupId }: AddActivityModalPr
     : !!selectedMetric && (isEnduranceMetric ? !!manualDistance.trim() : !!manualValue.trim());
 
   // Dynamic placeholders
-  const placeholderHints: Partial<Record<MetricSlug, string>> = {
+  const placeholderHints: Record<string, string> = {
     top_golf:       '"I hit a 275-yard drive at Top Golf today"',
     weight:         '"Weighed in at 185 lbs this morning"',
     highest_steps:  '"Walked 18,432 steps today"',
@@ -212,7 +214,7 @@ export default function AddActivityModal({ userId, groupId }: AddActivityModalPr
                 id="metric-select"
                 value={selectedMetric}
                 onChange={(e) => {
-                  setSelectedMetric(e.target.value as MetricSlug | '');
+                  setSelectedMetric(e.target.value);
                   setText('');
                   setManualValue('');
                   setManualDistance('');
@@ -225,7 +227,7 @@ export default function AddActivityModal({ userId, groupId }: AddActivityModalPr
                 className="w-full rounded-xl border border-[#E5E7EB] px-4 py-3 text-base text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-[#111827] disabled:opacity-50 min-h-[44px] appearance-none"
               >
                 <option value="">— Choose a metric —</option>
-                {METRIC_PILLS.filter(p => !p.id.startsWith('wearable_')).map((p) => (
+                {allPills.filter(p => !p.id.startsWith('wearable_')).map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.label}
                   </option>

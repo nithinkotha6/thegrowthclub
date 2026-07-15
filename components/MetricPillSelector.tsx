@@ -19,7 +19,8 @@ const PILL_EMOJIS: Record<string, string> = {
 };
 
 interface MetricPillSelectorProps {
-  activeMetric: MetricSlug;
+  activeMetric: string;
+  customPills?: { id: string; label: string; unit: string }[];
 }
 
 /**
@@ -28,16 +29,22 @@ interface MetricPillSelectorProps {
  * On click, pushes `?metric=<slug>` to the URL.
  * Spec: Features.md §3 — metric toggles drive chart re-fetch.
  */
-export default function MetricPillSelector({ activeMetric }: MetricPillSelectorProps) {
+export default function MetricPillSelector({ activeMetric, customPills }: MetricPillSelectorProps) {
   const router       = useRouter();
   const pathname     = usePathname();
   const searchParams = useSearchParams();
 
-  function select(slug: MetricSlug) {
+  function select(slug: string) {
     const params = new URLSearchParams(searchParams.toString());
     params.set('metric', slug);
     router.push(`${pathname}?${params.toString()}`);
   }
+
+  const allPills = [
+    ...METRIC_PILLS.filter(p => !p.id.startsWith('wearable_')),
+    ...(customPills || [])
+  ];
+
   return (
     <div
       className="flex gap-2 overflow-x-auto py-2 scrollbar-none"
@@ -45,7 +52,7 @@ export default function MetricPillSelector({ activeMetric }: MetricPillSelectorP
       role="group"
       aria-label="Metric selector"
     >
-      {METRIC_PILLS.filter(p => !p.id.startsWith('wearable_')).map(({ id, label }) => {
+      {allPills.map(({ id, label }) => {
         const isActive = id === activeMetric;
         const emoji    = PILL_EMOJIS[id] ?? '📊';
         return (

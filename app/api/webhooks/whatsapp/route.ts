@@ -77,12 +77,12 @@ export async function POST(req: Request) {
       body.messageData?.extendedTextMessageData?.text || 
       '';
 
-    // Trigger detection: match triggers ignoring punctuation, leading/trailing spaces, and case
-    const triggerRegex = /@(bot|ref)\b|\b(stats|leaderboard|who is winning)\b/i;
+    // Trigger detection: match triggers ignoring punctuation, leading/trailing spaces, and case (Pillar 1 Rebranding)
+    const triggerRegex = /@(bot|fisky)\b|\b(stats|leaderboard|who is winning)\b/i;
     const hasTrigger = triggerRegex.test(incomingMessage);
 
     if (!hasTrigger) {
-      return NextResponse.json({ ok: true, ignored: 'message does not target referee' });
+      return NextResponse.json({ ok: true, ignored: 'message does not target fisky' });
     }
 
     // Verbose logging of senderData structure (Pillar 2)
@@ -223,9 +223,13 @@ export async function POST(req: Request) {
       const senderName = body.senderData?.senderName || 'A group member';
       const promptText = `Message from ${senderName}: ${incomingMessage}`;
 
+      const lowerMsg = incomingMessage.toLowerCase();
+      const needsLink = lowerMsg.includes('link') || lowerMsg.includes('dashboard') || lowerMsg.includes('website') || lowerMsg.includes('how to log') || lowerMsg.includes('where to log');
+      const appUrl = needsLink ? (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000') : undefined;
+
       const result = await generateText({
         model: googleProvider('gemini-3.5-flash'),
-        system: buildGroupAssistantPrompt(dbContext),
+        system: buildGroupAssistantPrompt(dbContext, appUrl),
         prompt: promptText,
       });
       text = result.text;
@@ -235,7 +239,7 @@ export async function POST(req: Request) {
       const isRateLimit = errorStr.includes('429') || errorStr.includes('rate limit') || errorStr.includes('quota exceeded');
 
       if (isRateLimit) {
-        const fallbackMsg = `🤖 "Whoa, slow down guys! You're pinging the Referee too fast. Let me catch my breath—ask me again in 60 seconds."`;
+        const fallbackMsg = `🤖 "Whoa, slow down guys! You're pinging Fisky too fast. Let me catch my breath—ask me again in 60 seconds."`;
         await sendWhatsAppGroupMessage(fallbackMsg);
         return NextResponse.json({ ok: true, rateLimited: true });
       }

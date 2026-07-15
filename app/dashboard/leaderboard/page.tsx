@@ -35,13 +35,34 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
   const { groupId, userId } = session;
 
   // ── Search Parameter Resolution ─────────────────────────────────────────
+  const supabase = await createClient();
+
+  // Query custom dynamic metric definitions from database (Pillar 4)
+  const { data: dbDefinitions } = await supabase
+    .from('metric_definitions')
+    .select('*')
+    .order('created_at', { ascending: true });
+
+  const customMetrics = (dbDefinitions || []).map((def) => ({
+    id: def.id,
+    label: def.name,
+    unit: def.unit,
+    isCumulative: true,
+    sort_direction: def.sort_direction
+  }));
+
+  const allMetrics = [
+    ...LEADERBOARD_METRICS,
+    ...customMetrics
+  ];
+
   const params = await searchParams;
   const rawMetric = params.metric ?? 'top_golf';
-  const metricPill = LEADERBOARD_METRICS.find((m) => m.id === rawMetric) ?? LEADERBOARD_METRICS[0];
+  const metricPill = allMetrics.find((m) => m.id === rawMetric) ?? allMetrics[0];
   const activeMetric = metricPill.id;
 
   // ── Fetch Data from Supabase ────────────────────────────────────────────
-  const supabase = await createClient();
+
 
   // 1. Fetch group details for header display
   const { data: group } = await supabase
@@ -133,7 +154,7 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
     }
   }
 
-  const isLowerBetter = activeMetric === 'marathon';
+  const isLowerBetter = activeMetric === 'marathon' || (metricPill as any).sort_direction === 'asc';
 
   // Process logs, reducing each user's records to their best single score (or sum/count)
   for (const log of logs) {
@@ -213,7 +234,7 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
 
       {/* ── Metric Pill Selector ─────────────────────────────────────── */}
       <div className="flex items-center gap-2 overflow-x-auto py-2 scrollbar-hide max-w-full">
-        {LEADERBOARD_METRICS.map((m) => {
+        {allMetrics.map((m) => {
           const isSelected = activeMetric === m.id;
           return (
             <a

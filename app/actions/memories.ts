@@ -88,6 +88,49 @@ export async function uploadAndCreateMemoryAction(
       return { success: false, error: `Database insert failed: ${dbErr.message}` };
     }
 
+    // 6. Outbound WhatsApp Mirroring (Pillar 3)
+    const instanceId = process.env.GREEN_API_INSTANCE_ID;
+    const token = process.env.GREEN_API_TOKEN;
+    const waChatId = process.env.WHATSAPP_GROUP_ID;
+
+    if (instanceId && token && waChatId) {
+      try {
+        // Fetch the uploader's profile to resolve their name
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('nickname, full_name')
+          .eq('id', userId)
+          .single();
+
+        const uploaderName = profile?.nickname || profile?.full_name || 'Someone';
+        const cleanCaption = `"${uploaderName} added this picture to Memories:"`;
+
+        const mirrorUrl = `https://api.green-api.com/waInstance${instanceId}/sendFileByUrl/${token}`;
+        
+        // Non-blocking fire-and-forget fetch call
+        fetch(mirrorUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chatId: waChatId,
+            urlFile: publicUrl,
+            fileName: fileName,
+            caption: cleanCaption,
+          }),
+        }).then(res => {
+          if (!res.ok) {
+            console.error('[uploadAndCreateMemoryAction] Green API mirroring response status error:', res.status);
+          } else {
+            console.log('[uploadAndCreateMemoryAction] Green API mirroring successfully triggered.');
+          }
+        }).catch(err => {
+          console.error('[uploadAndCreateMemoryAction] Green API mirroring connection error:', err);
+        });
+      } catch (mirrorErr) {
+        console.error('[uploadAndCreateMemoryAction] Failed to trigger Green API mirror:', mirrorErr);
+      }
+    }
+
     revalidatePath('/', 'layout');
     return { success: true, memory: dbData };
   } catch (err: any) {
