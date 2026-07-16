@@ -90,6 +90,9 @@ export async function logActivityManual(
 
   const supabase = createAdminClient();
 
+  const isValidDateStr = loggedAtDate && /^\d{4}-\d{2}-\d{2}$/.test(loggedAtDate);
+  const loggedAt = isValidDateStr ? `${loggedAtDate}T12:00:00Z` : undefined;
+
   // Try inserting with caption, durationSeconds, and custom logged_at
   const { error: insertErr } = await supabase.from('metric_logs').insert({
     user_id:     userId,
@@ -100,7 +103,7 @@ export async function logActivityManual(
     status:      (metricSlug === 'car_top_speed' || metricSlug === 'most_beers') ? 'pending' : 'verified',
     caption:     caption || null,
     duration_seconds: durationSeconds || null,
-    logged_at:   loggedAtDate ? `${loggedAtDate}T12:00:00Z` : undefined,
+    logged_at:   loggedAt,
   });
 
   if (insertErr) {
@@ -114,7 +117,7 @@ export async function logActivityManual(
         value,
         unit,
         status:      (metricSlug === 'car_top_speed' || metricSlug === 'most_beers') ? 'pending' : 'verified',
-        logged_at:   loggedAtDate ? `${loggedAtDate}T12:00:00Z` : undefined,
+        logged_at:   loggedAt,
       });
 
       if (retryErr) {

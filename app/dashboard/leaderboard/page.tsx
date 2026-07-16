@@ -127,6 +127,7 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
       user_id,
       value,
       metric_slug,
+      logged_at,
       profiles!inner ( id, full_name, nickname, avatar_url, total_xp, current_level )
     `)
     .eq('group_id', groupId)
@@ -167,6 +168,7 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
     user_id: string;
     value: number;
     metric_slug: string;
+    logged_at: string;
     profiles: {
       id: string;
       full_name: string | null;
@@ -196,38 +198,74 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
 
   const isLowerBetter = activeMetric === 'marathon' || (metricPill as { sort_direction?: string }).sort_direction === 'asc';
 
-  // Process logs, reducing each user's records to their best single score (or sum/count)
-  for (const log of logs) {
-    const profile = log.profiles;
-    if (!profile) continue;
-
-    const existing = userMap.get(log.user_id);
-    const logValue = Number(log.value);
-
-    if (!existing) {
-      // In case a log is found for a user not explicitly returned in the members list
-      userMap.set(log.user_id, {
-        profile,
-        score: activeMetric === 'total_activities' ? 1 : logValue,
-        hasLogged: true,
-      });
-      continue;
+  if (activeMetric === 'weight') {
+    // Group logs by user
+    const userLogsMap = new Map<string, LogWithProfile[]>();
+    for (const log of logs) {
+      if (!userLogsMap.has(log.user_id)) {
+        userLogsMap.set(log.user_id, []);
+      }
+      userLogsMap.get(log.user_id)!.push(log);
     }
 
-    if (activeMetric === 'total_activities') {
-      existing.score = existing.hasLogged ? existing.score + 1 : 1;
-      existing.hasLogged = true;
-    } else if (metricPill.isCumulative) {
-      existing.score = existing.hasLogged ? existing.score + logValue : logValue;
-      existing.hasLogged = true;
-    } else {
-      if (!existing.hasLogged) {
-        existing.score = logValue;
+    for (const [userId, userLogs] of userLogsMap.entries()) {
+      if (userLogs.length === 0) continue;
+      // Sort user logs by logged_at ascending
+      userLogs.sort((a, b) => new Date(a.logged_at).getTime() - new Date(b.logged_at).getTime());
+      
+      const firstLog = userLogs[0];
+      const lastLog = userLogs[userLogs.length - 1];
+      const delta = Number(lastLog.value) - Number(firstLog.value);
+
+      const existing = userMap.get(userId);
+      if (existing) {
+        existing.score = delta;
         existing.hasLogged = true;
       } else {
-        existing.score = isLowerBetter
-          ? Math.min(existing.score, logValue)
-          : Math.max(existing.score, logValue);
+        const profile = firstLog.profiles;
+        if (profile) {
+          userMap.set(userId, {
+            profile,
+            score: delta,
+            hasLogged: true,
+          });
+        }
+      }
+    }
+  } else {
+    // Process logs, reducing each user's records to their best single score (or sum/count)
+    for (const log of logs) {
+      const profile = log.profiles;
+      if (!profile) continue;
+
+      const existing = userMap.get(log.user_id);
+      const logValue = Number(log.value);
+
+      if (!existing) {
+        // In case a log is found for a user not explicitly returned in the members list
+        userMap.set(log.user_id, {
+          profile,
+          score: activeMetric === 'total_activities' ? 1 : logValue,
+          hasLogged: true,
+        });
+        continue;
+      }
+
+      if (activeMetric === 'total_activities') {
+        existing.score = existing.hasLogged ? existing.score + 1 : 1;
+        existing.hasLogged = true;
+      } else if (metricPill.isCumulative) {
+        existing.score = existing.hasLogged ? existing.score + logValue : logValue;
+        existing.hasLogged = true;
+      } else {
+        if (!existing.hasLogged) {
+          existing.score = logValue;
+          existing.hasLogged = true;
+        } else {
+          existing.score = isLowerBetter
+            ? Math.min(existing.score, logValue)
+            : Math.max(existing.score, logValue);
+        }
       }
     }
   }

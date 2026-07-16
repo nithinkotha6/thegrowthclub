@@ -39,24 +39,40 @@ export function preloadAllSounds(): void {
 /**
  * Plays a preloaded audio file with zero latency using cloning.
  */
+const activeSounds: Record<string, HTMLAudioElement> = {};
+
 export function playAudio(filename: string): void {
   if (typeof window === 'undefined') return;
 
   try {
+    // If the sound is already playing, skip to prevent overlapping loops
+    if (activeSounds[filename]) {
+      const existing = activeSounds[filename];
+      if (!existing.paused && !existing.ended) {
+        console.log(`[playAudio] Sound "${filename}" is already active. Skipping duplicate overlap.`);
+        return;
+      }
+    }
+
     let audio = audioCache[filename];
     if (!audio) {
-      // Fallback in case preload hasn't completed or wasn't run
       audio = new Audio(`/sounds/${filename}`);
       audio.preload = 'auto';
       audioCache[filename] = audio;
     }
 
-    // Clone the cached audio node so multiple triggers don't interrupt each other
-    // and play instantly with 0ms delay.
     const soundToPlay = audio.cloneNode(true) as HTMLAudioElement;
+    activeSounds[filename] = soundToPlay;
+
     soundToPlay.play().catch((err) => {
       console.warn(`[playAudio] Playback blocked or interrupted for ${filename}:`, err.message);
     });
+
+    soundToPlay.onended = () => {
+      if (activeSounds[filename] === soundToPlay) {
+        delete activeSounds[filename];
+      }
+    };
   } catch (err) {
     console.error(`[playAudio] Failed to play audio file ${filename}:`, err);
   }

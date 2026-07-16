@@ -4,7 +4,7 @@ import { decodeSession, SESSION_COOKIE } from '@/lib/session';
 import { createAdminClient } from '@/lib/supabase/server';
 import Sidebar from '@/components/Sidebar';
 import MobileBottomNav from '@/components/MobileBottomNav';
-import SettingsClient, { type GroupMemberRow } from '@/components/SettingsClient';
+import SettingsClient, { type GroupMemberRow, type AdminLogItem } from '@/components/SettingsClient';
 import { getBotMuteStatus } from '@/app/actions/admin';
 
 export default async function SettingsPage() {
@@ -55,6 +55,23 @@ export default async function SettingsPage() {
     new Set((recentActiveLogs || []).map((l) => l.user_id))
   );
 
+  // Fetch all recent logs of the group for the God Mode Log Editor
+  const { data: recentLogsRaw } = await supabase
+    .from('metric_logs')
+    .select(`
+      id,
+      value,
+      unit,
+      metric_slug,
+      logged_at,
+      status,
+      user_id,
+      profiles!inner ( id, nickname, full_name )
+    `)
+    .eq('group_id', session.groupId)
+    .order('logged_at', { ascending: false })
+    .limit(100);
+
   return (
     <div className="flex min-h-screen">
       <Sidebar
@@ -74,6 +91,7 @@ export default async function SettingsPage() {
           initialMembers={(membersRaw || []) as unknown as GroupMemberRow[]}
           initialBotMuted={botMuted}
           activeUserIdsInLast7Days={activeUserIdsInLast7Days}
+          initialLogs={(recentLogsRaw || []) as unknown as AdminLogItem[]}
         />
       </main>
       <MobileBottomNav />

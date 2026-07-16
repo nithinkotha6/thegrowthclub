@@ -286,15 +286,30 @@ export default async function DashboardPage({
 
 async function PeerReviewBellWrapper({ groupId, userId }: { groupId: string; userId: string }) {
   const supabase = createAdminClient();
-  const { count } = await supabase
+  
+  // Fetch pending logs for the group excluding the user's own
+  const { data: pendingLogs } = await supabase
     .from('metric_logs')
-    .select('*', { count: 'exact', head: true })
+    .select('id')
     .eq('group_id', groupId)
     .eq('status', 'pending')
     .neq('user_id', userId);
 
+  let activeCount = 0;
+  if (pendingLogs && pendingLogs.length > 0) {
+    const logIds = pendingLogs.map((l) => l.id);
+    const { data: myVotes } = await supabase
+      .from('log_votes')
+      .select('log_id')
+      .in('log_id', logIds)
+      .eq('user_id', userId);
+
+    const votedLogIds = new Set((myVotes || []).map((v) => v.log_id));
+    activeCount = pendingLogs.filter((l) => !votedLogIds.has(l.id)).length;
+  }
+
   return (
-    <PeerReviewModal count={count || 0}>
+    <PeerReviewModal count={activeCount}>
       <VotingPanel groupId={groupId} userId={userId} />
     </PeerReviewModal>
   );

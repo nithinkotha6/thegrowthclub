@@ -56,6 +56,7 @@ export default function LandingPage() {
   const [signUpGender, setSignUpGender] = useState('Prefer not to say');
   const [signUpError, setSignUpError]   = useState<string | null>(null);
   const [hasPlayedNameAudio, setHasPlayedNameAudio] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Success welcome animation state
   const [loggedInUser, setLoggedInUser] = useState<{ name: string; avatarUrl?: string | null } | null>(null);
@@ -113,29 +114,34 @@ export default function LandingPage() {
   /* ── Submit Handlers ────────────────────────────────────────────────── */
 
   const triggerLoginSubmit = useCallback((groupId: string, pin: string) => {
-    if (isPending) return;
+    if (isPending || isSubmitting) return;
+    setIsSubmitting(true);
     setLoginError(null);
 
     startTransition(async () => {
-      const result = await loginWithPersonalPinAction(groupId, pin);
-      if (result.success) {
-        playAudio('login.mp3');
-        setLoggedInUser({ name: result.userName, avatarUrl: result.avatarUrl });
-        setTimeout(() => {
-          router.push('/dashboard');
-        }, 2500);
-      } else {
-        playAudio('error.mp3');
-        setLoginError('Incorrect PIN. Try again.');
-        setLoginPin('');
-        // Refocus the input
-        const pinInput = document.getElementById('login-pin-input') as HTMLInputElement | null;
-        if (pinInput) {
-          pinInput.focus();
+      try {
+        const result = await loginWithPersonalPinAction(groupId, pin);
+        if (result.success) {
+          playAudio('login.mp3');
+          setLoggedInUser({ name: result.userName, avatarUrl: result.avatarUrl });
+          setTimeout(() => {
+            router.push('/dashboard');
+          }, 2500);
+        } else {
+          playAudio('error.mp3');
+          setLoginError('Incorrect PIN. Try again.');
+          setLoginPin('');
+          // Refocus the input
+          const pinInput = document.getElementById('login-pin-input') as HTMLInputElement | null;
+          if (pinInput) {
+            pinInput.focus();
+          }
         }
+      } finally {
+        setIsSubmitting(false);
       }
     });
-  }, [isPending, router]);
+  }, [isPending, isSubmitting, router]);
 
   function handleLoginSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -145,50 +151,58 @@ export default function LandingPage() {
 
   // Auto-Submit PIN Listener
   useEffect(() => {
-    if (loginPin.length === 4 && selectedGroup && !isPending) {
+    if (loginPin.length === 4 && selectedGroup && !isPending && !isSubmitting) {
       const tid = setTimeout(() => {
         triggerLoginSubmit(selectedGroup.id, loginPin);
       }, 0);
       return () => clearTimeout(tid);
     }
-  }, [loginPin, selectedGroup, isPending, triggerLoginSubmit]);
+  }, [loginPin, selectedGroup, isPending, isSubmitting, triggerLoginSubmit]);
 
   function handleSignUpSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (isPending || isSubmitting) return;
+    setIsSubmitting(true);
     setSignUpError(null);
 
     if (!signUpPhone.trim()) {
       playAudio('who-are-you.mp3');
       setSignUpError('Phone Number is required.');
+      setIsSubmitting(false);
       return;
     }
 
     if (signUpPin.length !== 4) {
       playAudio('who-are-you.mp3');
       setSignUpError('PIN must be exactly 4 digits.');
+      setIsSubmitting(false);
       return;
     }
 
     startTransition(async () => {
-      const result = await signUpAction(
-        signUpInvite,
-        signUpName,
-        signUpNickname,
-        signUpEmail,
-        signUpPin,
-        signUpPhone,
-        signUpGender
-      );
+      try {
+        const result = await signUpAction(
+          signUpInvite,
+          signUpName,
+          signUpNickname,
+          signUpEmail,
+          signUpPin,
+          signUpPhone,
+          signUpGender
+        );
 
-      if (result.success) {
-        playAudio('thanks-a-lot.mp3');
-        setLoggedInUser({ name: result.userName, avatarUrl: result.avatarUrl });
-        setTimeout(() => {
-          router.push('/dashboard');
-        }, 2500);
-      } else {
-        playAudio('who-are-you.mp3');
-        setSignUpError(result.error);
+        if (result.success) {
+          playAudio('thanks-a-lot.mp3');
+          setLoggedInUser({ name: result.userName, avatarUrl: result.avatarUrl });
+          setTimeout(() => {
+            router.push('/dashboard');
+          }, 2500);
+        } else {
+          playAudio('who-are-you.mp3');
+          setSignUpError(result.error);
+        }
+      } finally {
+        setIsSubmitting(false);
       }
     });
   }
@@ -203,12 +217,12 @@ export default function LandingPage() {
         <Confetti />
         
         <div className="text-center flex flex-col items-center gap-4 animate-in fade-in zoom-in duration-500">
-          <div className="relative w-24 h-24 rounded-full border-4 border-[#CEFF00] bg-zinc-900 shadow-2xl overflow-hidden p-0.5 animate-bounce">
+          <div className="relative w-[115px] h-[115px] rounded-full border-4 border-[#CEFF00] bg-zinc-900 shadow-2xl overflow-hidden p-0.5 animate-bounce">
             <Image
               src={userImgSrc}
               alt={loggedInUser.name}
-              width={96}
-              height={96}
+              width={115}
+              height={115}
               className="w-full h-full object-cover rounded-full"
               unoptimized
             />

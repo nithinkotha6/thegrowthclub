@@ -77,10 +77,22 @@ export default async function VotingPanel({
 
   const myVotedSet = new Set((myVotes ?? []).map((v) => v.log_id));
 
-  const pending: PendingLog[] = logs.map((l) => ({
-    ...l,
-    vote_count: voteCounts[l.id] ?? 0,
-  }));
+  const pending: PendingLog[] = logs
+    .map((l) => ({
+      ...l,
+      vote_count: voteCounts[l.id] ?? 0,
+    }))
+    .filter((l) => !myVotedSet.has(l.id));
+
+  if (pending.length === 0) {
+    return (
+      <div className="text-center py-10 flex flex-col items-center justify-center gap-2 select-none bg-slate-50 border border-slate-100 rounded-2xl">
+        <span className="text-3xl">🎉</span>
+        <p className="text-sm font-extrabold text-[#111827] uppercase tracking-wider text-[10px]">All caught up!</p>
+        <p className="text-xs text-slate-400">No activities pending your peer review.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-[24px] bg-white shadow-[0_2px_10px_rgba(0,0,0,0.04)] p-6">

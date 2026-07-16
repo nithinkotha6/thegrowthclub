@@ -176,3 +176,53 @@ Keep it under 60 words. Use emojis. Do not use hashtags or markdown formatting (
     return { success: false, error: errMsg };
   }
 }
+
+/* ── God Mode Log Editor Actions ────────────────────────────────────────── */
+
+export async function adminEditLog(logId: string, newValue: number) {
+  try {
+    const supabase = createAdminClient();
+    const { error } = await supabase
+      .from('metric_logs')
+      .update({ value: newValue })
+      .eq('id', logId);
+
+    if (error) throw error;
+    return { success: true };
+  } catch (err) {
+    console.error('[adminEditLog] Error editing log:', err);
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export async function adminVerifyLog(logId: string) {
+  try {
+    const supabase = createAdminClient();
+    const { error } = await supabase
+      .from('metric_logs')
+      .update({ status: 'verified' })
+      .eq('id', logId);
+
+    if (error) throw error;
+    return { success: true };
+  } catch (err) {
+    console.error('[adminVerifyLog] Error verifying log:', err);
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export async function adminDeleteLog(logId: string) {
+  try {
+    const supabase = createAdminClient();
+    const { error } = await supabase
+      .from('metric_logs')
+      .delete()
+      .eq('id', logId);
+
+    if (error) throw error;
+    return { success: true };
+  } catch (err) {
+    console.error('[adminDeleteLog] Error deleting log:', err);
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}

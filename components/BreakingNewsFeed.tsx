@@ -115,14 +115,21 @@ function BreakingNewsFeed({ items, currentUserId }: BreakingNewsFeedProps) {
                         <span className="text-[11px] text-[#9CA3AF] tabular-nums">
                           {item.relativeTime}
                         </span>
-                        {isPending && (
+                        {isPending ? (
                           <>
                             <span className="text-slate-300 select-none text-[10px]">•</span>
-                            <span className="inline-flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wide bg-[#FEF3C7] text-[#92400E] rounded-full px-1.5 py-0.2 select-none">
+                            <span className="inline-flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wide bg-[#FEF3C7] text-[#92400E] rounded-full px-1.5 py-0.2 select-none animate-pulse">
                               ⏳ Pending
                             </span>
                           </>
-                        )}
+                        ) : item.status === 'verified' ? (
+                          <>
+                            <span className="text-slate-300 select-none text-[10px]">•</span>
+                            <span className="inline-flex items-center gap-0.5 text-[9px] font-black uppercase tracking-wide bg-[#EAFCDB] text-[#166534] rounded-full px-1.5 py-0.2 select-none animate-in fade-in zoom-in duration-300">
+                              ✅ Verified
+                            </span>
+                          </>
+                        ) : null}
                       </div>
                     </div>
                   </div>

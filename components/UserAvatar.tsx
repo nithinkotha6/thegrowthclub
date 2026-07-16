@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 
 interface UserAvatarProps {
@@ -73,12 +73,10 @@ export default function UserAvatar({ user, size = 'md', className = '', borderCo
   // Resolved image src: db url → static path → null (show initials)
   const imgSrc = isDbUrlValid ? dbUrl : staticPath;
 
-  const [prevImgSrc, setPrevImgSrc] = useState<string | null>(null);
-  if (imgSrc !== prevImgSrc) {
-    setPrevImgSrc(imgSrc);
+  useEffect(() => {
     setImgError(false);
     setLoaded(false);
-  }
+  }, [imgSrc]);
 
   const showImage = !!imgSrc && !imgError;
 
@@ -95,20 +93,21 @@ export default function UserAvatar({ user, size = 'md', className = '', borderCo
       style={borderStyles}
       aria-label={displayName}
     >
-      {showImage ? (
+      {showImage && (
         <Image
           src={imgSrc!}
           alt={displayName}
           width={SIZE_NUMBERS[size]}
           height={SIZE_NUMBERS[size]}
           priority={priority}
-          className={`w-full h-full object-cover transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`}
+          className={`w-full h-full object-cover absolute inset-0 transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`}
           onLoad={() => setLoaded(true)}
           onError={() => setImgError(true)}
           unoptimized
         />
-      ) : (
-        <span className="tracking-tight">{initials}</span>
+      )}
+      {(!loaded || !showImage) && (
+        <span className="tracking-tight absolute inset-0 flex items-center justify-center bg-zinc-800 text-[#CEFF00]">{initials}</span>
       )}
     </div>
   );
