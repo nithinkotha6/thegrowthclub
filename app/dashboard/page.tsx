@@ -105,12 +105,26 @@ export default async function DashboardPage({
   const params = await searchParams;
   const supabase = createAdminClient();
 
-  // Query custom dynamic metric definitions from database (Pillar 4)
-  const { data: dbDefinitions } = await supabase
+  // Query custom dynamic metric definitions from database defensively (Pillar 4)
+  let dbDefinitions = null;
+  const { data: activeDefinitions, error: hideQueryErr } = await supabase
     .from('metric_definitions')
     .select('*')
     .eq('group_id', groupId)
+    .eq('is_hidden', false)
     .order('created_at', { ascending: true });
+
+  if (hideQueryErr) {
+    console.warn('[dashboard] Failed to query with is_hidden filter (migration might be pending), falling back to full list.');
+    const { data: fallbackDefinitions } = await supabase
+      .from('metric_definitions')
+      .select('*')
+      .eq('group_id', groupId)
+      .order('created_at', { ascending: true });
+    dbDefinitions = fallbackDefinitions;
+  } else {
+    dbDefinitions = activeDefinitions;
+  }
 
   const customPills = (dbDefinitions || []).map((def) => ({
     id: def.id,

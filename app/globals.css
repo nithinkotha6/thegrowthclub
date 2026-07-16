@@ -46,6 +46,14 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  
+  /* Cyber-athletic god colors theme */
+  --color-god-black: #091819;
+  --color-god-blue: #21565C;
+  --color-god-orange: #CE5100;
+  --color-god-silver: #B5B0B3;
+  --color-god-red: #d84315;
+  --color-god-green: #4caf50;
 }
 
 :root {

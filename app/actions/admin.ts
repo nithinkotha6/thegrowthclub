@@ -121,7 +121,7 @@ export async function adminRemoveMember(userId: string, groupId: string) {
 }
 
 // F. Trigger Poke/Roast Motivation
-export async function adminTriggerPoke(userId: string, groupId: string, tone: string, genderStyle: string = 'auto') {
+export async function adminTriggerPoke(userId: string, groupId: string, tone: string, genderStyle: string = 'auto', customContext?: string) {
   try {
     const supabase = createAdminClient(groupId);
 
@@ -232,6 +232,10 @@ export async function adminTriggerPoke(userId: string, groupId: string, tone: st
       ? `\nYou MUST naturally incorporate one or more of these routed friendly-insult/banter expressions: ${slangWords.map(s => `"${s}"`).join(', ')}`
       : '';
 
+    const contextInstruction = customContext && customContext.trim() !== ''
+      ? `\nADDITIONAL SITUATIONAL CONTEXT (MUST address this in your message): "${customContext.trim()}"`
+      : '';
+
     // Call Gemini
     const promptText = `Act as @fisky, the witty and trendy Gen-Z AI Referee for a Telugu fitness group.
 Write a short, punchy WhatsApp message to "${userName}" in a strictly "${tone}" vibe/tone.
@@ -239,7 +243,7 @@ The target user's gender-style is "${resolvedGender}".
 
 Rules:
 1. The message MUST be written in conversational Romanized Telugu (Telugu words spelled out using English alphabet / Latin characters, e.g., "enti bro", "em chestunnav", "workout ekkada?"), mixed with fun Telugu slang and Gen-Z humor.
-2. Under appropriate tones, unleash Tollywood pop culture humor, movie dialogues, or star actor style references. You are STRICTLY FORBIDDEN from using repetitive "Baahubali", "RRR", "Pushpa", or "Thaggedhele" references. Instead, dynamically rotate or reference new-age Hyderabadi cinema (DJ Tillu, Tharun Bhascker vibes, "Atluntadi manatho", "Radhika level deception"), classic comedy expressions (Brahmanandam, Sunil style, "Antha scene ledu", "Evadra nuvvu..."), or movie punch dialogue parodies (Balayya, Trivikram style parodies). ${loreInstruction}${slangInstruction}
+2. Under appropriate tones, unleash Tollywood pop culture humor, movie dialogues, or star actor style references. You are STRICTLY FORBIDDEN from using repetitive "Baahubali", "RRR", "Pushpa", or "Thaggedhele" references. Instead, dynamically rotate or reference new-age Hyderabadi cinema (DJ Tillu, Tharun Bhascker vibes, "Atluntadi manatho", "Radhika level deception"), classic comedy expressions (Brahmanandam, Sunil style, "Antha scene ledu", "Evadra nuvvu..."), or movie punch dialogue parodies (Balayya, Trivikram style parodies). ${loreInstruction}${slangInstruction}${contextInstruction}
 3. If a gang nemesis is listed above, mention them or compare target to them in a funny way.
 4. Keep the message under 60 words. Use emojis. Do not use hashtags or markdown formatting (no bold/italics). Just return the plain text.`;
 
@@ -345,6 +349,22 @@ export async function adminToggleUserActive(targetUserId: string, isActive: bool
     return { success: true };
   } catch (err) {
     console.error('[adminToggleUserActive] Error:', err);
+    return { success: false, error: getErrorMessage(err) };
+  }
+}
+
+export async function adminHardDeleteUser(targetUserId: string, groupId?: string) {
+  try {
+    const supabase = createAdminClient(groupId);
+    const { error } = await supabase
+      .from('profiles')
+      .delete()
+      .eq('id', targetUserId);
+
+    if (error) throw error;
+    return { success: true };
+  } catch (err) {
+    console.error('[adminHardDeleteUser] Error:', err);
     return { success: false, error: getErrorMessage(err) };
   }
 }

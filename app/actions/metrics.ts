@@ -120,3 +120,27 @@ export async function adminDeleteMetricDefinition(id: string) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
+
+export async function adminToggleMetricHidden(id: string, isHidden: boolean) {
+  try {
+    const supabase = createAdminClient();
+    const { error } = await supabase
+      .from('metric_definitions')
+      .update({ is_hidden: isHidden })
+      .eq('id', id);
+
+    if (error) {
+      if (error.message.toLowerCase().includes('is_hidden')) {
+        return { success: false, error: 'Database column is_hidden is missing. Please run the SQL migration (0015_add_is_hidden_to_metrics.sql) first.' };
+      }
+      throw error;
+    }
+    revalidatePath('/settings/metrics');
+    revalidatePath('/dashboard');
+    revalidatePath('/dashboard/leaderboard');
+    return { success: true };
+  } catch (err) {
+    console.error('[adminToggleMetricHidden] Error:', err);
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}

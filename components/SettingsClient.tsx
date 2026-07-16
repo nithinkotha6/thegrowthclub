@@ -5,7 +5,8 @@ import {
   createMetricDefinition,
   adminFetchMetricDefinitions,
   adminUpdateMetricDefinition,
-  adminDeleteMetricDefinition
+  adminDeleteMetricDefinition,
+  adminToggleMetricHidden
 } from '@/app/actions/metrics';
 import { 
   adminResetPin, 
@@ -15,6 +16,7 @@ import {
   adminVerifyLog,
   adminDeleteLog,
   adminToggleUserActive,
+  adminHardDeleteUser,
   adminFetchAllLore,
   adminUpsertMemberLore,
   adminFetchVocabBanks,
@@ -107,6 +109,7 @@ export default function SettingsClient({
   const [toneSelectedUser, setToneSelectedUser] = useState('');
   const [toneFeedback, setToneFeedback] = useState<{ success: boolean; message: string } | null>(null);
   const [selectedGenderStyle, setSelectedGenderStyle] = useState('auto');
+  const [customContext, setCustomContext] = useState('');
 
   // AI Brain Editor (Module F) & User Manager (Module G) States
   const [loreList, setLoreList] = useState<any[]>([]);
@@ -261,6 +264,23 @@ export default function SettingsClient({
     }
   };
 
+  const handleHardDeleteUser = async (targetUserId: string) => {
+    if (!window.confirm('WARNING: Permanent SQL delete of this user will purge their entire profile and metrics history from the database! This action CANNOT be undone. Are you sure you want to proceed?')) return;
+    setIsSubmittingAdmin(true);
+    setAdminStatus(null);
+    const res = await adminHardDeleteUser(targetUserId, session.groupId);
+    setIsSubmittingAdmin(false);
+    if (res.success) {
+      setMembers((prev) => prev.filter((m) => m.profiles?.id !== targetUserId));
+      setAdminStatus({
+        success: true,
+        message: 'User permanently deleted from database (Hard Drop).',
+      });
+    } else {
+      setAdminStatus({ success: false, message: res.error || 'Failed to hard delete user.' });
+    }
+  };
+
   const handleLoreUserChange = (uId: string) => {
     setLoreEditorUser(uId);
     setLoreFeedback(null);
@@ -411,6 +431,27 @@ export default function SettingsClient({
     }
   };
 
+  const handleToggleMetricHidden = async (id: string, currentHidden: boolean) => {
+    setIsSubmittingAdmin(true);
+    setMetricFeedback(null);
+    const targetHidden = !currentHidden;
+    const res = await adminToggleMetricHidden(id, targetHidden);
+    setIsSubmittingAdmin(false);
+    if (res.success) {
+      setMetricDefinitions((prev) =>
+        prev.map((m) =>
+          m.id === id ? { ...m, is_hidden: targetHidden } : m
+        )
+      );
+      setMetricFeedback({
+        success: true,
+        message: `Metric visibility updated successfully to ${targetHidden ? 'Hidden' : 'Visible'}.`,
+      });
+    } else {
+      setMetricFeedback({ success: false, message: res.error || 'Failed to toggle metric visibility.' });
+    }
+  };
+
   // Filter logs based on search query
   const filteredLogs = logs.filter((log) => {
     // Text search
@@ -430,34 +471,34 @@ export default function SettingsClient({
   });
 
   return (
-    <div className="flex flex-col gap-6 px-4 md:px-8 pt-6 pb-24">
+    <div className="flex flex-col gap-6 px-4 md:px-8 pt-6 pb-24 bg-god-black min-h-screen text-slate-100">
       {/* Page Header */}
       <header>
-        <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tight text-[#111827] leading-none flex items-center gap-3">
-          <Sliders className="text-[#CEFF00] w-10 h-10 stroke-[2.5]" />
+        <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tight text-slate-100 leading-none flex items-center gap-3">
+          <Sliders className="text-god-orange w-10 h-10 stroke-[2.5]" />
           Metric Settings
         </h1>
-        <p className="mt-2 text-[11px] font-bold tracking-[0.18em] text-[#6B7280] uppercase">
+        <p className="mt-2 text-[11px] font-bold tracking-[0.18em] text-god-silver uppercase">
           Dynamic Trackers · Customize Target KPI Metrics
         </p>
         <svg width="250" height="14" viewBox="0 0 250 14" fill="none" aria-hidden="true" className="mt-1">
-          <path d="M2 10 C35 3, 80 13, 120 7 S180 2, 248 6" stroke="#CEFF00" strokeWidth="2.8" strokeLinecap="round" fill="none" />
+          <path d="M2 10 C35 3, 80 13, 120 7 S180 2, 248 6" stroke="#CE5100" strokeWidth="2.8" strokeLinecap="round" fill="none" />
         </svg>
       </header>
 
       <div className="max-w-2xl mx-auto w-full">
         {/* Creation Form */}
-        <section className="bg-white rounded-[24px] border border-slate-200/60 shadow-[0_8px_30px_rgba(0,0,0,0.04)] p-6 md:p-8 flex flex-col gap-4">
-          <h2 className="text-lg font-black text-gray-900 tracking-tight flex items-center gap-2">
+        <section className="bg-god-black/80 rounded-[24px] border border-god-blue shadow-[0_8px_30px_rgba(0,0,0,0.3)] p-6 md:p-8 flex flex-col gap-4">
+          <h2 className="text-lg font-black text-slate-100 tracking-tight flex items-center gap-2">
             Create Custom Metric
           </h2>
-          <p className="text-slate-500 text-xs">
+          <p className="text-god-silver text-xs">
             Add a new metric like &quot;Pushups&quot; or &quot;Book Pages&quot;. New metrics immediately integrate with the dynamic dashboard selectors and leaderboard scores.
           </p>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4 mt-2">
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="metric-name" className="text-xs font-bold text-[#6B7280] uppercase tracking-wider block">
+              <label htmlFor="metric-name" className="text-xs font-bold text-god-silver uppercase tracking-wider block">
                 Metric Name
               </label>
               <input
@@ -468,12 +509,12 @@ export default function SettingsClient({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Pushups, Book Pages, Water Intake"
-                className="w-full rounded-xl border border-[#E5E7EB] px-4 py-3 text-base text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-[#111827] disabled:opacity-50 min-h-[44px]"
+                className="w-full rounded-xl border border-god-blue px-4 py-3 text-base text-slate-100 bg-god-black focus:outline-none focus:ring-1 focus:ring-god-orange placeholder-slate-600 disabled:opacity-50 min-h-[44px]"
               />
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="metric-unit" className="text-xs font-bold text-[#6B7280] uppercase tracking-wider block">
+              <label htmlFor="metric-unit" className="text-xs font-bold text-god-silver uppercase tracking-wider block">
                 Measurement Unit
               </label>
               <input
@@ -484,12 +525,12 @@ export default function SettingsClient({
                 value={unit}
                 onChange={(e) => setUnit(e.target.value)}
                 placeholder="e.g. Reps, Pages, Liters, Miles"
-                className="w-full rounded-xl border border-[#E5E7EB] px-4 py-3 text-base text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-[#111827] disabled:opacity-50 min-h-[44px]"
+                className="w-full rounded-xl border border-god-blue px-4 py-3 text-base text-slate-100 bg-god-black focus:outline-none focus:ring-1 focus:ring-god-orange placeholder-slate-600 disabled:opacity-50 min-h-[44px]"
               />
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="metric-sort" className="text-xs font-bold text-[#6B7280] uppercase tracking-wider block">
+              <label htmlFor="metric-sort" className="text-xs font-bold text-god-silver uppercase tracking-wider block">
                 Leaderboard Sort Order
               </label>
               <select
@@ -497,20 +538,20 @@ export default function SettingsClient({
                 value={sortDirection}
                 onChange={(e) => setSortDirection(e.target.value as 'asc' | 'desc')}
                 disabled={isPending}
-                className="w-full rounded-xl border border-[#E5E7EB] px-4 py-3 text-base text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-[#111827] disabled:opacity-50 min-h-[44px] appearance-none"
+                className="w-full rounded-xl border border-god-blue px-4 py-3 text-base text-slate-100 bg-god-black focus:outline-none focus:ring-1 focus:ring-god-orange disabled:opacity-50 min-h-[44px] appearance-none"
               >
-                <option value="desc">Higher is Better (Descending - e.g. reps, speed)</option>
-                <option value="asc">Lower is Better (Ascending - e.g. time, weight loss)</option>
+                <option value="desc" className="bg-god-black text-slate-100">Higher is Better (Descending - e.g. reps, speed)</option>
+                <option value="asc" className="bg-god-black text-slate-100">Lower is Better (Ascending - e.g. time, weight loss)</option>
               </select>
             </div>
 
             {status && (
               <div
                 className={[
-                  'flex items-start gap-2.5 rounded-xl px-4 py-3 text-sm mt-1',
+                  'flex items-start gap-2.5 rounded-xl px-4 py-3 text-sm mt-1 border',
                   status.success
-                    ? 'bg-[#EAFCDB] text-[#166534]'
-                    : 'bg-[#FFE5E5] text-[#991B1B]',
+                    ? 'bg-god-green/10 border-god-green/30 text-god-green'
+                    : 'bg-god-red/10 border-god-red/30 text-god-red',
                 ].join(' ')}
                 role="status"
               >
@@ -526,7 +567,7 @@ export default function SettingsClient({
             <button
               type="submit"
               disabled={isPending || !name.trim() || !unit.trim()}
-              className="w-full bg-[#111827] hover:bg-black text-white text-xs font-bold py-3.5 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40 transition"
+              className="w-full bg-god-orange hover:bg-god-orange/90 text-white text-xs font-bold py-3.5 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40 transition"
             >
               {isPending ? (
                 <>
@@ -545,15 +586,15 @@ export default function SettingsClient({
       </div>
 
       {/* God Mode Administration Console */}
-      <hr className="border-slate-200 my-4" />
+      <hr className="border-god-blue my-4" />
 
-      <section className="bg-amber-950/10 border border-amber-500/30 rounded-[24px] shadow-[0_8px_30px_rgba(0,0,0,0.02)] p-6 md:p-8 flex flex-col gap-5 hover:border-amber-500/40 transition-all duration-200">
+      <section className="bg-god-black/80 border border-god-blue rounded-[24px] shadow-[0_8px_30px_rgba(0,0,0,0.3)] p-6 md:p-8 flex flex-col gap-5 hover:border-god-blue/80 transition-all duration-200 text-slate-100">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h2 className="text-xl font-black text-gray-900 tracking-tight flex items-center gap-2 uppercase">
+            <h2 className="text-xl font-black text-slate-100 tracking-tight flex items-center gap-2 uppercase">
               👑 God Mode Administration
             </h2>
-            <p className="text-slate-500 text-xs">
+            <p className="text-god-silver text-xs">
               Emergency room overrides, kiosk credential resets, and AI webhook control.
             </p>
           </div>
@@ -563,7 +604,7 @@ export default function SettingsClient({
                 sessionStorage.removeItem('god_mode_unlocked');
                 setUnlocked(false);
               }}
-              className="text-xs font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition"
+              className="text-xs font-bold text-god-red hover:text-white bg-god-red/10 hover:bg-god-red border border-god-red/20 px-3 py-1.5 rounded-lg transition cursor-pointer"
             >
               Lock Console
             </button>
@@ -573,10 +614,10 @@ export default function SettingsClient({
         {adminStatus && (
           <div
             className={[
-              'flex items-start gap-2.5 rounded-xl px-4 py-3 text-sm',
+              'flex items-start gap-2.5 rounded-xl px-4 py-3 text-sm border',
               adminStatus.success
-                ? 'bg-[#EAFCDB] text-[#166534] border border-[#166534]/10'
-                : 'bg-[#FFE5E5] text-[#991B1B] border border-[#991B1B]/10',
+                ? 'bg-god-green/10 border-god-green/30 text-god-green'
+                : 'bg-god-red/10 border-god-red/30 text-god-red',
             ].join(' ')}
           >
             {adminStatus.success ? (
@@ -605,7 +646,7 @@ export default function SettingsClient({
             className="flex flex-col sm:flex-row gap-3 items-end max-w-md mt-2"
           >
             <div className="flex-1 flex flex-col gap-1.5 w-full">
-              <label className="text-xs font-bold text-[#6B7280] uppercase tracking-wider block">
+              <label className="text-xs font-bold text-god-silver uppercase tracking-wider block">
                 Enter Master Password
               </label>
               <input
@@ -614,17 +655,17 @@ export default function SettingsClient({
                 value={pinInput}
                 onChange={(e) => setPinInput(e.target.value)}
                 placeholder="••••••"
-                className="w-full rounded-xl border border-[#E5E7EB] px-4 py-3 text-base text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-[#111827] min-h-[44px]"
+                className="w-full rounded-xl border border-god-blue px-4 py-3 text-base text-slate-100 bg-god-black focus:outline-none focus:ring-1 focus:ring-god-orange placeholder-slate-600 min-h-[44px]"
               />
             </div>
             <button
               type="submit"
-              className="bg-black hover:bg-zinc-900 text-white font-bold text-sm px-6 py-3 rounded-xl transition min-h-[44px] cursor-pointer w-full sm:w-auto"
+              className="bg-god-orange hover:bg-god-orange/90 text-white font-bold text-sm px-6 py-3 rounded-xl transition min-h-[44px] cursor-pointer w-full sm:w-auto"
             >
               Unlock Console
             </button>
             {pinUnlockError && (
-              <p className="text-xs text-red-600 font-bold mt-1 block w-full">{pinUnlockError}</p>
+              <p className="text-xs text-god-red font-bold mt-1 block w-full">{pinUnlockError}</p>
             )}
           </form>
         ) : (
@@ -635,15 +676,15 @@ export default function SettingsClient({
             <div className="flex flex-col gap-6">
               
               {/* Module C: AI Webhook Kill Switch */}
-              <div className="bg-emerald-950/10 border border-emerald-500/20 rounded-2xl p-5 flex flex-col gap-3 hover:border-emerald-500/40 transition-all duration-200">
-                <h3 className="text-sm font-black text-gray-900 uppercase tracking-wider">
+              <div className="bg-god-black/80 border border-god-blue rounded-2xl p-5 flex flex-col gap-3 hover:border-god-blue/80 transition-all duration-200">
+                <h3 className="text-sm font-black text-slate-100 uppercase tracking-wider">
                   AI Bot Control Switch
                 </h3>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-god-silver">
                   Toggle to mute or unmute @fisky from responding to WhatsApp messages in this group.
                 </p>
-                <div className="flex items-center justify-between bg-white border border-slate-200/60 rounded-xl p-3.5 mt-1">
-                  <span className="text-xs font-bold text-slate-700">Mute @fisky WhatsApp Webhook</span>
+                <div className="flex items-center justify-between bg-god-black border border-god-blue rounded-xl p-3.5 mt-1">
+                  <span className="text-xs font-bold text-slate-100">Mute @fisky WhatsApp Webhook</span>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input
                       type="checkbox"
@@ -669,17 +710,17 @@ export default function SettingsClient({
                         }
                       }}
                     />
-                    <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                    <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-500 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-god-red"></div>
                   </label>
                 </div>
               </div>
 
-              {/* Module A: 4-Digit Kiosk PIN Reset Tool */}
-              <div className="bg-blue-950/10 border border-blue-500/20 rounded-2xl p-5 flex flex-col gap-4 hover:border-blue-500/40 transition-all duration-200">
-                <h3 className="text-sm font-black text-gray-900 uppercase tracking-wider">
+              {/* Kiosk Credentials Reset Tool */}
+              <div className="bg-god-black/80 border border-god-blue rounded-2xl p-5 flex flex-col gap-4 hover:border-god-blue/80 transition-all duration-200">
+                <h3 className="text-sm font-black text-slate-100 uppercase tracking-wider">
                   Kiosk Credentials Reset
                 </h3>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-god-silver">
                   Instantly overwrite a user&apos;s Kiosk PIN to allow them login access.
                 </p>
                 
@@ -701,18 +742,18 @@ export default function SettingsClient({
                   className="flex flex-col gap-3"
                 >
                   <div className="flex flex-col gap-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    <label className="text-[10px] font-bold text-god-silver uppercase tracking-wider">
                       Select Member
                     </label>
                     <select
                       value={resetSelectedUser}
                       onChange={(e) => setResetSelectedUser(e.target.value)}
                       required
-                      className="w-full rounded-xl border border-[#E5E7EB] px-3.5 py-2.5 text-xs text-[#111827] bg-white focus:outline-none"
+                      className="w-full rounded-xl border border-god-blue px-3.5 py-2.5 text-xs text-slate-100 bg-god-black focus:outline-none focus:ring-1 focus:ring-god-orange"
                     >
-                      <option value="">-- Choose User --</option>
+                      <option value="" className="bg-god-black text-slate-100">-- Choose User --</option>
                       {members.filter(m => m.profiles?.is_active !== false).map((m) => (
-                        <option key={m.user_id} value={m.profiles?.id}>
+                        <option key={m.user_id} value={m.profiles?.id} className="bg-god-black text-slate-100">
                           {m.profiles?.nickname || m.profiles?.full_name}
                         </option>
                       ))}
@@ -720,7 +761,7 @@ export default function SettingsClient({
                   </div>
                   
                   <div className="flex flex-col gap-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    <label className="text-[10px] font-bold text-god-silver uppercase tracking-wider">
                       New 4-Digit PIN
                     </label>
                     <input
@@ -730,14 +771,14 @@ export default function SettingsClient({
                       value={newKioskPin}
                       onChange={(e) => setNewKioskPin(e.target.value.replace(/\D/g, ''))}
                       required
-                      className="w-full rounded-xl border border-[#E5E7EB] px-3.5 py-2.5 text-xs text-[#111827] bg-white focus:outline-none"
+                      className="w-full rounded-xl border border-god-blue px-3.5 py-2.5 text-xs text-slate-100 bg-god-black focus:outline-none focus:ring-1 focus:ring-god-orange placeholder-slate-600"
                     />
                   </div>
 
                   <button
                     type="submit"
                     disabled={isSubmittingAdmin || !resetSelectedUser || newKioskPin.length !== 4}
-                    className="w-full bg-[#111827] hover:bg-black text-white text-xs font-bold py-2.5 rounded-xl transition cursor-pointer disabled:opacity-40"
+                    className="w-full bg-god-orange hover:bg-god-orange/90 text-white text-xs font-bold py-2.5 rounded-xl transition cursor-pointer disabled:opacity-40"
                   >
                     Reset PIN
                   </button>
@@ -745,12 +786,12 @@ export default function SettingsClient({
               </div>
             </div>
 
-            {/* Module B: AI Tone Dispatcher */}
-            <div className="bg-purple-950/10 border border-purple-500/20 rounded-2xl p-5 flex flex-col gap-4 hover:border-purple-500/30 transition-all duration-200">
-              <h3 className="text-sm font-black text-gray-900 uppercase tracking-wider">
+            {/* AI Tone Dispatcher */}
+            <div className="bg-god-black/80 border border-god-blue rounded-2xl p-5 flex flex-col gap-4 hover:border-god-blue/80 transition-all duration-200">
+              <h3 className="text-sm font-black text-slate-100 uppercase tracking-wider">
                 AI Tone Dispatcher
               </h3>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-god-silver">
                 Select a conversational vibe, pick a gang member, and fire an AI broadcast to WhatsApp.
               </p>
 
@@ -760,11 +801,12 @@ export default function SettingsClient({
                   if (!toneSelectedUser) return;
                   setToneFeedback(null);
                   setIsSubmittingAdmin(true);
-                  const res = await adminTriggerPoke(toneSelectedUser, session.groupId, selectedTone, selectedGenderStyle);
+                  const res = await adminTriggerPoke(toneSelectedUser, session.groupId, selectedTone, selectedGenderStyle, customContext);
                   setIsSubmittingAdmin(false);
                   if (res.success) {
                     setToneFeedback({ success: true, message: `Vibe dispatch sent successfully! Message: "${res.message}"` });
                     setToneSelectedUser('');
+                    setCustomContext('');
                   } else {
                     setToneFeedback({ success: false, message: formatAdminError(res.error) || 'Failed to dispatch vibe.' });
                   }
@@ -772,7 +814,7 @@ export default function SettingsClient({
                 className="flex flex-col gap-4"
               >
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  <label className="text-[10px] font-bold text-god-silver uppercase tracking-wider">
                     Select Vibe
                   </label>
                   <div className="flex flex-wrap gap-1.5">
@@ -792,8 +834,8 @@ export default function SettingsClient({
                           onClick={() => setSelectedTone(t.key)}
                           className={`px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all duration-200 cursor-pointer ${
                             isActive
-                              ? 'bg-purple-600 border-purple-600 text-white shadow-sm'
-                              : 'bg-white border-slate-200 text-slate-700 hover:border-purple-300'
+                              ? 'bg-god-orange border-god-orange text-white shadow-sm'
+                              : 'bg-god-black border-god-blue text-slate-300 hover:border-god-orange/50'
                           }`}
                         >
                           {t.emoji} {t.label}
@@ -804,7 +846,7 @@ export default function SettingsClient({
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  <label className="text-[10px] font-bold text-god-silver uppercase tracking-wider">
                     Gender Style Vibe
                   </label>
                   <div className="flex gap-1.5">
@@ -822,8 +864,8 @@ export default function SettingsClient({
                           onClick={() => setSelectedGenderStyle(g.key)}
                           className={`flex-1 py-2 text-xs font-semibold rounded-xl border transition-all duration-200 cursor-pointer ${
                             isActive
-                              ? 'bg-purple-600 border-purple-600 text-white shadow-sm'
-                              : 'bg-white border-slate-200 text-slate-700 hover:border-purple-300'
+                              ? 'bg-god-orange border-god-orange text-white shadow-sm'
+                              : 'bg-god-black border-god-blue text-slate-300 hover:border-god-orange/50'
                           }`}
                         >
                           {g.label}
@@ -834,28 +876,41 @@ export default function SettingsClient({
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  <label className="text-[10px] font-bold text-god-silver uppercase tracking-wider">
                     Select Member
                   </label>
                   <select
                     value={toneSelectedUser}
                     onChange={(e) => setToneSelectedUser(e.target.value)}
                     required
-                    className="w-full rounded-xl border border-[#E5E7EB] px-3.5 py-2.5 text-xs text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all"
+                    className="w-full rounded-xl border border-god-blue px-3.5 py-2.5 text-xs text-slate-100 bg-god-black focus:outline-none focus:ring-1 focus:ring-god-orange transition-all"
                   >
-                    <option value="">-- Choose User --</option>
+                    <option value="" className="bg-god-black text-slate-100">-- Choose User --</option>
                     {members.filter(m => m.profiles?.is_active !== false).map((m) => (
-                      <option key={m.user_id} value={m.profiles?.id}>
+                      <option key={m.user_id} value={m.profiles?.id} className="bg-god-black text-slate-100">
                         {m.profiles?.nickname || m.profiles?.full_name}
                       </option>
                     ))}
                   </select>
                 </div>
 
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-bold text-god-silver uppercase tracking-wider">
+                    Custom Situational Context (Optional)
+                  </label>
+                  <textarea
+                    value={customContext}
+                    onChange={(e) => setCustomContext(e.target.value)}
+                    placeholder="e.g. The user just skipped their run and ate a box of donuts, roast them."
+                    rows={2}
+                    className="w-full rounded-xl border border-god-blue px-3.5 py-2.5 text-xs text-slate-100 bg-god-black focus:outline-none focus:ring-1 focus:ring-god-orange placeholder-slate-600 resize-none"
+                  />
+                </div>
+
                 <button
                   type="submit"
                   disabled={isSubmittingAdmin || !toneSelectedUser}
-                  className="w-full bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold py-2.5 rounded-xl transition cursor-pointer disabled:opacity-40 hover:scale-[1.01] active:scale-[0.99] duration-200"
+                  className="w-full bg-god-orange hover:bg-god-orange/90 text-white text-xs font-bold py-2.5 rounded-xl transition cursor-pointer disabled:opacity-40 hover:scale-[1.01] active:scale-[0.99] duration-200"
                 >
                   Dispatch Vibe to WhatsApp 🚀
                 </button>
@@ -863,8 +918,8 @@ export default function SettingsClient({
                 {toneFeedback && (
                   <div className={`mt-2 p-3 text-xs flex items-start gap-2 rounded-xl border ${
                     toneFeedback.success
-                      ? 'bg-emerald-50/80 border-emerald-200/50 text-emerald-800'
-                      : 'bg-red-50/80 border-red-200/50 text-red-800'
+                      ? 'bg-god-green/10 border-god-green/30 text-god-green'
+                      : 'bg-god-red/10 border-god-red/30 text-god-red'
                   }`}>
                     {toneFeedback.success ? <CheckCircle size={14} className="mt-0.5" /> : <AlertCircle size={14} className="mt-0.5" />}
                     <span>{toneFeedback.message}</span>
@@ -873,14 +928,13 @@ export default function SettingsClient({
               </form>
             </div>
 
-            {/* God Mode Log Editor */}
-            <div className="bg-slate-900/40 border border-slate-700 rounded-2xl p-5 flex flex-col gap-4 col-span-1 lg:col-span-2 hover:border-slate-600 transition-all duration-200">
+            <div className="bg-god-black/80 border border-god-blue rounded-2xl p-5 flex flex-col gap-4 col-span-1 lg:col-span-2 hover:border-god-blue/80 transition-all duration-200">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h3 className="text-sm font-black text-slate-100 uppercase tracking-wider">
                     God Mode Log Editor
                   </h3>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-god-silver">
                     Correct values, verify status, or delete logs directly in the database.
                   </p>
                 </div>
@@ -889,17 +943,17 @@ export default function SettingsClient({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1">
                 {/* Filter by Member Dropdown */}
                 <div className="flex flex-col gap-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  <label className="text-[10px] font-bold text-god-silver uppercase tracking-wider">
                     Filter by Member
                   </label>
                   <select
                     value={memberFilter}
                     onChange={(e) => setMemberFilter(e.target.value)}
-                    className="w-full rounded-xl border border-slate-700 px-3 py-2 text-xs text-slate-300 bg-slate-800/80 focus:outline-none focus:ring-1 focus:ring-slate-500"
+                    className="w-full rounded-xl border border-god-blue px-3 py-2 text-xs text-slate-100 bg-god-black focus:outline-none focus:ring-1 focus:ring-god-orange"
                   >
-                    <option value="">All Members</option>
+                    <option value="" className="bg-god-black text-slate-100">All Members</option>
                     {members.map((m) => (
-                      <option key={m.user_id} value={m.profiles?.id}>
+                      <option key={m.user_id} value={m.profiles?.id} className="bg-god-black text-slate-100">
                         {m.profiles?.nickname || m.profiles?.full_name}
                       </option>
                     ))}
@@ -908,17 +962,17 @@ export default function SettingsClient({
 
                 {/* Filter by Metric Dropdown */}
                 <div className="flex flex-col gap-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  <label className="text-[10px] font-bold text-god-silver uppercase tracking-wider">
                     Filter by Metric
                   </label>
                   <select
                     value={metricFilter}
                     onChange={(e) => setMetricFilter(e.target.value)}
-                    className="w-full rounded-xl border border-slate-700 px-3 py-2 text-xs text-slate-300 bg-slate-800/80 focus:outline-none focus:ring-1 focus:ring-slate-500"
+                    className="w-full rounded-xl border border-god-blue px-3 py-2 text-xs text-slate-100 bg-god-black focus:outline-none focus:ring-1 focus:ring-god-orange"
                   >
-                    <option value="">All Metrics</option>
+                    <option value="" className="bg-god-black text-slate-100">All Metrics</option>
                     {Array.from(new Set(logs.map(l => l.metric_slug))).sort().map((slug) => (
-                      <option key={slug} value={slug}>
+                      <option key={slug} value={slug} className="bg-god-black text-slate-100">
                         {slug}
                       </option>
                     ))}
@@ -926,7 +980,7 @@ export default function SettingsClient({
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-slate-700/50 pt-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-god-blue/30 pt-3">
                 <div></div>
 
                 {/* Search Log Input */}
@@ -939,15 +993,15 @@ export default function SettingsClient({
                     placeholder="Search logs..."
                     value={logsSearch}
                     onChange={(e) => setLogsSearch(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-500 bg-slate-800/80 text-slate-300 placeholder-slate-500"
+                    className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-god-blue focus:outline-none focus:ring-1 focus:ring-god-orange bg-god-black text-slate-100 placeholder-slate-600"
                   />
                 </div>
               </div>
 
-              <div className="max-h-[450px] overflow-y-auto overflow-x-auto border border-slate-200/60 rounded-xl bg-white">
+              <div className="max-h-[450px] overflow-y-auto overflow-x-auto border border-god-blue rounded-xl bg-god-black">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
-                    <tr className="bg-slate-100/75 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+                    <tr className="bg-god-black border-b border-god-blue text-god-silver font-bold uppercase tracking-wider text-[10px]">
                       <th className="px-4 py-3">Member</th>
                       <th className="px-4 py-3">Metric</th>
                       <th className="px-4 py-3">Value</th>
@@ -966,16 +1020,16 @@ export default function SettingsClient({
                           minute: '2-digit',
                         });
                         return (
-                          <tr key={log.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                            <td className="px-4 py-3.5 font-semibold text-slate-800">
+                            <tr key={log.id} className="border-b border-god-blue/30 last:border-0 hover:bg-slate-900/40 text-slate-100 bg-god-black">
+                            <td className="px-4 py-3.5 font-semibold text-slate-100">
                               {log.profiles?.nickname || log.profiles?.full_name || 'Unknown'}
                             </td>
-                            <td className="px-4 py-3.5 text-slate-600 font-medium">
-                              <span className="bg-slate-100 px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wide">
+                            <td className="px-4 py-3.5 text-slate-300 font-medium">
+                              <span className="bg-slate-800 border border-god-blue/30 text-god-silver px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wide">
                                 {log.metric_slug}
                               </span>
                             </td>
-                            <td className="px-4 py-3.5 text-slate-900 font-medium">
+                            <td className="px-4 py-3.5 text-slate-100 font-medium">
                               {editingLogId === log.id ? (
                                 <div className="flex items-center gap-1.5">
                                   <input
@@ -983,18 +1037,18 @@ export default function SettingsClient({
                                     step="any"
                                     value={editValue}
                                     onChange={(e) => setEditValue(e.target.value)}
-                                    className="w-16 px-2 py-1 border border-slate-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-black bg-white"
+                                    className="w-16 px-2 py-1 border border-god-blue rounded text-xs focus:outline-none focus:ring-1 focus:ring-god-orange bg-god-black text-slate-100"
                                   />
                                   <button
                                     onClick={() => handleEditLog(log.id)}
-                                    className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition cursor-pointer"
+                                    className="p-1.5 rounded-lg bg-god-green/10 text-god-green hover:bg-god-green hover:text-white border border-god-green/20 transition cursor-pointer"
                                     title="Save"
                                   >
                                     <Check size={12} />
                                   </button>
                                   <button
                                     onClick={() => setEditingLogId(null)}
-                                    className="p-1.5 rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 transition cursor-pointer"
+                                    className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:bg-slate-700 transition cursor-pointer"
                                     title="Cancel"
                                   >
                                     <X size={12} />
@@ -1003,18 +1057,18 @@ export default function SettingsClient({
                               ) : (
                                 <div className="flex items-center gap-1">
                                   <span className="font-bold">{log.value}</span>
-                                  <span className="text-slate-400 font-medium">{log.unit}</span>
+                                  <span className="text-god-silver font-medium">{log.unit}</span>
                                 </div>
                               )}
                             </td>
-                            <td className="px-4 py-3.5 text-slate-500 tabular-nums">
+                            <td className="px-4 py-3.5 text-god-silver tabular-nums">
                               {formattedDate}
                             </td>
                             <td className="px-4 py-3.5">
-                              <span className={`px-2 py-0.5 rounded font-black text-[9px] uppercase tracking-wider ${
+                              <span className={`px-2 py-0.5 rounded font-black text-[9px] uppercase tracking-wider border ${
                                 log.status === 'verified'
-                                  ? 'bg-[#EAFCDB] text-[#166534]'
-                                  : 'bg-[#FEF3C7] text-[#92400E]'
+                                  ? 'bg-god-green/10 border-god-green/30 text-god-green'
+                                  : 'bg-god-orange/10 border-god-orange/30 text-god-orange'
                               }`}>
                                 {log.status}
                               </span>
@@ -1026,7 +1080,7 @@ export default function SettingsClient({
                                     setEditingLogId(log.id);
                                     setEditValue(String(log.value));
                                   }}
-                                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                                  className="p-1.5 rounded-lg text-god-silver hover:text-white hover:bg-slate-800 transition cursor-pointer"
                                   title="Edit log value"
                                 >
                                   <Edit3 size={14} />
@@ -1034,7 +1088,7 @@ export default function SettingsClient({
                                 {log.status !== 'verified' && (
                                   <button
                                     onClick={() => handleVerifyLog(log.id)}
-                                    className="px-2 py-1 rounded bg-[#EAFCDB] text-[#166534] hover:bg-[#d9f7c3] text-[10px] font-bold transition cursor-pointer"
+                                    className="px-2 py-1 rounded bg-god-green/10 text-god-green hover:bg-god-green hover:text-white border border-god-green/20 text-[10px] font-bold transition cursor-pointer"
                                     title="Manually Verify Log"
                                   >
                                     Verify
@@ -1042,7 +1096,7 @@ export default function SettingsClient({
                                 )}
                                 <button
                                   onClick={() => handleDeleteLog(log.id)}
-                                  className="p-1.5 rounded-lg text-rose-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer animate-in fade-in duration-150"
+                                  className="p-1.5 rounded-lg text-god-red hover:text-white hover:bg-god-red/10 transition cursor-pointer animate-in fade-in duration-150"
                                   title="Delete log"
                                 >
                                   <Trash2 size={14} />
@@ -1064,25 +1118,25 @@ export default function SettingsClient({
               </div>
             </div>
 
-            {/* Module F: AI Brain Editor */}
-            <div className="bg-fuchsia-950/10 border border-fuchsia-500/20 rounded-2xl p-5 flex flex-col gap-4 col-span-1 lg:col-span-2 hover:border-fuchsia-500/30 transition-all duration-200">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-fuchsia-500/10 pb-3">
+            {/* AI Brain Editor */}
+            <div className="bg-god-black/80 border border-god-blue rounded-2xl p-5 flex flex-col gap-4 col-span-1 lg:col-span-2 hover:border-god-blue/80 transition-all duration-200">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-god-blue/30 pb-3">
                 <div>
-                  <h3 className="text-sm font-black text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <h3 className="text-sm font-black text-slate-100 uppercase tracking-wider flex items-center gap-1.5">
                     🧠 AI Brain Data Editor
                   </h3>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-god-silver">
                     Upsert traits, habits, and catchphrases for members, or adjust routed tone slang.
                   </p>
                 </div>
                 
                 {/* Tabs */}
-                <div className="flex bg-white border border-slate-200 rounded-xl p-1 gap-1">
+                <div className="flex bg-god-black border border-god-blue rounded-xl p-1 gap-1">
                   <button
                     type="button"
                     onClick={() => setActiveBrainTab('lore')}
-                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${
-                      activeBrainTab === 'lore' ? 'bg-fuchsia-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'
+                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ${
+                      activeBrainTab === 'lore' ? 'bg-god-orange text-white shadow-sm' : 'text-god-silver hover:bg-slate-800'
                     }`}
                   >
                     Member Lore
@@ -1090,8 +1144,8 @@ export default function SettingsClient({
                   <button
                     type="button"
                     onClick={() => setActiveBrainTab('vocab')}
-                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${
-                      activeBrainTab === 'vocab' ? 'bg-fuchsia-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'
+                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ${
+                      activeBrainTab === 'vocab' ? 'bg-god-orange text-white shadow-sm' : 'text-god-silver hover:bg-slate-800'
                     }`}
                   >
                     Vocabulary Banks
@@ -1104,18 +1158,18 @@ export default function SettingsClient({
                 <form onSubmit={handleSaveLore} className="flex flex-col gap-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      <label className="text-[10px] font-bold text-god-silver uppercase tracking-wider">
                         Select Member
                       </label>
                       <select
                         value={loreEditorUser}
                         onChange={(e) => handleLoreUserChange(e.target.value)}
                         required
-                        className="w-full rounded-xl border border-[#E5E7EB] px-3.5 py-2.5 text-xs text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-fuchsia-500 transition-all"
+                        className="w-full rounded-xl border border-god-blue px-3.5 py-2.5 text-xs text-slate-100 bg-god-black focus:outline-none focus:ring-1 focus:ring-god-orange transition-all"
                       >
-                        <option value="">-- Choose User to Edit --</option>
+                        <option value="" className="bg-god-black text-slate-100">-- Choose User to Edit --</option>
                         {members.map((m) => (
-                          <option key={m.user_id} value={m.profiles?.id}>
+                          <option key={m.user_id} value={m.profiles?.id} className="bg-god-black text-slate-100">
                             {m.profiles?.nickname || m.profiles?.full_name}
                           </option>
                         ))}
@@ -1123,17 +1177,17 @@ export default function SettingsClient({
                     </div>
 
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      <label className="text-[10px] font-bold text-god-silver uppercase tracking-wider">
                         Select Nemesis (Opponent)
                       </label>
                       <select
                         value={loreNemesisId}
                         onChange={(e) => setLoreNemesisId(e.target.value)}
-                        className="w-full rounded-xl border border-[#E5E7EB] px-3.5 py-2.5 text-xs text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-fuchsia-500 transition-all"
+                        className="w-full rounded-xl border border-god-blue px-3.5 py-2.5 text-xs text-slate-100 bg-god-black focus:outline-none focus:ring-1 focus:ring-god-orange transition-all"
                       >
-                        <option value="">-- Choose Nemesis (Optional) --</option>
+                        <option value="" className="bg-god-black text-slate-100">-- Choose Nemesis (Optional) --</option>
                         {members.filter(m => m.profiles?.id !== loreEditorUser).map((m) => (
-                          <option key={m.user_id} value={m.profiles?.id}>
+                          <option key={m.user_id} value={m.profiles?.id} className="bg-god-black text-slate-100">
                             {m.profiles?.nickname || m.profiles?.full_name}
                           </option>
                         ))}
@@ -1143,7 +1197,7 @@ export default function SettingsClient({
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      <label className="text-[10px] font-bold text-god-silver uppercase tracking-wider">
                         Lore Stunts / Incidents (comma-separated)
                       </label>
                       <input
@@ -1151,11 +1205,11 @@ export default function SettingsClient({
                         placeholder="e.g. forgot running shoes, slept during session"
                         value={loreStunts}
                         onChange={(e) => setLoreStunts(e.target.value)}
-                        className="w-full rounded-xl border border-[#E5E7EB] px-3.5 py-2.5 text-xs text-[#111827] bg-white focus:outline-none"
+                        className="w-full rounded-xl border border-god-blue px-3.5 py-2.5 text-xs text-slate-100 bg-god-black focus:outline-none focus:ring-1 focus:ring-god-orange placeholder-slate-600"
                       />
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      <label className="text-[10px] font-bold text-god-silver uppercase tracking-wider">
                         Good Habits (comma-separated)
                       </label>
                       <input
@@ -1163,11 +1217,11 @@ export default function SettingsClient({
                         placeholder="e.g. always early, drinks 4L water"
                         value={loreGoodHabits}
                         onChange={(e) => setLoreGoodHabits(e.target.value)}
-                        className="w-full rounded-xl border border-[#E5E7EB] px-3.5 py-2.5 text-xs text-[#111827] bg-white focus:outline-none"
+                        className="w-full rounded-xl border border-god-blue px-3.5 py-2.5 text-xs text-slate-100 bg-god-black focus:outline-none focus:ring-1 focus:ring-god-orange placeholder-slate-600"
                       />
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      <label className="text-[10px] font-bold text-god-silver uppercase tracking-wider">
                         Bad Habits (comma-separated)
                       </label>
                       <input
@@ -1175,14 +1229,14 @@ export default function SettingsClient({
                         placeholder="e.g. skips leg day, late logger"
                         value={loreBadHabits}
                         onChange={(e) => setLoreBadHabits(e.target.value)}
-                        className="w-full rounded-xl border border-[#E5E7EB] px-3.5 py-2.5 text-xs text-[#111827] bg-white focus:outline-none"
+                        className="w-full rounded-xl border border-god-blue px-3.5 py-2.5 text-xs text-slate-100 bg-god-black focus:outline-none focus:ring-1 focus:ring-god-orange placeholder-slate-600"
                       />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      <label className="text-[10px] font-bold text-god-silver uppercase tracking-wider">
                         Ego Trigger (what annoys/ticks them)
                       </label>
                       <input
@@ -1190,11 +1244,11 @@ export default function SettingsClient({
                         placeholder="e.g. call them slow, talk about workouts missed"
                         value={loreEgoTrigger}
                         onChange={(e) => setLoreEgoTrigger(e.target.value)}
-                        className="w-full rounded-xl border border-[#E5E7EB] px-3.5 py-2.5 text-xs text-[#111827] bg-white focus:outline-none"
+                        className="w-full rounded-xl border border-god-blue px-3.5 py-2.5 text-xs text-slate-100 bg-god-black focus:outline-none focus:ring-1 focus:ring-god-orange placeholder-slate-600"
                       />
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      <label className="text-[10px] font-bold text-god-silver uppercase tracking-wider">
                         Catchphrase
                       </label>
                       <input
@@ -1202,7 +1256,7 @@ export default function SettingsClient({
                         placeholder="e.g. 'I will do it tomorrow'"
                         value={loreCatchphrase}
                         onChange={(e) => setLoreCatchphrase(e.target.value)}
-                        className="w-full rounded-xl border border-[#E5E7EB] px-3.5 py-2.5 text-xs text-[#111827] bg-white focus:outline-none"
+                        className="w-full rounded-xl border border-god-blue px-3.5 py-2.5 text-xs text-slate-100 bg-god-black focus:outline-none focus:ring-1 focus:ring-god-orange placeholder-slate-600"
                       />
                     </div>
                   </div>
@@ -1210,7 +1264,7 @@ export default function SettingsClient({
                   <button
                     type="submit"
                     disabled={isSubmittingAdmin || !loreEditorUser}
-                    className="w-full bg-fuchsia-600 hover:bg-fuchsia-700 text-white text-xs font-bold py-2.5 rounded-xl transition cursor-pointer disabled:opacity-40"
+                    className="w-full bg-god-orange hover:bg-god-orange/90 text-white text-xs font-bold py-2.5 rounded-xl transition cursor-pointer disabled:opacity-40"
                   >
                     Upsert Member Lore 🧠💾
                   </button>
@@ -1218,8 +1272,8 @@ export default function SettingsClient({
                   {loreFeedback && (
                     <div className={`p-3 text-xs flex items-start gap-2 rounded-xl border ${
                       loreFeedback.success
-                        ? 'bg-emerald-50/80 border-emerald-200/50 text-emerald-800'
-                        : 'bg-red-50/80 border-red-200/50 text-red-800'
+                        ? 'bg-god-green/10 border-god-green/30 text-god-green'
+                        : 'bg-god-red/10 border-god-red/30 text-god-red'
                     }`}>
                       {loreFeedback.success ? <CheckCircle size={14} className="mt-0.5" /> : <AlertCircle size={14} className="mt-0.5" />}
                       <span>{loreFeedback.message}</span>
@@ -1229,38 +1283,38 @@ export default function SettingsClient({
               ) : (
                 /* Vocab Banks Tab Form & List */
                 <div className="flex flex-col gap-5">
-                  <form onSubmit={handleSaveVocab} className="flex flex-col gap-4 border-b border-fuchsia-500/10 pb-4">
+                  <form onSubmit={handleSaveVocab} className="flex flex-col gap-4 border-b border-god-blue/30 pb-4">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="flex flex-col gap-1.5">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                        <label className="text-[10px] font-bold text-god-silver uppercase tracking-wider">
                           Tone
                         </label>
                         <select
                           value={vocabTone}
                           onChange={(e) => setVocabTone(e.target.value)}
-                          className="w-full rounded-xl border border-[#E5E7EB] px-3.5 py-2.5 text-xs text-[#111827] bg-white focus:outline-none"
+                          className="w-full rounded-xl border border-god-blue px-3.5 py-2.5 text-xs text-slate-100 bg-god-black focus:outline-none focus:ring-1 focus:ring-god-orange"
                         >
-                          <option value="ragebait">ragebait</option>
-                          <option value="flirt_tease">flirt_tease</option>
-                          <option value="motivate">motivate</option>
+                          <option value="ragebait" className="bg-god-black text-slate-100">ragebait</option>
+                          <option value="flirt_tease" className="bg-god-black text-slate-100">flirt_tease</option>
+                          <option value="motivate" className="bg-god-black text-slate-100">motivate</option>
                         </select>
                       </div>
                       <div className="flex flex-col gap-1.5">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                        <label className="text-[10px] font-bold text-god-silver uppercase tracking-wider">
                           Target Gender
                         </label>
                         <select
                           value={vocabGender}
                           onChange={(e) => setVocabGender(e.target.value)}
-                          className="w-full rounded-xl border border-[#E5E7EB] px-3.5 py-2.5 text-xs text-[#111827] bg-white focus:outline-none"
+                          className="w-full rounded-xl border border-god-blue px-3.5 py-2.5 text-xs text-slate-100 bg-god-black focus:outline-none focus:ring-1 focus:ring-god-orange"
                         >
-                          <option value="Male">Male</option>
-                          <option value="Female">Female</option>
-                          <option value="Neutral">Neutral</option>
+                          <option value="Male" className="bg-god-black text-slate-100">Male</option>
+                          <option value="Female" className="bg-god-black text-slate-100">Female</option>
+                          <option value="Neutral" className="bg-god-black text-slate-100">Neutral</option>
                         </select>
                       </div>
                       <div className="flex flex-col gap-1.5">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                        <label className="text-[10px] font-bold text-god-silver uppercase tracking-wider">
                           Words List (comma-separated)
                         </label>
                         <input
@@ -1269,7 +1323,7 @@ export default function SettingsClient({
                           placeholder="e.g. kothi, adavi manishi"
                           value={vocabWords}
                           onChange={(e) => setVocabWords(e.target.value)}
-                          className="w-full rounded-xl border border-[#E5E7EB] px-3.5 py-2.5 text-xs text-[#111827] bg-white focus:outline-none"
+                          className="w-full rounded-xl border border-god-blue px-3.5 py-2.5 text-xs text-slate-100 bg-god-black focus:outline-none focus:ring-1 focus:ring-god-orange placeholder-slate-600"
                         />
                       </div>
                     </div>
@@ -1278,7 +1332,7 @@ export default function SettingsClient({
                       <button
                         type="submit"
                         disabled={isSubmittingAdmin}
-                        className="flex-1 bg-fuchsia-600 hover:bg-fuchsia-700 text-white text-xs font-bold py-2.5 rounded-xl transition cursor-pointer"
+                        className="flex-1 bg-god-orange hover:bg-god-orange/90 text-white text-xs font-bold py-2.5 rounded-xl transition cursor-pointer"
                       >
                         {vocabEditorId ? 'Save Vocab Bank Changes 💾' : 'Create Vocab Bank Entry ➕'}
                       </button>
@@ -1289,7 +1343,7 @@ export default function SettingsClient({
                             setVocabEditorId(null);
                             setVocabWords('');
                           }}
-                          className="px-4 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold py-2.5 rounded-xl transition cursor-pointer"
+                          className="px-4 bg-slate-800 hover:bg-slate-700 text-slate-100 border border-god-blue/30 text-xs font-bold py-2.5 rounded-xl transition cursor-pointer"
                         >
                           Cancel
                         </button>
@@ -1299,8 +1353,8 @@ export default function SettingsClient({
                     {vocabFeedback && (
                       <div className={`p-3 text-xs flex items-start gap-2 rounded-xl border ${
                         vocabFeedback.success
-                          ? 'bg-emerald-50/80 border-emerald-200/50 text-emerald-800'
-                          : 'bg-red-50/80 border-red-200/50 text-red-800'
+                          ? 'bg-god-green/10 border-god-green/30 text-god-green'
+                          : 'bg-god-red/10 border-god-red/30 text-god-red'
                       }`}>
                         {vocabFeedback.success ? <CheckCircle size={14} className="mt-0.5" /> : <AlertCircle size={14} className="mt-0.5" />}
                         <span>{vocabFeedback.message}</span>
@@ -1309,10 +1363,10 @@ export default function SettingsClient({
                   </form>
 
                   {/* Vocab Bank List Table */}
-                  <div className="max-h-[300px] overflow-y-auto border border-slate-200 rounded-xl bg-white text-slate-800">
+                  <div className="max-h-[300px] overflow-y-auto border border-god-blue rounded-xl bg-god-black text-slate-100">
                     <table className="w-full text-left text-xs border-collapse">
                       <thead>
-                        <tr className="bg-slate-100/75 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+                        <tr className="bg-god-black border-b border-god-blue text-god-silver font-bold uppercase tracking-wider text-[10px]">
                           <th className="px-4 py-3">Tone</th>
                           <th className="px-4 py-3">Gender</th>
                           <th className="px-4 py-3">Words</th>
@@ -1322,7 +1376,7 @@ export default function SettingsClient({
                       <tbody>
                         {vocabBanks.length > 0 ? (
                           vocabBanks.map((v) => (
-                            <tr key={v.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                            <tr key={v.id} className="border-b border-god-blue/30 last:border-0 hover:bg-slate-900/40 text-slate-100 bg-god-black">
                               <td className="px-4 py-3 font-semibold uppercase">{v.tone}</td>
                               <td className="px-4 py-3">{v.target_gender}</td>
                               <td className="px-4 py-3 font-mono text-[10px] break-all">{v.words?.join(', ')}</td>
@@ -1330,7 +1384,7 @@ export default function SettingsClient({
                                 <button
                                   type="button"
                                   onClick={() => handleEditVocabBankClick(v)}
-                                  className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded cursor-pointer"
+                                  className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-god-blue/30 text-[10px] font-bold rounded cursor-pointer"
                                   title="Edit"
                                 >
                                   Edit
@@ -1338,7 +1392,7 @@ export default function SettingsClient({
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteVocabBank(v.id)}
-                                  className="px-2 py-1 bg-red-50 text-red-600 hover:bg-red-100 text-[10px] font-bold rounded cursor-pointer"
+                                  className="px-2 py-1 bg-god-red/10 border border-god-red/20 text-god-red hover:bg-god-red hover:text-white text-[10px] font-bold rounded cursor-pointer"
                                   title="Delete"
                                 >
                                   Delete
@@ -1360,69 +1414,79 @@ export default function SettingsClient({
               )}
             </div>
 
-            {/* Module G: Manage Users (Soft Delete Engine) */}
-            <div className="bg-rose-950/10 border border-rose-500/20 rounded-2xl p-5 flex flex-col gap-4 col-span-1 lg:col-span-2 hover:border-rose-500/30 transition-all duration-200">
-              <h3 className="text-sm font-black text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
+            {/* Manage Users (Soft Delete & Hard Drop Engine) */}
+            <div className="bg-god-black/80 border border-god-blue rounded-2xl p-5 flex flex-col gap-4 col-span-1 lg:col-span-2 hover:border-god-blue/80 transition-all duration-200">
+              <h3 className="text-sm font-black text-slate-100 uppercase tracking-wider flex items-center gap-1.5">
                 👤 Manage Users (Soft Delete Engine)
               </h3>
-              <p className="text-xs text-slate-500">
-                Deactivate or reactivate group members. Deactivation hides users on frontend panels without breaking database history.
+              <p className="text-xs text-god-silver">
+                Deactivate or reactivate group members (Soft Hide) or permanently drop profiles from the database (Hard Drop).
               </p>
 
-              <div className="overflow-x-auto border border-slate-200/60 rounded-xl bg-white text-slate-800 max-h-[300px]">
+              <div className="overflow-x-auto border border-god-blue rounded-xl bg-god-black text-slate-100 max-h-[300px]">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="bg-slate-100/75 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+                    <tr className="bg-god-black border-b border-god-blue text-god-silver font-bold uppercase tracking-wider text-[10px]">
                       <th className="px-4 py-3">Name</th>
                       <th className="px-4 py-3">Nickname</th>
                       <th className="px-4 py-3">Role</th>
                       <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3 text-right">Actions</th>
+                      <th className="px-4 py-3 text-right font-bold">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {members.map((m) => {
                       const isActive = m.profiles?.is_active !== false;
                       return (
-                        <tr key={m.user_id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                          <td className="px-4 py-3.5 font-semibold">
+                        <tr key={m.user_id} className="border-b border-god-blue/30 last:border-0 hover:bg-slate-900/40 text-slate-100 bg-god-black">
+                          <td className="px-4 py-3.5 font-semibold text-slate-100">
                             {m.profiles?.full_name}
                           </td>
-                          <td className="px-4 py-3.5 text-slate-500">
+                          <td className="px-4 py-3.5 text-god-silver">
                             {m.profiles?.nickname || '---'}
                           </td>
                           <td className="px-4 py-3.5 uppercase text-[9px] font-black text-slate-400">
                             {m.role || 'member'}
                           </td>
                           <td className="px-4 py-3.5">
-                            <span className={`px-2 py-0.5 rounded font-black text-[9px] uppercase tracking-wider ${
+                            <span className={`px-2 py-0.5 rounded font-black text-[9px] uppercase tracking-wider border ${
                               isActive
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : 'bg-red-100 text-red-800'
+                                ? 'bg-god-green/10 border-god-green/30 text-god-green'
+                                : 'bg-god-red/10 border-god-red/30 text-god-red'
                             }`}>
                               {isActive ? 'Active' : 'Ghosted / Inactive'}
                             </span>
                           </td>
                           <td className="px-4 py-3.5 text-right">
-                            {isActive ? (
+                            <div className="flex justify-end items-center gap-2">
+                              {isActive ? (
+                                <button
+                                  type="button"
+                                  disabled={isSubmittingAdmin}
+                                  onClick={() => handleToggleUserActive(m.profiles?.id || '', true)}
+                                  className="px-2.5 py-1 bg-god-orange/10 hover:bg-god-orange border border-god-orange/20 text-god-orange hover:text-white rounded text-[10px] font-bold cursor-pointer transition-all duration-200"
+                                >
+                                  Deactivate 👤❌
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  disabled={isSubmittingAdmin}
+                                  onClick={() => handleToggleUserActive(m.profiles?.id || '', false)}
+                                  className="px-2.5 py-1 bg-god-green/10 hover:bg-god-green border border-god-green/20 text-god-green hover:text-white rounded text-[10px] font-bold cursor-pointer transition-all duration-200"
+                                >
+                                  Reactivate 👤✅
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 disabled={isSubmittingAdmin}
-                                onClick={() => handleToggleUserActive(m.profiles?.id || '', true)}
-                                className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold cursor-pointer transition-all duration-200"
+                                onClick={() => handleHardDeleteUser(m.profiles?.id || '')}
+                                className="px-2.5 py-1 bg-god-red/10 hover:bg-god-red border border-god-red/20 text-god-red hover:text-white rounded text-[10px] font-bold cursor-pointer transition-all duration-200"
                               >
-                                Deactivate (Soft Delete) 👤❌
+                                Hard Delete 🗑️
                               </button>
-                            ) : (
-                              <button
-                                type="button"
-                                disabled={isSubmittingAdmin}
-                                onClick={() => handleToggleUserActive(m.profiles?.id || '', false)}
-                                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold cursor-pointer transition-all duration-200"
-                              >
-                                Reactivate User 👤✅
-                              </button>
-                            )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1433,18 +1497,18 @@ export default function SettingsClient({
             </div>
 
             {/* Metric Definitions Manager */}
-            <div className="bg-slate-900/40 border border-slate-700 rounded-2xl p-5 flex flex-col gap-4 col-span-1 lg:col-span-2 hover:border-slate-600 transition-all duration-200">
+            <div className="bg-god-black/80 border border-god-blue rounded-2xl p-5 flex flex-col gap-4 col-span-1 lg:col-span-2 hover:border-god-blue/80 transition-all duration-200">
               <h3 className="text-sm font-black text-slate-100 uppercase tracking-wider flex items-center gap-1.5">
                 📊 Metric Definitions Manager
               </h3>
-              <p className="text-xs text-slate-500">
-                View, edit, or delete existing target KPI metrics. Modifying values updates dashboard calculations in real-time.
+              <p className="text-xs text-god-silver">
+                View, edit, or hide/delete existing KPI metrics. Modifying values updates dashboard calculations in real-time.
               </p>
 
-              <div className="max-h-[300px] overflow-y-auto border border-slate-700/60 rounded-xl bg-slate-950/20 text-slate-300">
+              <div className="max-h-[300px] overflow-y-auto border border-god-blue rounded-xl bg-god-black text-slate-100">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="bg-slate-800/60 border-b border-slate-700 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                    <tr className="bg-god-black border-b border-god-blue text-god-silver font-bold uppercase tracking-wider text-[10px]">
                       <th className="px-4 py-3">Metric Name</th>
                       <th className="px-4 py-3">Unit</th>
                       <th className="px-4 py-3">Leaderboard Sort</th>
@@ -1454,14 +1518,14 @@ export default function SettingsClient({
                   <tbody>
                     {metricDefinitions.length > 0 ? (
                       metricDefinitions.map((m) => (
-                        <tr key={m.id} className="border-b border-slate-800 last:border-0 hover:bg-slate-900/20">
+                        <tr key={m.id} className="border-b border-god-blue/30 last:border-0 hover:bg-slate-900/40 text-slate-100 bg-god-black">
                           <td className="px-4 py-3.5 font-semibold text-slate-100">
                             {editingMetricId === m.id ? (
                               <input
                                 type="text"
                                 value={editMetricName}
                                 onChange={(e) => setEditMetricName(e.target.value)}
-                                className="w-full px-2 py-1 border border-slate-600 rounded text-xs focus:outline-none focus:ring-1 focus:ring-slate-400 bg-slate-800 text-white"
+                                className="w-full px-2 py-1 border border-god-blue rounded text-xs focus:outline-none focus:ring-1 focus:ring-god-orange bg-god-black text-slate-100"
                               />
                             ) : (
                               m.name
@@ -1473,21 +1537,21 @@ export default function SettingsClient({
                                 type="text"
                                 value={editMetricUnit}
                                 onChange={(e) => setEditMetricUnit(e.target.value)}
-                                className="w-24 px-2 py-1 border border-slate-600 rounded text-xs focus:outline-none focus:ring-1 focus:ring-slate-400 bg-slate-800 text-white"
+                                className="w-24 px-2 py-1 border border-god-blue rounded text-xs focus:outline-none focus:ring-1 focus:ring-god-orange bg-god-black text-slate-100"
                               />
                             ) : (
                               m.unit
                             )}
                           </td>
-                          <td className="px-4 py-3.5 text-slate-400 font-medium">
+                          <td className="px-4 py-3.5 text-god-silver font-medium">
                             {editingMetricId === m.id ? (
                               <select
                                 value={editMetricSort}
                                 onChange={(e) => setEditMetricSort(e.target.value as 'asc' | 'desc')}
-                                className="px-2 py-1 border border-slate-600 rounded text-xs focus:outline-none focus:ring-1 focus:ring-slate-400 bg-slate-800 text-white"
+                                className="px-2 py-1 border border-god-blue rounded text-xs focus:outline-none focus:ring-1 focus:ring-god-orange bg-god-black text-slate-100"
                               >
-                                <option value="desc">Higher is Better (Desc)</option>
-                                <option value="asc">Lower is Better (Asc)</option>
+                                <option value="desc" className="bg-god-black text-slate-100">Higher is Better (Desc)</option>
+                                <option value="asc" className="bg-god-black text-slate-100">Lower is Better (Asc)</option>
                               </select>
                             ) : (
                               m.sort_direction === 'desc' ? 'Higher is Better' : 'Lower is Better'
@@ -1499,7 +1563,7 @@ export default function SettingsClient({
                                 <>
                                   <button
                                     onClick={() => handleUpdateMetric(m.id)}
-                                    className="p-1.5 rounded-lg bg-emerald-950/40 text-emerald-400 hover:bg-emerald-900/60 transition cursor-pointer animate-in fade-in duration-150"
+                                    className="p-1.5 rounded-lg bg-god-green/10 text-god-green hover:bg-god-green hover:text-white border border-god-green/20 transition cursor-pointer animate-in fade-in duration-150"
                                     title="Save changes"
                                     disabled={isSubmittingAdmin}
                                   >
@@ -1517,14 +1581,25 @@ export default function SettingsClient({
                                 <>
                                   <button
                                     onClick={() => handleEditMetricClick(m)}
-                                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition cursor-pointer"
+                                    className="p-1.5 rounded-lg text-god-silver hover:text-white hover:bg-slate-805 transition cursor-pointer"
                                     title="Edit metric"
                                   >
                                     <Edit3 size={14} />
                                   </button>
                                   <button
+                                    onClick={() => handleToggleMetricHidden(m.id, m.is_hidden)}
+                                    className={`px-2 py-1 rounded text-[10px] font-bold border transition cursor-pointer ${
+                                      m.is_hidden
+                                        ? 'bg-god-green/10 border-god-green/25 text-god-green hover:bg-god-green hover:text-white'
+                                        : 'bg-god-orange/10 border-god-orange/25 text-god-orange hover:bg-god-orange hover:text-white'
+                                    }`}
+                                    title={m.is_hidden ? "Show on dashboard" : "Hide from dashboard"}
+                                  >
+                                    {m.is_hidden ? "Unhide" : "Hide"}
+                                  </button>
+                                  <button
                                     onClick={() => handleDeleteMetric(m.id)}
-                                    className="p-1.5 rounded-lg text-rose-400 hover:text-rose-600 hover:bg-rose-950/20 transition cursor-pointer"
+                                    className="p-1.5 rounded-lg text-god-red hover:text-white hover:bg-god-red/10 transition cursor-pointer"
                                     title="Delete metric"
                                     disabled={isSubmittingAdmin}
                                   >
@@ -1538,7 +1613,7 @@ export default function SettingsClient({
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={4} className="px-4 py-8 text-center text-slate-500 font-bold">
+                        <td colSpan={4} className="px-4 py-8 text-center text-slate-400 font-bold">
                           No metric definitions found.
                         </td>
                       </tr>
@@ -1550,8 +1625,8 @@ export default function SettingsClient({
               {metricFeedback && (
                 <div className={`p-3 text-xs flex items-start gap-2 rounded-xl border ${
                   metricFeedback.success
-                    ? 'bg-emerald-950/20 border-emerald-500/20 text-emerald-400'
-                    : 'bg-red-950/20 border-red-500/20 text-red-400'
+                    ? 'bg-god-green/10 border-god-green/30 text-god-green'
+                    : 'bg-god-red/10 border-god-red/30 text-god-red'
                 }`}>
                   {metricFeedback.success ? <CheckCircle size={14} className="mt-0.5" /> : <AlertCircle size={14} className="mt-0.5" />}
                   <span>{metricFeedback.message}</span>

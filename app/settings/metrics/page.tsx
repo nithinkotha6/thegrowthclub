@@ -77,7 +77,7 @@ export default async function SettingsPage() {
         currentLevel={currentLevel}
       />
       <main
-        className="flex-1 bg-[#F7F8FA] min-w-0 overflow-y-auto pb-28 pb-safe md:pb-0 flex flex-col"
+        className="flex-1 bg-god-black min-w-0 overflow-y-auto pb-28 pb-safe md:pb-0 flex flex-col text-slate-100"
         id="main-content"
       >
         <SettingsClient 

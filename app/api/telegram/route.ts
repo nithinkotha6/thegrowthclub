@@ -158,10 +158,23 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   // Load configs & dynamic metrics
   const { data: configs } = await supabase.from('metrics_config').select('slug, display_name, unit');
-  const { data: customs } = await supabase
+  let customs = null;
+  const { data: activeCustoms, error: hideCustomsErr } = await supabase
     .from('metric_definitions')
     .select('id, name, unit')
-    .eq('group_id', membership.group_id);
+    .eq('group_id', membership.group_id)
+    .eq('is_hidden', false);
+
+  if (hideCustomsErr) {
+    console.warn('[telegram/route] Failed to query with is_hidden filter (migration might be pending), falling back to full list.');
+    const { data: fallbackCustoms } = await supabase
+      .from('metric_definitions')
+      .select('id, name, unit')
+      .eq('group_id', membership.group_id);
+    customs = fallbackCustoms;
+  } else {
+    customs = activeCustoms;
+  }
  
   const validConfigs = configs || [];
   const validCustoms = customs || [];
