@@ -4,6 +4,20 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { safeCompare } from '@/lib/security';
+import { z } from 'zod';
+
+const SignUpSchema = z.object({
+  inviteCode: z.string().trim().min(1, 'Invite code is required'),
+  firstName: z.string()
+    .trim()
+    .min(1, "First name is required")
+    .refine(val => !val.includes(" "), { message: "First name cannot contain spaces" }),
+  nickname: z.string().trim().optional(),
+  email: z.string().trim().email('Invalid email address').or(z.literal('')),
+  pin: z.string().trim().length(4, 'PIN must be exactly 4 digits'),
+  phoneNumber: z.string().trim().min(10, 'Please enter a valid 10-digit phone number'),
+  gender: z.enum(['Male', 'Female']),
+});
 import {
   encodeSession,
   SESSION_COOKIE,
@@ -203,18 +217,26 @@ export async function signUpAction(
   phoneNumber: string,
   gender: string,
 ): Promise<SignUpResult> {
-  const sanitizedName = fullName.replace(/\s+/g, '').trim();
-  const sanitizedPhone = phoneNumber.replace(/[^\d+]/g, '').trim();
-  if (!inviteCode || !sanitizedName || !pin || !sanitizedPhone) {
-    return { success: false, error: 'Invite code, First Name, Phone Number, and PIN are required.' };
+  const validation = SignUpSchema.safeParse({
+    inviteCode,
+    firstName: fullName,
+    nickname,
+    email,
+    pin,
+    phoneNumber,
+    gender,
+  });
+
+  if (!validation.success) {
+    return { success: false, error: validation.error.issues[0].message };
   }
 
-  const sanitizedPin = pin.replace(/\s/g, '').trim();
-  if (sanitizedPin.length !== 4) {
-    return { success: false, error: 'PIN must be exactly 4 digits.' };
-  }
+  const { firstName: sanitizedName, pin: sanitizedPin, inviteCode: sanitizedInvite } = validation.data;
 
-  const sanitizedInvite = inviteCode.trim();
+  const cleanPhone = phoneNumber.replace(/\D/g, '');
+  if (cleanPhone.length < 10) {
+    return { success: false, error: 'Please enter a valid 10-digit phone number.' };
+  }
 
   try {
     const supabase = createAdminClient();
@@ -235,15 +257,15 @@ export async function signUpAction(
     const { data: phoneDuplicate, error: phoneDupError } = await supabase
       .from('profiles')
       .select('id')
-      .eq('phone_number', sanitizedPhone)
+      .eq('phone_number', cleanPhone)
       .maybeSingle();
 
     if (phoneDupError) {
-      console.error('[signUpAction] Phone duplicate check failed:', phoneDupError);
+      console.error("Sign-up uniqueness check failed:", phoneDupError);
       return { success: false, error: 'Failed to verify unique account.' };
     }
     if (phoneDuplicate) {
-      return { success: false, error: 'This phone number is already registered.' };
+      return { success: false, error: 'This phone number is already registered. Please log in instead.' };
     }
 
     // 3. Generate a new profile with phone_number and gender
@@ -254,7 +276,7 @@ export async function signUpAction(
         nickname: nickname.trim() || null,
         email: email.trim() || null,
         pin: sanitizedPin,
-        phone_number: sanitizedPhone,
+        phone_number: cleanPhone,
         gender: gender || null,
       })
       .select('id, full_name, nickname, avatar_url')

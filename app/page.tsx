@@ -53,7 +53,7 @@ export default function LandingPage() {
   const [signUpEmail, setSignUpEmail]   = useState('');
   const [signUpPin, setSignUpPin]       = useState('');
   const [signUpPhone, setSignUpPhone]   = useState('');
-  const [signUpGender, setSignUpGender] = useState('Prefer not to say');
+  const [signUpGender, setSignUpGender] = useState('Male');
   const [signUpError, setSignUpError]   = useState<string | null>(null);
   const [hasPlayedNameAudio, setHasPlayedNameAudio] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -209,7 +209,10 @@ export default function LandingPage() {
 
   /* ── Success Render ─────────────────────────────────────────────────── */
   if (loggedInUser) {
-    const firstName = loggedInUser.name.trim().split(/\s+/)[0].toLowerCase();
+    let firstName = loggedInUser.name.trim().split(/\s+/)[0].toLowerCase();
+    if (firstName === 'pixie') {
+      firstName = 'nithin';
+    }
     const userImgSrc = loggedInUser.avatarUrl || `/avatars/${firstName}.jpg`;
 
     return (
@@ -540,8 +543,6 @@ export default function LandingPage() {
                   >
                     <option value="Male">Male</option>
                     <option value="Female">Female</option>
-                    <option value="Non-Binary">Non-Binary</option>
-                    <option value="Prefer not to say">Prefer not to say</option>
                   </select>
                 </div>
 

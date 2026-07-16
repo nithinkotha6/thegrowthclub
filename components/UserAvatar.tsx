@@ -39,8 +39,12 @@ function getStaticAvatarPath(user: UserAvatarProps['user']): string | null {
   const rawName = user.full_name || user.nickname || '';
   if (!rawName) return null;
 
-  const firstName = rawName.trim().split(/\s+/)[0].toLowerCase();
+  let firstName = rawName.trim().split(/\s+/)[0].toLowerCase();
   if (!firstName) return null;
+
+  if (firstName === 'pixie') {
+    firstName = 'nithin';
+  }
 
   return `/avatars/${firstName}.jpg`;
 }
