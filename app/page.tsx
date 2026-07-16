@@ -6,14 +6,17 @@
  * Spec: architecture.md §7
  */
 
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useState, useTransition, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { AlertCircle, Loader2, ChevronDown, KeyRound, UserPlus } from 'lucide-react';
 import {
   getGroupsAction,
   loginWithPersonalPinAction,
   signUpAction,
+  getTopActiveMembersAction,
   type Group,
+  type GroupProfile,
 } from '@/app/actions/auth';
 import Confetti from '@/components/Confetti';
 import { playAudio, preloadAllSounds } from '@/lib/audio';
@@ -55,7 +58,8 @@ export default function LandingPage() {
   const [hasPlayedNameAudio, setHasPlayedNameAudio] = useState(false);
 
   // Success welcome animation state
-  const [loggedInUser, setLoggedInUser] = useState<string | null>(null);
+  const [loggedInUser, setLoggedInUser] = useState<{ name: string; avatarUrl?: string | null } | null>(null);
+  const [groupCollages, setGroupCollages] = useState<GroupProfile[]>([]);
 
   // Fetch groups and preload sounds on mount
   useEffect(() => {
@@ -92,27 +96,62 @@ export default function LandingPage() {
     return () => { cancelled = true; };
   }, []);
 
+  // Fetch top 5 active members when a group is selected to render the collage
+  useEffect(() => {
+    if (selectedGroup) {
+      getTopActiveMembersAction(selectedGroup.id).then((profiles) => {
+        setGroupCollages(profiles);
+      });
+    } else {
+      const tid = setTimeout(() => {
+        setGroupCollages([]);
+      }, 0);
+      return () => clearTimeout(tid);
+    }
+  }, [selectedGroup]);
+
   /* ── Submit Handlers ────────────────────────────────────────────────── */
 
-  function handleLoginSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!selectedGroup) return;
+  const triggerLoginSubmit = useCallback((groupId: string, pin: string) => {
+    if (isPending) return;
     setLoginError(null);
 
     startTransition(async () => {
-      const result = await loginWithPersonalPinAction(selectedGroup.id, loginPin);
+      const result = await loginWithPersonalPinAction(groupId, pin);
       if (result.success) {
         playAudio('login.mp3');
-        setLoggedInUser(result.userName);
+        setLoggedInUser({ name: result.userName, avatarUrl: result.avatarUrl });
         setTimeout(() => {
           router.push('/dashboard');
         }, 2500);
       } else {
         playAudio('error.mp3');
-        setLoginError(result.error);
+        setLoginError('Incorrect PIN. Try again.');
+        setLoginPin('');
+        // Refocus the input
+        const pinInput = document.getElementById('login-pin-input') as HTMLInputElement | null;
+        if (pinInput) {
+          pinInput.focus();
+        }
       }
     });
+  }, [isPending, router]);
+
+  function handleLoginSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!selectedGroup) return;
+    triggerLoginSubmit(selectedGroup.id, loginPin);
   }
+
+  // Auto-Submit PIN Listener
+  useEffect(() => {
+    if (loginPin.length === 4 && selectedGroup && !isPending) {
+      const tid = setTimeout(() => {
+        triggerLoginSubmit(selectedGroup.id, loginPin);
+      }, 0);
+      return () => clearTimeout(tid);
+    }
+  }, [loginPin, selectedGroup, isPending, triggerLoginSubmit]);
 
   function handleSignUpSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -143,7 +182,7 @@ export default function LandingPage() {
 
       if (result.success) {
         playAudio('thanks-a-lot.mp3');
-        setLoggedInUser(result.userName);
+        setLoggedInUser({ name: result.userName, avatarUrl: result.avatarUrl });
         setTimeout(() => {
           router.push('/dashboard');
         }, 2500);
@@ -156,20 +195,26 @@ export default function LandingPage() {
 
   /* ── Success Render ─────────────────────────────────────────────────── */
   if (loggedInUser) {
+    const firstName = loggedInUser.name.trim().split(/\s+/)[0].toLowerCase();
+    const userImgSrc = loggedInUser.avatarUrl || `/avatars/${firstName}.jpg`;
+
     return (
       <div className="min-h-screen bg-[#0A0A0A] flex flex-col items-center justify-center p-4">
         <Confetti />
         
         <div className="text-center flex flex-col items-center gap-4 animate-in fade-in zoom-in duration-500">
-          <div 
-            className="w-20 h-20 rounded-full bg-[#CEFF00]/10 border border-[#CEFF00]/30 flex items-center justify-center text-4xl animate-bounce"
-            role="img"
-            aria-label="Welcome party"
-          >
-            🎉
+          <div className="relative w-24 h-24 rounded-full border-4 border-[#CEFF00] bg-zinc-900 shadow-2xl overflow-hidden p-0.5 animate-bounce">
+            <Image
+              src={userImgSrc}
+              alt={loggedInUser.name}
+              width={96}
+              height={96}
+              className="w-full h-full object-cover rounded-full"
+              unoptimized
+            />
           </div>
           <h1 className="text-3xl md:text-4xl font-black text-white uppercase tracking-tight">
-            Welcome, {loggedInUser}!
+            Welcome, {loggedInUser.name}!
           </h1>
           <p className="text-[#CEFF00] text-[11px] font-bold tracking-[0.2em] uppercase animate-pulse">
             Loading your dashboard...
@@ -256,6 +301,32 @@ export default function LandingPage() {
                   </div>
                 )}
 
+                {/* Fallback Group Collage */}
+                {groupCollages.length > 0 && (
+                  <div className="flex flex-col items-center gap-1.5 my-1">
+                    <p className="text-[10px] font-bold text-[#6B7280] uppercase tracking-widest">Room Members</p>
+                    <div className="flex -space-x-3 overflow-hidden justify-center">
+                      {groupCollages.map((m) => {
+                        const mName = m.nickname || m.full_name || 'Athlete';
+                        const mFirst = mName.trim().split(/\s+/)[0].toLowerCase();
+                        const mSrc = m.avatar_url || `/avatars/${mFirst}.jpg`;
+                        return (
+                          <div key={m.id} className="relative z-10 w-9 h-9 rounded-full border-2 border-[#0A0A0A] bg-zinc-800 overflow-hidden shadow">
+                            <Image
+                              src={mSrc}
+                              alt={mName}
+                              width={36}
+                              height={36}
+                              className="object-cover w-full h-full"
+                              unoptimized
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* Group Dropdown */}
                 <div>
                   <label className="block text-[11px] font-bold tracking-wider text-[#6B7280] uppercase mb-1.5">
@@ -320,18 +391,20 @@ export default function LandingPage() {
                   </div>
                 )}
 
-                <button
-                  id="login-btn"
-                  type="submit"
-                  disabled={isPending || !selectedGroup || loginPin.length < 4}
-                  className="mt-1 flex items-center justify-center gap-2 bg-[#CEFF00] text-[#0A0A0A] font-black rounded-xl px-4 py-3 text-sm hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity min-h-[44px] cursor-pointer"
-                >
-                  {isPending ? (
-                    <><Loader2 size={14} className="animate-spin" /> Entering Room…</>
-                  ) : (
-                    'Enter Room'
-                  )}
-                </button>
+                {isPending ? (
+                  <div className="mt-1 flex items-center justify-center gap-2 bg-[#CEFF00]/10 text-[#CEFF00] font-black rounded-xl px-4 py-3 text-sm min-h-[44px] border border-[#CEFF00]/25">
+                    <Loader2 size={14} className="animate-spin" /> Entering Room…
+                  </div>
+                ) : (
+                  <button
+                    id="login-btn"
+                    type="submit"
+                    disabled={true}
+                    className="mt-1 flex items-center justify-center gap-2 bg-zinc-800 text-zinc-500 font-bold rounded-xl px-4 py-3 text-xs tracking-wider uppercase border border-zinc-700/50 min-h-[44px] cursor-not-allowed opacity-50 transition"
+                  >
+                    Auto-submits on 4 digits
+                  </button>
+                )}
               </form>
             </div>
           ) : (

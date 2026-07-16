@@ -209,7 +209,6 @@ async function handleRequest(req: Request) {
     ].join('\n');
 
     // ── 6. Execute AI Sports Broadcast Generation ───────────────────────────
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     let broadcastText = '';
 
     try {
@@ -221,15 +220,6 @@ async function handleRequest(req: Request) {
       broadcastText = result.text;
     } catch (llmError) {
       console.error('[whatsapp-digest] Daily digest LLM generation error:', llmError);
-      const errorStr = String(llmError).toLowerCase();
-      const isRateLimit = errorStr.includes('429') || errorStr.includes('rate limit') || errorStr.includes('quota exceeded');
-
-      if (isRateLimit) {
-        const fallbackMsg = `🤖 "Whoa, slow down! Rate limit hit. Give me 60 seconds to catch my breath."`;
-        await sendWhatsAppGroupMessage(fallbackMsg);
-        return NextResponse.json({ success: false, error: 'Rate limit hit' }, { status: 429 });
-      }
-
       const errorMsg = llmError instanceof Error ? llmError.message : String(llmError);
       return NextResponse.json({ error: errorMsg }, { status: 500 });
     }

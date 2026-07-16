@@ -25,6 +25,7 @@ export type Group = {
 export type GroupProfile = {
   id:        string;
   full_name: string;
+  nickname?: string | null;
   avatar_url: string | null;
 };
 
@@ -67,7 +68,7 @@ export async function getGroupsAction(): Promise<GetGroupsResult> {
 /* ── loginWithPersonalPinAction ───────────────────────────────────────────── */
 
 export type LoginResult =
-  | { success: true; userName: string; userId: string; groupId: string; groupName: string }
+  | { success: true; userName: string; userId: string; groupId: string; groupName: string; avatarUrl?: string | null }
   | { success: false; error: string };
 
 /**
@@ -95,7 +96,7 @@ export async function loginWithPersonalPinAction(
       .from('group_members')
       .select(`
         group_id,
-        profiles!inner ( id, full_name, nickname, pin )
+        profiles!inner ( id, full_name, nickname, pin, avatar_url )
       `)
       .eq('group_id', groupId)
       .eq('profiles.pin', sanitizedPin);
@@ -112,11 +113,13 @@ export async function loginWithPersonalPinAction(
         full_name: string | null;
         nickname: string | null;
         pin: string | null;
+        avatar_url: string | null;
       } | {
         id: string;
         full_name: string | null;
         nickname: string | null;
         pin: string | null;
+        avatar_url: string | null;
       }[] | null;
     };
 
@@ -172,6 +175,7 @@ export async function loginWithPersonalPinAction(
       userId:    profile.id,
       groupId:   match.group_id,
       groupName: group.name,
+      avatarUrl: profile.avatar_url,
     };
   } catch (err) {
     console.error("LOGIN CRASH:", err);
@@ -183,7 +187,7 @@ export async function loginWithPersonalPinAction(
 /* ── signUpAction ─────────────────────────────────────────────────────────── */
 
 export type SignUpResult =
-  | { success: true; userName: string; userId: string; groupId: string; groupName: string }
+  | { success: true; userName: string; userId: string; groupId: string; groupName: string; avatarUrl?: string | null }
   | { success: false; error: string };
 
 /**
@@ -253,7 +257,7 @@ export async function signUpAction(
         phone_number: sanitizedPhone,
         gender: gender || null,
       })
-      .select('id, full_name, nickname')
+      .select('id, full_name, nickname, avatar_url')
       .single();
 
     if (profileError || !newProfile) {
@@ -296,6 +300,7 @@ export async function signUpAction(
       userId: newProfile.id,
       groupId: group.id,
       groupName: group.name,
+      avatarUrl: newProfile.avatar_url,
     };
   } catch (err) {
     console.error("FINAL SIGNUP CRASH:", err);
@@ -340,4 +345,50 @@ export async function logoutAction(): Promise<void> {
   });
 
   redirect('/');
+}
+
+export async function getTopActiveMembersAction(groupId: string): Promise<GroupProfile[]> {
+  try {
+    const supabase = createAdminClient();
+    
+    // Fetch top 5 active members in this group based on total_xp
+    const { data, error } = await supabase
+      .from('group_members')
+      .select(`
+        profiles!inner ( id, full_name, nickname, avatar_url, total_xp )
+      `)
+      .eq('group_id', groupId)
+      .order('profiles(total_xp)', { ascending: false })
+      .limit(5);
+
+    if (error) {
+      console.error('[getTopActiveMembersAction] error:', error);
+      return [];
+    }
+
+    type MemberRowRaw = {
+      profiles: {
+        id: string;
+        full_name: string | null;
+        nickname: string | null;
+        avatar_url: string | null;
+        total_xp: number;
+      };
+    };
+
+    const profiles = ((data || []) as unknown as MemberRowRaw[]).map((m) => {
+      const p = m.profiles;
+      return {
+        id: p.id,
+        full_name: p.full_name,
+        nickname: p.nickname,
+        avatar_url: p.avatar_url,
+      } as GroupProfile;
+    });
+
+    return profiles;
+  } catch (err) {
+    console.error('[getTopActiveMembersAction] catch:', err);
+    return [];
+  }
 }

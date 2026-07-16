@@ -107,6 +107,28 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, ignored: 'no text content extracted' });
     }
 
+    // Task 2.3: Implement /clear Memory Wipe Command
+    if (incomingMessage.trim().toLowerCase() === '/clear') {
+      const supabaseAdmin = createAdminClient();
+      
+      const { data: groups } = await supabaseAdmin
+        .from('groups')
+        .select('*')
+        .order('created_at', { ascending: true });
+        
+      const targetGroup = groups?.find(g => g.name === 'Texas Buds' || g.invite_code === 'TEXASBUDS') || groups?.[0];
+      if (targetGroup) {
+        await supabaseAdmin
+          .from('chat_history')
+          .delete()
+          .eq('group_id', targetGroup.id);
+      }
+
+      const clearReply = `🧹 *Memory Cleared!*\n\nShort-term chat context has been wiped. I'm ready for a fresh topic! (System rules and game XP remain intact).`;
+      await sendWhatsAppGroupMessage(clearReply);
+      return NextResponse.json({ ok: true, message: 'memory cleared' });
+    }
+
     const rawSender = body.senderData?.sender || '';
     const senderName = body.senderData?.senderName || 'A group member';
     console.log(`[webhook/whatsapp] Triggered by message: "${incomingMessage}" from JID: ${rawSender} (${senderName})`);
@@ -135,24 +157,30 @@ export async function POST(req: Request) {
 
         const groupId = targetGroup.id;
 
-        // A. Context Trimming: fetch last 9 chat logs to leave 1 space for current prompt (total 10)
+        // Task 2.2: Conversational Memory Optimization (The Token Clamp)
         let formattedHistory: { role: 'user' | 'assistant'; content: string }[] = [];
         try {
           const { data: dbHistory, error: dbHistError } = await supabaseAdmin
             .from('chat_history')
-            .select('role, content')
+            .select('role, content, created_at')
             .eq('group_id', groupId)
             .order('created_at', { ascending: false })
-            .limit(9); // Limit strictly to last 9 entries
+            .limit(10); // Limit to retrieve check scope
 
-          if (!dbHistError && dbHistory) {
-            // Reverse to keep chronological order
-            formattedHistory = dbHistory
-              .reverse()
-              .map((h) => ({
+          if (!dbHistError && dbHistory && dbHistory.length > 0) {
+            const lastMsgTime = new Date(dbHistory[0].created_at).getTime();
+            if (Date.now() - lastMsgTime > 30 * 60 * 1000) {
+              console.log('[webhook/whatsapp] Session inactivity: clearing old conversation memory context');
+              formattedHistory = [];
+            } else {
+              // Chronological order, strictly last 8 messages
+              const chronoHistory = dbHistory.slice().reverse();
+              const slicedHistory = chronoHistory.slice(-8);
+              formattedHistory = slicedHistory.map((h) => ({
                 role: h.role as 'user' | 'assistant',
                 content: h.content,
               }));
+            }
           }
         } catch (dbHistErr) {
           console.warn('[webhook/whatsapp] Failed to fetch chat history from DB:', dbHistErr);
@@ -283,14 +311,7 @@ export async function POST(req: Request) {
           text = result.text;
         } catch (llmError) {
           console.error('[webhook/whatsapp] LLM execution error:', llmError);
-          const errorStr = String(llmError).toLowerCase();
-          const isRateLimit = errorStr.includes('429') || errorStr.includes('rate limit') || errorStr.includes('quota exceeded');
-
-          if (isRateLimit) {
-            text = `🤖 "Hold on, I'm analyzing too many stats at once. Let me catch my breath—ask me again in 60 seconds."`;
-          } else {
-            text = `🤖 "Hold on, my circuits are slightly warm right now. Give me a brief moment!"`;
-          }
+          text = `🤖 "Hold on, my circuits are slightly warm right now. Give me a brief moment!"`;
         }
 
         // Send LLM response back to the group

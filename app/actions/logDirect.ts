@@ -72,6 +72,7 @@ export async function logActivityManual(
   groupId: string,
   caption?: string,
   durationSeconds?: number,
+  loggedAtDate?: string,
 ): Promise<DirectLogResult> {
   if (!userId || !groupId) {
     return { success: false, error: 'Session expired. Please return to the home screen.' };
@@ -89,7 +90,7 @@ export async function logActivityManual(
 
   const supabase = createAdminClient();
 
-  // Try inserting with caption and durationSeconds
+  // Try inserting with caption, durationSeconds, and custom logged_at
   const { error: insertErr } = await supabase.from('metric_logs').insert({
     user_id:     userId,
     group_id:    groupId,
@@ -99,6 +100,7 @@ export async function logActivityManual(
     status:      (metricSlug === 'car_top_speed' || metricSlug === 'most_beers') ? 'pending' : 'verified',
     caption:     caption || null,
     duration_seconds: durationSeconds || null,
+    logged_at:   loggedAtDate ? `${loggedAtDate}T12:00:00Z` : undefined,
   });
 
   if (insertErr) {
@@ -112,6 +114,7 @@ export async function logActivityManual(
         value,
         unit,
         status:      (metricSlug === 'car_top_speed' || metricSlug === 'most_beers') ? 'pending' : 'verified',
+        logged_at:   loggedAtDate ? `${loggedAtDate}T12:00:00Z` : undefined,
       });
 
       if (retryErr) {

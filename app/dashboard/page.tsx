@@ -3,7 +3,7 @@ import { cookies }   from 'next/headers';
 import { redirect }  from 'next/navigation';
 import { createAdminClient }  from '@/lib/supabase/server';
 import { decodeSession, SESSION_COOKIE } from '@/lib/session';
-import { METRIC_PILLS, RANGE_OPTIONS, type MetricSlug, type RangeValue } from '@/lib/metrics';
+import { METRIC_PILLS, RANGE_OPTIONS, type RangeValue } from '@/lib/metrics';
 import { getChartData, getFeedItems } from '@/lib/queries';
 import type { FeedRow } from '@/lib/queries';
 import AddActivityModal        from '@/components/AddActivityModal';
@@ -13,6 +13,7 @@ import MetricPillSelector      from '@/components/MetricPillSelector';
 import DateRangeSelector       from '@/components/DateRangeSelector';
 import VotingPanel             from '@/components/VotingPanel';
 import LiveAchievementTicker   from '@/components/LiveAchievementTicker';
+import PeerReviewModal         from '@/components/PeerReviewModal';
 
 /**
  * Dashboard page — async Server Component.
@@ -226,16 +227,23 @@ export default async function DashboardPage({
       <div className="flex flex-col gap-4 px-4 md:px-8 pt-4 pb-24">
 
         {/* ── Row 2: Page Header ──────────────────────────────────── */}
-        <header>
-          <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tight text-[#111827] leading-none">
-            The Growth Club
-          </h1>
-          <p className="mt-2 text-[11px] font-bold tracking-[0.18em] text-[#6B7280] uppercase">
-            Train Together. Compete Together. Grow Together.
-          </p>
-          <svg width="340" height="14" viewBox="0 0 340 14" fill="none" aria-hidden="true" className="mt-0.5 max-w-full">
-            <path d="M2 10 C40 3, 90 13, 140 7 S210 2, 260 8 S305 12, 338 6" stroke="#22C55E" strokeWidth="2.8" strokeLinecap="round" fill="none" />
-          </svg>
+        <header className="flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tight text-[#111827] leading-none">
+              The Growth Club
+            </h1>
+            <p className="mt-2 text-[11px] font-bold tracking-[0.18em] text-[#6B7280] uppercase">
+              Train Together. Compete Together. Grow Together.
+            </p>
+            <svg width="340" height="14" viewBox="0 0 340 14" fill="none" aria-hidden="true" className="mt-0.5 max-w-full">
+              <path d="M2 10 C40 3, 90 13, 140 7 S210 2, 260 8 S305 12, 338 6" stroke="#22C55E" strokeWidth="2.8" strokeLinecap="round" fill="none" />
+            </svg>
+          </div>
+          <Suspense fallback={
+            <div className="p-2.5 bg-white border border-[#E5E7EB] rounded-full w-11 h-11 animate-pulse" />
+          }>
+            <PeerReviewBellWrapper groupId={groupId} userId={userId} />
+          </Suspense>
         </header>
 
         {/* ── Row 3: Controls Row (Range Selector + Add Activity) ─── */}
@@ -271,13 +279,24 @@ export default async function DashboardPage({
           <BreakingNewsFeed items={feedItems} currentUserId={userId} />
         </div>
 
-        {/* ── Peer-Review Voting Panel ─────────────────────────────── */}
-        <Suspense fallback={null}>
-          <VotingPanel groupId={groupId} userId={userId} />
-        </Suspense>
-
       </div>
     </div>
+  );
+}
+
+async function PeerReviewBellWrapper({ groupId, userId }: { groupId: string; userId: string }) {
+  const supabase = createAdminClient();
+  const { count } = await supabase
+    .from('metric_logs')
+    .select('*', { count: 'exact', head: true })
+    .eq('group_id', groupId)
+    .eq('status', 'pending')
+    .neq('user_id', userId);
+
+  return (
+    <PeerReviewModal count={count || 0}>
+      <VotingPanel groupId={groupId} userId={userId} />
+    </PeerReviewModal>
   );
 }
 

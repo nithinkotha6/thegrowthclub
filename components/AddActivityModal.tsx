@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Loader2, CheckCircle, AlertCircle, Sparkles, ClipboardList } from 'lucide-react';
 import {
@@ -10,7 +10,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
-import { METRIC_PILLS, type MetricSlug } from '@/lib/metrics';
+import { METRIC_PILLS } from '@/lib/metrics';
 import { ingestActivity, type IngestResult } from '@/app/actions/ingest';
 import { logActivityManual, type DirectLogResult } from '@/app/actions/logDirect';
 
@@ -43,6 +43,18 @@ export default function AddActivityModal({ userId, groupId, customPills }: AddAc
   const [manualMins, setManualMins] = useState('');
   const [manualSecs, setManualSecs] = useState('');
   const [manualCaption, setManualCaption] = useState('');
+  const [loggedDate, setLoggedDate] = useState(() => new Date().toISOString().split('T')[0]);
+
+  const [dateLimits, setDateLimits] = useState({ max: '', min: '' });
+
+  useEffect(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const tid = setTimeout(() => {
+      setDateLimits({ max: today, min: thirtyDaysAgo });
+    }, 0);
+    return () => clearTimeout(tid);
+  }, []);
 
   const allPills = [...METRIC_PILLS, ...(customPills || [])];
   const activePill = allPills.find((p) => p.id === selectedMetric);
@@ -59,6 +71,7 @@ export default function AddActivityModal({ userId, groupId, customPills }: AddAc
     setManualMins('');
     setManualSecs('');
     setManualCaption('');
+    setLoggedDate(new Date().toISOString().split('T')[0]);
     setResult(null);
   }
 
@@ -116,7 +129,8 @@ export default function AddActivityModal({ userId, groupId, customPills }: AddAc
           userId,
           groupId,
           finalCaption,
-          isEnduranceMetric ? totalSeconds : undefined
+          isEnduranceMetric ? totalSeconds : undefined,
+          loggedDate
         );
         setResult(res);
         if (res.success) {
@@ -356,22 +370,41 @@ export default function AddActivityModal({ userId, groupId, customPills }: AddAc
                   </div>
                 )}
 
-                {/* Optional Metadata Comment Block */}
+                {/* Optional Metadata Comment Block & Date Picker */}
                 {selectedMetric && (
-                  <div className="flex flex-col gap-1.5">
-                    <label htmlFor="manual-caption" className="text-xs font-bold text-[#6B7280] uppercase tracking-wider block">
-                      Comments / Story (Optional)
-                    </label>
-                    <input
-                      id="manual-caption"
-                      type="text"
-                      disabled={isPending}
-                      value={manualCaption}
-                      onChange={(e) => setManualCaption(e.target.value)}
-                      placeholder='e.g. "Leg day was brutal today"'
-                      className="w-full rounded-xl border border-[#E5E7EB] px-4 py-3 text-base text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-[#111827] disabled:opacity-50 min-h-[44px]"
-                    />
-                  </div>
+                  <>
+                    <div className="flex flex-col gap-1.5">
+                      <label htmlFor="activity-date" className="text-xs font-bold text-[#6B7280] uppercase tracking-wider block">
+                        Activity Date
+                      </label>
+                      <input
+                        id="activity-date"
+                        type="date"
+                        required
+                        max={dateLimits.max}
+                        min={dateLimits.min}
+                        disabled={isPending}
+                        value={loggedDate}
+                        onChange={(e) => setLoggedDate(e.target.value)}
+                        className="w-full rounded-xl border border-[#E5E7EB] px-4 py-3 text-base text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-[#111827] disabled:opacity-50 min-h-[44px]"
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                      <label htmlFor="manual-caption" className="text-xs font-bold text-[#6B7280] uppercase tracking-wider block">
+                        Comments / Story (Optional)
+                      </label>
+                      <input
+                        id="manual-caption"
+                        type="text"
+                        disabled={isPending}
+                        value={manualCaption}
+                        onChange={(e) => setManualCaption(e.target.value)}
+                        placeholder='e.g. "Leg day was brutal today"'
+                        className="w-full rounded-xl border border-[#E5E7EB] px-4 py-3 text-base text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-[#111827] disabled:opacity-50 min-h-[44px]"
+                      />
+                    </div>
+                  </>
                 )}
               </div>
             )}
