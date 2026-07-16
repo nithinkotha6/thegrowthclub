@@ -18,31 +18,31 @@ export default function GangPage() {
 
   if (isLoading && !data) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-god-canvas min-h-screen">
-        <Loader2 className="w-8 h-8 text-god-orange animate-spin" />
-        <p className="mt-2 text-xs font-bold text-god-blue uppercase tracking-wider">Loading Gang Roster...</p>
+      <div className="flex-1 flex flex-col items-center justify-center bg-[#F7F8FA] min-h-screen">
+        <Loader2 className="w-8 h-8 text-[#CEFF00] animate-spin" />
+        <p className="mt-2 text-xs font-bold text-[#6B7280] uppercase tracking-wider">Loading Gang Roster...</p>
       </div>
     );
   }
 
   return (
-    <div className="p-4 md:p-8 flex-1 flex flex-col bg-god-canvas min-w-0 overflow-y-auto">
+    <div className="p-4 md:p-8 flex-1 flex flex-col bg-[#F7F8FA] min-w-0 overflow-y-auto">
       {/* ── Group Roster Header ──────────────────────────────────────── */}
       <header className="mb-6">
-        <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tight text-god-black leading-none flex items-center gap-3">
-          <Users className="text-god-orange w-10 h-10 stroke-[2.5]" />
+        <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tight text-[#111827] leading-none flex items-center gap-3">
+          <Users className="text-[#CEFF00] w-10 h-10 stroke-[2.5]" />
           Gang
         </h1>
-        <p className="mt-2 text-[11px] font-bold tracking-[0.18em] text-god-blue uppercase">
+        <p className="mt-2 text-[11px] font-bold tracking-[0.18em] text-[#6B7280] uppercase">
           {groupName} Roster · {roster.length} Member{roster.length !== 1 ? 's' : ''}
         </p>
         <svg width="250" height="14" viewBox="0 0 250 14" fill="none" aria-hidden="true" className="mt-1">
-          <path d="M2 10 C35 3, 80 13, 125 7 S190 2, 248 6" stroke="#CE5100" strokeWidth="2.8" strokeLinecap="round" fill="none" />
+          <path d="M2 10 C35 3, 80 13, 125 7 S190 2, 248 6" stroke="#CEFF00" strokeWidth="2.8" strokeLinecap="round" fill="none" />
         </svg>
       </header>
 
       {fetchError && (
-        <div className="bg-god-red/10 border border-god-red/35 text-god-red px-4 py-3 rounded-xl text-xs font-bold mb-4">
+        <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-xs font-bold mb-4">
           {fetchError}
         </div>
       )}
@@ -54,7 +54,7 @@ export default function GangPage() {
             return (
               <div
                 key={profile.id}
-                className="bg-god-black rounded-[24px] border border-god-blue shadow-[0_8px_30px_rgba(0,0,0,0.3)] p-5 flex flex-col items-center text-center transition-[transform,box-shadow] duration-200 ease-out hover:shadow-[0_8px_30px_rgba(0,0,0,0.4)] hover:-translate-y-1 animate-in fade-in zoom-in-95 duration-300"
+                className="bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col items-center p-6 transition-[transform,box-shadow] duration-200 ease-out hover:shadow-md hover:-translate-y-1 animate-in fade-in zoom-in-95 duration-300"
                 style={{ animationDelay: `${index * 30}ms` }}
               >
                 {/* Large Centered Reusable UserAvatar */}
@@ -65,27 +65,27 @@ export default function GangPage() {
                     className="shadow-inner"
                     priority={index < 4}
                   />
-                  <div className="absolute -bottom-1.5 -right-1.5 bg-god-black border-2 border-god-blue text-[10px] font-black text-god-orange rounded-full w-6 h-6 flex items-center justify-center shadow tabular-nums">
+                  <div className="absolute -bottom-1.5 -right-1.5 bg-[#111827] border-2 border-white text-[10px] font-black text-[#CEFF00] rounded-full w-6 h-6 flex items-center justify-center shadow tabular-nums">
                     {profile.current_level}
                   </div>
                 </div>
 
                 {/* Name Details */}
                 <div className="flex flex-col w-full min-w-0">
-                  <h3 className="font-extrabold text-sm text-slate-100 truncate w-full">
+                  <h3 className="text-slate-900 font-bold text-sm truncate w-full">
                     {profile.nickname || profile.full_name}
                   </h3>
-                  <p className="text-[10px] font-bold text-god-silver uppercase tracking-wider mt-0.5 truncate w-full">
+                  <p className="text-slate-500 uppercase text-xs mt-0.5 truncate w-full">
                     {profile.full_name || 'Club Member'}
                   </p>
                 </div>
 
                 {/* XP and Level badging */}
                 <div className="mt-4 flex items-center justify-center gap-1.5 flex-wrap w-full">
-                  <span className="bg-god-orange/10 border border-god-orange/20 text-god-orange text-[10px] font-extrabold px-3 py-1 rounded-full tracking-wide tabular-nums">
+                  <span className="bg-slate-50 border border-slate-200 text-slate-700 text-[10px] font-extrabold px-3 py-1 rounded-full tracking-wide tabular-nums">
                     Lvl {profile.current_level}
                   </span>
-                  <span className="bg-slate-900 border border-god-blue/30 text-god-silver text-[10px] font-bold px-3 py-1 rounded-full tabular-nums tracking-tight">
+                  <span className="bg-slate-50 border border-slate-200 text-slate-700 text-[10px] font-bold px-3 py-1 rounded-full tabular-nums tracking-tight">
                     {profile.total_xp.toLocaleString()} XP
                   </span>
                 </div>
@@ -95,10 +95,10 @@ export default function GangPage() {
         </div>
       ) : (
         !isLoading && (
-          <div className="bg-god-black rounded-[24px] border border-god-blue shadow-[0_2px_10px_rgba(0,0,0,0.2)] p-12 text-center flex flex-col items-center justify-center gap-2">
-            <Users size={32} className="text-god-silver" />
-            <p className="text-sm font-bold text-slate-100">Your gang has no athletes yet.</p>
-            <p className="text-xs text-god-silver">Use your group invite code during signup to add members!</p>
+          <div className="bg-white border border-slate-200 rounded-[24px] shadow-sm p-12 text-center flex flex-col items-center justify-center gap-2">
+            <Users size={32} className="text-slate-400" />
+            <p className="text-sm font-bold text-slate-900">Your gang has no athletes yet.</p>
+            <p className="text-xs text-slate-500">Use your group invite code during signup to add members!</p>
           </div>
         )
       )}
