@@ -17,7 +17,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { googleProvider }                    from '@/lib/ai/google';
+import { executeWithKeyRotation } from '@/utils/geminiPool';
 import { generateObject }            from 'ai';
 import { z }                         from 'zod';
 import { createAdminClient } from '@/lib/supabase/server';
@@ -138,13 +138,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // ── 6. AI extraction — schema-enforced, injection-resistant ───────────────
   let extracted: z.infer<typeof ExtractionSchema>;
   try {
-    const { object } = await generateObject({
-      model:  googleProvider('gemini-3.5-flash'),
-      schema: ExtractionSchema,
-      system: SYSTEM_PROMPT,
-      prompt: rawText,
+    const result = await executeWithKeyRotation(async (modelInstance) => {
+      return generateObject({
+        model:  modelInstance,
+        schema: ExtractionSchema,
+        system: SYSTEM_PROMPT,
+        prompt: rawText,
+      });
     });
-    extracted = object;
+    extracted = result.object;
   } catch (aiErr) {
     console.error('[telegram/route] AI extraction failed:', aiErr);
     return NextResponse.json({ ok: true });

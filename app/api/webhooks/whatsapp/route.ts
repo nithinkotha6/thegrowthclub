@@ -3,12 +3,11 @@ import { NextResponse, after } from 'next/server';
 export const maxDuration = 60; // Allow up to 60 seconds for LLM processing
 
 import { generateText } from 'ai';
-import { googleProvider } from '@/lib/ai/google';
 import { sendWhatsAppGroupMessage } from '@/lib/whatsapp';
 import { buildGroupAssistantPrompt } from '@/lib/ai/prompts';
 import { createAdminClient } from '@/lib/supabase/server';
 import { safeCompare } from '@/lib/security';
-import { executeWithKeyRotation, AllKeysExhaustedError } from '@/utils/geminiPool';
+import { executeWithKeyRotation } from '@/utils/geminiPool';
 
 interface ProfileDetails {
   id: string;
@@ -304,9 +303,9 @@ export async function POST(req: Request) {
         ];
 
         try {
-          const result = await executeWithKeyRotation(async (provider) => {
+          const result = await executeWithKeyRotation(async (modelInstance) => {
             return generateText({
-              model: provider('gemini-3.5-flash'),
+              model: modelInstance,
               system: buildGroupAssistantPrompt(dbContext),
               messages: finalMessages,
             });

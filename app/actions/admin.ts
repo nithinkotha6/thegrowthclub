@@ -2,7 +2,7 @@
 
 import { createAdminClient } from '@/lib/supabase/server';
 import { generateText } from 'ai';
-import { googleProvider } from '@/lib/ai/google';
+import { executeWithKeyRotation } from '@/utils/geminiPool';
 
 // A. Check Bot Mute Status
 export async function getBotMuteStatus(): Promise<boolean> {
@@ -142,10 +142,13 @@ Write a short, hilarious, and aggressive (yet playful) call-out/roast text messa
 Tell them the group is waiting on them and roast them for slacking.
 Keep it under 60 words. Use emojis. Do not use hashtags or markdown formatting (no bold/italics). Just return the plain text.`;
 
-    const { text } = await generateText({
-      model: googleProvider('gemini-3.5-flash'),
-      prompt: promptText,
+    const result = await executeWithKeyRotation(async (modelInstance) => {
+      return generateText({
+        model: modelInstance,
+        prompt: promptText,
+      });
     });
+    const text = result.text;
 
     const reply = text.trim();
     if (!reply) {

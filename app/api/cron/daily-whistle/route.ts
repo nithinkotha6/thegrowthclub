@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 
 export const maxDuration = 60; // Allow up to 60 seconds for LLM processing
 import { generateText } from 'ai';
-import { googleProvider } from '@/lib/ai/google';
+import { executeWithKeyRotation } from '@/utils/geminiPool';
 import { createAdminClient } from '@/lib/supabase/server';
 import { safeCompare } from '@/lib/security';
 
@@ -213,9 +213,11 @@ Keep it under 100 words. Use natural Gen-Z slang, abbreviations, and emojis. Do 
 
       let broadcastText = '';
       try {
-        const result = await generateText({
-          model: googleProvider('gemini-3.5-flash'),
-          prompt: promptText,
+        const result = await executeWithKeyRotation(async (modelInstance) => {
+          return generateText({
+            model: modelInstance,
+            prompt: promptText,
+          });
         });
         broadcastText = result.text.trim();
       } catch (aiErr) {

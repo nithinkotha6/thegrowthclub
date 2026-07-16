@@ -5,7 +5,7 @@ import { createClient as createServerClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 import { SESSION_COOKIE, decodeSession } from '@/lib/session';
-import { googleProvider } from '@/lib/ai/google';
+import { executeWithKeyRotation } from '@/utils/geminiPool';
 
 /**
  * Helper to build an admin/service-role client bypassing RLS, or fallback to anon client.
@@ -58,7 +58,7 @@ export async function uploadAndCreateMemoryAction(
     const filePath = `${groupId}/${cleanFileName}`;
 
     // 3. Upload buffer directly to Supabase Storage memories bucket
-    const { data: uploadData, error: uploadErr } = await supabase.storage
+    const { error: uploadErr } = await supabase.storage
       .from('memories')
       .upload(filePath, buffer, {
         contentType: 'image/jpeg',
@@ -135,18 +135,21 @@ Keep it concise (1-2 sentences), formatted for a casual group chat.
 Do not use hashtags or markdown formatting (like bold, italics). Just plain text.`;
 
           const { generateText } = await import('ai');
-          const { text } = await generateText({
-            model: googleProvider('gemini-3.5-flash'),
-            messages: [
-              {
-                role: 'user',
-                content: [
-                  { type: 'text', text: promptText },
-                  { type: 'image', image: base64Image, mediaType: 'image/jpeg' }
-                ]
-              }
-            ]
+          const result = await executeWithKeyRotation(async (modelInstance) => {
+            return generateText({
+              model: modelInstance,
+              messages: [
+                {
+                  role: 'user',
+                  content: [
+                    { type: 'text', text: promptText },
+                    { type: 'image', image: base64Image, mediaType: 'image/jpeg' }
+                  ]
+                }
+              ]
+            });
           });
+          const text = result.text;
           if (text && text.trim()) {
             aiCaption = text.trim();
           }

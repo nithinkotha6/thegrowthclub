@@ -1,6 +1,6 @@
 'use server';
 
-import { googleProvider } from '@/lib/ai/google';
+import { executeWithKeyRotation } from '@/utils/geminiPool';
 import { z }      from 'zod';
 import { createAdminClient } from '@/lib/supabase/server';
 import { cookies } from 'next/headers';
@@ -79,10 +79,11 @@ export async function ingestActivity(
   let extracted: z.infer<typeof MetricSchema>;
   try {
     const { generateText } = await import('ai');
-    const { text } = await generateText({
-      model: googleProvider('gemini-3.5-flash'),
-      prompt: `You are a fitness data parser. Extract the metric from the user's text and return ONLY a raw JSON object with no markdown, no code fences, no explanation.
- 
+    const result = await executeWithKeyRotation(async (modelInstance) => {
+      return generateText({
+        model: modelInstance,
+        prompt: `You are a fitness data parser. Extract the metric from the user's text and return ONLY a raw JSON object with no markdown, no code fences, no explanation.
+  
 You MUST map the activity to one of these valid metric slug/UUID keys:
 === STANDARD TRACKERS ===
 ${configHints}
@@ -99,8 +100,9 @@ Required JSON shape:
 }
  
 User text: "${rawText}"`,
+      });
     });
- 
+    const text = result.text;
     const cleaned   = text.trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
     const parsed    = JSON.parse(cleaned);
     const validated = MetricSchema.safeParse(parsed);

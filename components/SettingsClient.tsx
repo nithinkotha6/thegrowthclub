@@ -108,10 +108,13 @@ export default function SettingsClient({
   // Module D: Manual Member Motivation Poke
   const [pokeSelectedUser, setPokeSelectedUser] = useState('');
 
-  const formatAdminError = (err: any): string => {
+  const formatAdminError = (err: unknown): string => {
     if (!err) return 'An unknown error occurred';
     if (typeof err === 'string') return err;
-    if (err.message && typeof err.message === 'string') return err.message;
+    if (err instanceof Error) return err.message;
+    if (typeof err === 'object' && err !== null && 'message' in err && typeof (err as { message: unknown }).message === 'string') {
+      return (err as { message: string }).message;
+    }
     try {
       return JSON.stringify(err);
     } catch {
