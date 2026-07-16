@@ -1,10 +1,9 @@
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 
 export const MODEL_CASCADE = [
-  'gemini-1.5-flash',      // Primary stable workhorse (1,500 RPD free tier)
   'gemini-2.0-flash-lite', // Lighter next-gen fallback
-  'gemini-3.1-flash-lite', // Alternative low-latency endpoint
-  'gemini-1.5-pro'         // High-intelligence fallback
+  'gemini-3.1-flash-lite' // Alternative low-latency endpoint
+
 ] as const;
 
 export type CascadeModel = typeof MODEL_CASCADE[number];
@@ -49,9 +48,9 @@ export async function executeWithKeyRotation<T>(
         return await fn(modelInstance, provider);
       } catch (err: unknown) {
         const errStr = String(err);
-        const isRateLimit = 
-          errStr.includes('429') || 
-          errStr.includes('RESOURCE_EXHAUSTED') || 
+        const isRateLimit =
+          errStr.includes('429') ||
+          errStr.includes('RESOURCE_EXHAUSTED') ||
           errStr.includes('Quota exceeded') ||
           (err && typeof err === 'object' && ('status' in err && (err as { status?: number }).status === 429));
 
