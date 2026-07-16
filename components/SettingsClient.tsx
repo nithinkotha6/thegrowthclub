@@ -8,7 +8,13 @@ import {
   adminTriggerPoke,
   adminEditLog,
   adminVerifyLog,
-  adminDeleteLog
+  adminDeleteLog,
+  adminToggleUserActive,
+  adminFetchAllLore,
+  adminUpsertMemberLore,
+  adminFetchVocabBanks,
+  adminUpsertVocabBank,
+  adminDeleteVocabBank
 } from '@/app/actions/admin';
 import { Sliders, Plus, Loader2, CheckCircle, AlertCircle, Search, Edit3, Trash2, Check, X } from 'lucide-react';
 
@@ -18,6 +24,7 @@ export interface ProfileDetails {
   nickname: string | null;
   full_name: string | null;
   avatar_url: string | null;
+  is_active?: boolean | null;
 }
 
 export interface GroupMemberRow {
@@ -75,7 +82,7 @@ export default function SettingsClient({
   const [pinInput, setPinInput] = useState('');
   const [pinUnlockError, setPinUnlockError] = useState<string | null>(null);
 
-  const [members] = useState<GroupMemberRow[]>(initialMembers);
+  const [members, setMembers] = useState<GroupMemberRow[]>(initialMembers);
   const [botMuted, setBotMuted] = useState(initialBotMuted);
   const [isSubmittingAdmin, setIsSubmittingAdmin] = useState(false);
 
@@ -95,6 +102,45 @@ export default function SettingsClient({
   const [toneSelectedUser, setToneSelectedUser] = useState('');
   const [toneFeedback, setToneFeedback] = useState<{ success: boolean; message: string } | null>(null);
   const [selectedGenderStyle, setSelectedGenderStyle] = useState('auto');
+
+  // AI Brain Editor (Module F) & User Manager (Module G) States
+  const [loreList, setLoreList] = useState<any[]>([]);
+  const [vocabBanks, setVocabBanks] = useState<any[]>([]);
+  const [activeBrainTab, setActiveBrainTab] = useState<'lore' | 'vocab'>('lore');
+
+  // Lore Editor States
+  const [loreEditorUser, setLoreEditorUser] = useState('');
+  const [loreStunts, setLoreStunts] = useState('');
+  const [loreGoodHabits, setLoreGoodHabits] = useState('');
+  const [loreBadHabits, setLoreBadHabits] = useState('');
+  const [loreEgoTrigger, setLoreEgoTrigger] = useState('');
+  const [loreCatchphrase, setLoreCatchphrase] = useState('');
+  const [loreNemesisId, setLoreNemesisId] = useState('');
+  const [loreFeedback, setLoreFeedback] = useState<{ success: boolean; message: string } | null>(null);
+
+  // Vocab Banks Editor States
+  const [vocabEditorId, setVocabEditorId] = useState<string | null>(null);
+  const [vocabTone, setVocabTone] = useState('ragebait');
+  const [vocabGender, setVocabGender] = useState('Male');
+  const [vocabWords, setVocabWords] = useState('');
+  const [vocabFeedback, setVocabFeedback] = useState<{ success: boolean; message: string } | null>(null);
+
+  // Load Brain Lore and Vocab on Unlock
+  React.useEffect(() => {
+    if (unlocked) {
+      const fetchBrainData = async () => {
+        try {
+          const lRes = await adminFetchAllLore(session.groupId);
+          if (lRes.success) setLoreList(lRes.data);
+          const vRes = await adminFetchVocabBanks(session.groupId);
+          if (vRes.success) setVocabBanks(vRes.data);
+        } catch (err) {
+          console.error('Failed to load brain data:', err);
+        }
+      };
+      fetchBrainData();
+    }
+  }, [unlocked, session.groupId]);
 
   const formatAdminError = (err: unknown): string => {
     if (!err) return 'An unknown error occurred';
@@ -169,6 +215,133 @@ export default function SettingsClient({
       setAdminStatus({ success: true, message: 'Log deleted successfully!' });
     } else {
       setAdminStatus({ success: false, message: res.error || 'Failed to delete log.' });
+    }
+  };
+
+  const handleToggleUserActive = async (targetUserId: string, currentActive: boolean) => {
+    setIsSubmittingAdmin(true);
+    setAdminStatus(null);
+    const targetState = !currentActive;
+    const res = await adminToggleUserActive(targetUserId, targetState, session.groupId);
+    setIsSubmittingAdmin(false);
+    if (res.success) {
+      setMembers((prev) =>
+        prev.map((m) =>
+          m.profiles?.id === targetUserId
+            ? { ...m, profiles: { ...m.profiles, is_active: targetState } }
+            : m
+        )
+      );
+      setAdminStatus({
+        success: true,
+        message: `User profile status successfully updated to ${targetState ? 'Active' : 'Inactive'}.`,
+      });
+    } else {
+      setAdminStatus({ success: false, message: res.error || 'Failed to toggle user active status.' });
+    }
+  };
+
+  const handleLoreUserChange = (uId: string) => {
+    setLoreEditorUser(uId);
+    setLoreFeedback(null);
+    const existing = loreList.find((l) => l.user_id === uId);
+    if (existing) {
+      setLoreStunts(existing.stunts?.join(', ') || '');
+      setLoreGoodHabits(existing.good_habits?.join(', ') || '');
+      setLoreBadHabits(existing.bad_habits?.join(', ') || '');
+      setLoreEgoTrigger(existing.ego_trigger || '');
+      setLoreCatchphrase(existing.catchphrase || '');
+      setLoreNemesisId(existing.nemesis_id || '');
+    } else {
+      setLoreStunts('');
+      setLoreGoodHabits('');
+      setLoreBadHabits('');
+      setLoreEgoTrigger('');
+      setLoreCatchphrase('');
+      setLoreNemesisId('');
+    }
+  };
+
+  const handleSaveLore = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!loreEditorUser) return;
+    setIsSubmittingAdmin(true);
+    setLoreFeedback(null);
+
+    const data = {
+      stunts: loreStunts.split(',').map((s) => s.trim()).filter(Boolean),
+      good_habits: loreGoodHabits.split(',').map((h) => h.trim()).filter(Boolean),
+      bad_habits: loreBadHabits.split(',').map((h) => h.trim()).filter(Boolean),
+      ego_trigger: loreEgoTrigger.trim() || null,
+      catchphrase: loreCatchphrase.trim() || null,
+      nemesis_id: loreNemesisId || null,
+    };
+
+    const res = await adminUpsertMemberLore(loreEditorUser, data, session.groupId);
+    setIsSubmittingAdmin(false);
+
+    if (res.success) {
+      setLoreList((prev) => {
+        const idx = prev.findIndex((l) => l.user_id === loreEditorUser);
+        const updatedRow = { user_id: loreEditorUser, ...data };
+        if (idx > -1) {
+          const updated = [...prev];
+          updated[idx] = updatedRow;
+          return updated;
+        }
+        return [...prev, updatedRow];
+      });
+      setLoreFeedback({ success: true, message: 'Member lore upserted successfully!' });
+    } else {
+      setLoreFeedback({ success: false, message: res.error || 'Failed to save lore.' });
+    }
+  };
+
+  const handleSaveVocab = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmittingAdmin(true);
+    setVocabFeedback(null);
+
+    const wordsArr = vocabWords.split(',').map((w) => w.trim()).filter(Boolean);
+    const res = await adminUpsertVocabBank(vocabEditorId, vocabTone, vocabGender, wordsArr, session.groupId);
+    setIsSubmittingAdmin(false);
+
+    if (res.success) {
+      const updatedList = await adminFetchVocabBanks(session.groupId);
+      if (updatedList.success) setVocabBanks(updatedList.data);
+
+      setVocabEditorId(null);
+      setVocabWords('');
+      setVocabFeedback({ success: true, message: 'Vocabulary bank entry saved successfully!' });
+    } else {
+      setVocabFeedback({ success: false, message: res.error || 'Failed to save vocab bank.' });
+    }
+  };
+
+  const handleEditVocabBankClick = (bank: any) => {
+    setVocabEditorId(bank.id);
+    setVocabTone(bank.tone);
+    setVocabGender(bank.target_gender);
+    setVocabWords(bank.words?.join(', ') || '');
+    setVocabFeedback(null);
+  };
+
+  const handleDeleteVocabBank = async (bankId: string) => {
+    if (!window.confirm('Are you sure you want to delete this vocabulary bank entry?')) return;
+    setIsSubmittingAdmin(true);
+    setVocabFeedback(null);
+    const res = await adminDeleteVocabBank(bankId, session.groupId);
+    setIsSubmittingAdmin(false);
+
+    if (res.success) {
+      setVocabBanks((prev) => prev.filter((v) => v.id !== bankId));
+      if (vocabEditorId === bankId) {
+        setVocabEditorId(null);
+        setVocabWords('');
+      }
+      setVocabFeedback({ success: true, message: 'Vocabulary bank entry deleted successfully!' });
+    } else {
+      setVocabFeedback({ success: false, message: res.error || 'Failed to delete vocab bank entry.' });
     }
   };
 
@@ -463,7 +636,7 @@ export default function SettingsClient({
                       className="w-full rounded-xl border border-[#E5E7EB] px-3.5 py-2.5 text-xs text-[#111827] bg-white focus:outline-none"
                     >
                       <option value="">-- Choose User --</option>
-                      {members.map((m) => (
+                      {members.filter(m => m.profiles?.is_active !== false).map((m) => (
                         <option key={m.user_id} value={m.profiles?.id}>
                           {m.profiles?.nickname || m.profiles?.full_name}
                         </option>
@@ -595,7 +768,7 @@ export default function SettingsClient({
                     className="w-full rounded-xl border border-[#E5E7EB] px-3.5 py-2.5 text-xs text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all"
                   >
                     <option value="">-- Choose User --</option>
-                    {members.map((m) => (
+                    {members.filter(m => m.profiles?.is_active !== false).map((m) => (
                       <option key={m.user_id} value={m.profiles?.id}>
                         {m.profiles?.nickname || m.profiles?.full_name}
                       </option>
@@ -766,6 +939,374 @@ export default function SettingsClient({
                         </td>
                       </tr>
                     )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Module F: AI Brain Editor */}
+            <div className="bg-fuchsia-950/10 border border-fuchsia-500/20 rounded-2xl p-5 flex flex-col gap-4 col-span-1 lg:col-span-2 hover:border-fuchsia-500/30 transition-all duration-200">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-fuchsia-500/10 pb-3">
+                <div>
+                  <h3 className="text-sm font-black text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
+                    🧠 Module F: AI Brain Data Editor
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Upsert traits, habits, and catchphrases for members, or adjust routed tone slang.
+                  </p>
+                </div>
+                
+                {/* Tabs */}
+                <div className="flex bg-white border border-slate-200 rounded-xl p-1 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setActiveBrainTab('lore')}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${
+                      activeBrainTab === 'lore' ? 'bg-fuchsia-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    Member Lore
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveBrainTab('vocab')}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${
+                      activeBrainTab === 'vocab' ? 'bg-fuchsia-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    Vocabulary Banks
+                  </button>
+                </div>
+              </div>
+
+              {activeBrainTab === 'lore' ? (
+                /* Lore Tab Form */
+                <form onSubmit={handleSaveLore} className="flex flex-col gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                        Select Member
+                      </label>
+                      <select
+                        value={loreEditorUser}
+                        onChange={(e) => handleLoreUserChange(e.target.value)}
+                        required
+                        className="w-full rounded-xl border border-[#E5E7EB] px-3.5 py-2.5 text-xs text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-fuchsia-500 transition-all"
+                      >
+                        <option value="">-- Choose User to Edit --</option>
+                        {members.map((m) => (
+                          <option key={m.user_id} value={m.profiles?.id}>
+                            {m.profiles?.nickname || m.profiles?.full_name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                        Select Nemesis (Opponent)
+                      </label>
+                      <select
+                        value={loreNemesisId}
+                        onChange={(e) => setLoreNemesisId(e.target.value)}
+                        className="w-full rounded-xl border border-[#E5E7EB] px-3.5 py-2.5 text-xs text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-fuchsia-500 transition-all"
+                      >
+                        <option value="">-- Choose Nemesis (Optional) --</option>
+                        {members.filter(m => m.profiles?.id !== loreEditorUser).map((m) => (
+                          <option key={m.user_id} value={m.profiles?.id}>
+                            {m.profiles?.nickname || m.profiles?.full_name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                        Lore Stunts / Incidents (comma-separated)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. forgot running shoes, slept during session"
+                        value={loreStunts}
+                        onChange={(e) => setLoreStunts(e.target.value)}
+                        className="w-full rounded-xl border border-[#E5E7EB] px-3.5 py-2.5 text-xs text-[#111827] bg-white focus:outline-none"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                        Good Habits (comma-separated)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. always early, drinks 4L water"
+                        value={loreGoodHabits}
+                        onChange={(e) => setLoreGoodHabits(e.target.value)}
+                        className="w-full rounded-xl border border-[#E5E7EB] px-3.5 py-2.5 text-xs text-[#111827] bg-white focus:outline-none"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                        Bad Habits (comma-separated)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. skips leg day, late logger"
+                        value={loreBadHabits}
+                        onChange={(e) => setLoreBadHabits(e.target.value)}
+                        className="w-full rounded-xl border border-[#E5E7EB] px-3.5 py-2.5 text-xs text-[#111827] bg-white focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                        Ego Trigger (what annoys/ticks them)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. call them slow, talk about workouts missed"
+                        value={loreEgoTrigger}
+                        onChange={(e) => setLoreEgoTrigger(e.target.value)}
+                        className="w-full rounded-xl border border-[#E5E7EB] px-3.5 py-2.5 text-xs text-[#111827] bg-white focus:outline-none"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                        Catchphrase
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 'I will do it tomorrow'"
+                        value={loreCatchphrase}
+                        onChange={(e) => setLoreCatchphrase(e.target.value)}
+                        className="w-full rounded-xl border border-[#E5E7EB] px-3.5 py-2.5 text-xs text-[#111827] bg-white focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isSubmittingAdmin || !loreEditorUser}
+                    className="w-full bg-fuchsia-600 hover:bg-fuchsia-700 text-white text-xs font-bold py-2.5 rounded-xl transition cursor-pointer disabled:opacity-40"
+                  >
+                    Upsert Member Lore 🧠💾
+                  </button>
+
+                  {loreFeedback && (
+                    <div className={`p-3 text-xs flex items-start gap-2 rounded-xl border ${
+                      loreFeedback.success
+                        ? 'bg-emerald-50/80 border-emerald-200/50 text-emerald-800'
+                        : 'bg-red-50/80 border-red-200/50 text-red-800'
+                    }`}>
+                      {loreFeedback.success ? <CheckCircle size={14} className="mt-0.5" /> : <AlertCircle size={14} className="mt-0.5" />}
+                      <span>{loreFeedback.message}</span>
+                    </div>
+                  )}
+                </form>
+              ) : (
+                /* Vocab Banks Tab Form & List */
+                <div className="flex flex-col gap-5">
+                  <form onSubmit={handleSaveVocab} className="flex flex-col gap-4 border-b border-fuchsia-500/10 pb-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                          Tone
+                        </label>
+                        <select
+                          value={vocabTone}
+                          onChange={(e) => setVocabTone(e.target.value)}
+                          className="w-full rounded-xl border border-[#E5E7EB] px-3.5 py-2.5 text-xs text-[#111827] bg-white focus:outline-none"
+                        >
+                          <option value="ragebait">ragebait</option>
+                          <option value="flirt_tease">flirt_tease</option>
+                          <option value="motivate">motivate</option>
+                        </select>
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                          Target Gender
+                        </label>
+                        <select
+                          value={vocabGender}
+                          onChange={(e) => setVocabGender(e.target.value)}
+                          className="w-full rounded-xl border border-[#E5E7EB] px-3.5 py-2.5 text-xs text-[#111827] bg-white focus:outline-none"
+                        >
+                          <option value="Male">Male</option>
+                          <option value="Female">Female</option>
+                          <option value="Neutral">Neutral</option>
+                        </select>
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                          Words List (comma-separated)
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="e.g. kothi, adavi manishi"
+                          value={vocabWords}
+                          onChange={(e) => setVocabWords(e.target.value)}
+                          className="w-full rounded-xl border border-[#E5E7EB] px-3.5 py-2.5 text-xs text-[#111827] bg-white focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button
+                        type="submit"
+                        disabled={isSubmittingAdmin}
+                        className="flex-1 bg-fuchsia-600 hover:bg-fuchsia-700 text-white text-xs font-bold py-2.5 rounded-xl transition cursor-pointer"
+                      >
+                        {vocabEditorId ? 'Save Vocab Bank Changes 💾' : 'Create Vocab Bank Entry ➕'}
+                      </button>
+                      {vocabEditorId && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setVocabEditorId(null);
+                            setVocabWords('');
+                          }}
+                          className="px-4 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold py-2.5 rounded-xl transition cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                      )}
+                    </div>
+
+                    {vocabFeedback && (
+                      <div className={`p-3 text-xs flex items-start gap-2 rounded-xl border ${
+                        vocabFeedback.success
+                          ? 'bg-emerald-50/80 border-emerald-200/50 text-emerald-800'
+                          : 'bg-red-50/80 border-red-200/50 text-red-800'
+                      }`}>
+                        {vocabFeedback.success ? <CheckCircle size={14} className="mt-0.5" /> : <AlertCircle size={14} className="mt-0.5" />}
+                        <span>{vocabFeedback.message}</span>
+                      </div>
+                    )}
+                  </form>
+
+                  {/* Vocab Bank List Table */}
+                  <div className="max-h-[300px] overflow-y-auto border border-slate-200 rounded-xl bg-white text-slate-800">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-slate-100/75 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+                          <th className="px-4 py-3">Tone</th>
+                          <th className="px-4 py-3">Gender</th>
+                          <th className="px-4 py-3">Words</th>
+                          <th className="px-4 py-3 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {vocabBanks.length > 0 ? (
+                          vocabBanks.map((v) => (
+                            <tr key={v.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                              <td className="px-4 py-3 font-semibold uppercase">{v.tone}</td>
+                              <td className="px-4 py-3">{v.target_gender}</td>
+                              <td className="px-4 py-3 font-mono text-[10px] break-all">{v.words?.join(', ')}</td>
+                              <td className="px-4 py-3 text-right flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleEditVocabBankClick(v)}
+                                  className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded cursor-pointer"
+                                  title="Edit"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteVocabBank(v.id)}
+                                  className="px-2 py-1 bg-red-50 text-red-600 hover:bg-red-100 text-[10px] font-bold rounded cursor-pointer"
+                                  title="Delete"
+                                >
+                                  Delete
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={4} className="px-4 py-8 text-center text-slate-400 font-bold">
+                              No vocab banks seeded.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Module G: Manage Users (Soft Delete Engine) */}
+            <div className="bg-rose-950/10 border border-rose-500/20 rounded-2xl p-5 flex flex-col gap-4 col-span-1 lg:col-span-2 hover:border-rose-500/30 transition-all duration-200">
+              <h3 className="text-sm font-black text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
+                👤 Module G: Manage Users (Soft Delete Engine)
+              </h3>
+              <p className="text-xs text-slate-500">
+                Deactivate or reactivate group members. Deactivation hides users on frontend panels without breaking database history.
+              </p>
+
+              <div className="overflow-x-auto border border-slate-200/60 rounded-xl bg-white text-slate-800 max-h-[300px]">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-100/75 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+                      <th className="px-4 py-3">Name</th>
+                      <th className="px-4 py-3">Nickname</th>
+                      <th className="px-4 py-3">Role</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {members.map((m) => {
+                      const isActive = m.profiles?.is_active !== false;
+                      return (
+                        <tr key={m.user_id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                          <td className="px-4 py-3.5 font-semibold">
+                            {m.profiles?.full_name}
+                          </td>
+                          <td className="px-4 py-3.5 text-slate-500">
+                            {m.profiles?.nickname || '---'}
+                          </td>
+                          <td className="px-4 py-3.5 uppercase text-[9px] font-black text-slate-400">
+                            {m.role || 'member'}
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <span className={`px-2 py-0.5 rounded font-black text-[9px] uppercase tracking-wider ${
+                              isActive
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-red-100 text-red-800'
+                            }`}>
+                              {isActive ? 'Active' : 'Ghosted / Inactive'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3.5 text-right">
+                            {isActive ? (
+                              <button
+                                type="button"
+                                disabled={isSubmittingAdmin}
+                                onClick={() => handleToggleUserActive(m.profiles?.id || '', true)}
+                                className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold cursor-pointer transition-all duration-200"
+                              >
+                                Deactivate (Soft Delete) 👤❌
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={isSubmittingAdmin}
+                                onClick={() => handleToggleUserActive(m.profiles?.id || '', false)}
+                                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-bold cursor-pointer transition-all duration-200"
+                              >
+                                Reactivate User 👤✅
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

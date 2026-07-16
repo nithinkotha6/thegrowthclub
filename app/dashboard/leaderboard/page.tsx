@@ -111,16 +111,17 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
     .eq('id', groupId)
     .single();
 
-  // 2. Fetch all members belonging to the active group
+  // 2. Fetch all members belonging to the active group (active only)
   const { data: membersRaw } = await supabase
     .from('group_members')
     .select(`
       user_id,
-      profiles!inner ( id, full_name, nickname, avatar_url, total_xp, current_level )
+      profiles!inner ( id, full_name, nickname, avatar_url, total_xp, current_level, is_active )
     `)
-    .eq('group_id', groupId);
+    .eq('group_id', groupId)
+    .neq('profiles.is_active', false);
 
-  // 3. Fetch all verified logs for the group, including profiles
+  // 3. Fetch all verified logs for the group, including profiles (active only)
   const logsQuery = supabase
     .from('metric_logs')
     .select(`
@@ -128,10 +129,11 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
       value,
       metric_slug,
       logged_at,
-      profiles!inner ( id, full_name, nickname, avatar_url, total_xp, current_level )
+      profiles!inner ( id, full_name, nickname, avatar_url, total_xp, current_level, is_active )
     `)
     .eq('group_id', groupId)
-    .eq('status', 'verified');
+    .eq('status', 'verified')
+    .neq('profiles.is_active', false);
 
   // Filter logs by active metric slug, unless querying total activities
   if (activeMetric !== 'total_activities') {

@@ -32,14 +32,15 @@ export default async function WearablesPage() {
     .in('metric_slug', ['wearable_sleep', 'wearable_steps', 'wearable_resting_hr'])
     .order('logged_at', { ascending: false });
 
-  // 3. Fetch all group member profiles
+  // 3. Fetch all group member profiles (active only)
   const { data: membersRaw } = await supabase
     .from('group_members')
     .select(`
       user_id,
-      profiles!inner ( id, full_name, nickname, avatar_url, total_xp, current_level )
+      profiles!inner ( id, full_name, nickname, avatar_url, total_xp, current_level, is_active )
     `)
-    .eq('group_id', groupId);
+    .eq('group_id', groupId)
+    .neq('profiles.is_active', false);
 
   // 4. Fetch group logs for the last 30 days (for Weekly & Monthly scoreboards)
   const thirtyDaysAgo = new Date();

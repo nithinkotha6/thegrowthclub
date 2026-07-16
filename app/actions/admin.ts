@@ -328,3 +328,132 @@ export async function adminDeleteLog(logId: string, groupId?: string) {
     return { success: false, error: getErrorMessage(err) };
   }
 }
+
+/* ── Module G: User Management (Soft Delete) ────────────────────────────── */
+
+export async function adminToggleUserActive(targetUserId: string, isActive: boolean, groupId?: string) {
+  try {
+    const supabase = createAdminClient(groupId);
+    const { error } = await supabase
+      .from('profiles')
+      .update({ is_active: isActive })
+      .eq('id', targetUserId);
+
+    if (error) throw error;
+    return { success: true };
+  } catch (err) {
+    console.error('[adminToggleUserActive] Error:', err);
+    return { success: false, error: getErrorMessage(err) };
+  }
+}
+
+/* ── Module F: AI Brain Lore & Vocab Editor Actions ────────────────────── */
+
+export async function adminFetchAllLore(groupId?: string) {
+  try {
+    const supabase = createAdminClient(groupId);
+    const { data, error } = await supabase
+      .from('member_lore')
+      .select('*');
+
+    if (error) throw error;
+    return { success: true, data: data || [] };
+  } catch (err) {
+    console.error('[adminFetchAllLore] Error:', err);
+    return { success: false, error: getErrorMessage(err), data: [] };
+  }
+}
+
+export async function adminUpsertMemberLore(
+  userId: string,
+  data: {
+    stunts: string[];
+    good_habits: string[];
+    bad_habits: string[];
+    ego_trigger: string | null;
+    catchphrase: string | null;
+    nemesis_id: string | null;
+  },
+  groupId?: string
+) {
+  try {
+    const supabase = createAdminClient(groupId);
+    const { error } = await supabase
+      .from('member_lore')
+      .upsert({
+        user_id: userId,
+        stunts: data.stunts || [],
+        good_habits: data.good_habits || [],
+        bad_habits: data.bad_habits || [],
+        ego_trigger: data.ego_trigger || null,
+        catchphrase: data.catchphrase || null,
+        nemesis_id: data.nemesis_id || null,
+      });
+
+    if (error) throw error;
+    return { success: true };
+  } catch (err) {
+    console.error('[adminUpsertMemberLore] Error:', err);
+    return { success: false, error: getErrorMessage(err) };
+  }
+}
+
+export async function adminFetchVocabBanks(groupId?: string) {
+  try {
+    const supabase = createAdminClient(groupId);
+    const { data, error } = await supabase
+      .from('vocab_banks')
+      .select('*');
+
+    if (error) throw error;
+    return { success: true, data: data || [] };
+  } catch (err) {
+    console.error('[adminFetchVocabBanks] Error:', err);
+    return { success: false, error: getErrorMessage(err), data: [] };
+  }
+}
+
+export async function adminUpsertVocabBank(
+  id: string | null,
+  tone: string,
+  gender: string,
+  words: string[],
+  groupId?: string
+) {
+  try {
+    const supabase = createAdminClient(groupId);
+    const payload: any = {
+      tone,
+      target_gender: gender,
+      words,
+    };
+    if (id) {
+      payload.id = id;
+    }
+    const { error } = await supabase
+      .from('vocab_banks')
+      .upsert(payload);
+
+    if (error) throw error;
+    return { success: true };
+  } catch (err) {
+    console.error('[adminUpsertVocabBank] Error:', err);
+    return { success: false, error: getErrorMessage(err) };
+  }
+}
+
+export async function adminDeleteVocabBank(id: string, groupId?: string) {
+  try {
+    const supabase = createAdminClient(groupId);
+    const { error } = await supabase
+      .from('vocab_banks')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    return { success: true };
+  } catch (err) {
+    console.error('[adminDeleteVocabBank] Error:', err);
+    return { success: false, error: getErrorMessage(err) };
+  }
+}

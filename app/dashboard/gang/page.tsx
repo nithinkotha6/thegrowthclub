@@ -25,14 +25,15 @@ export default async function GangPage() {
     .eq('id', groupId)
     .single();
 
-  // 2. Fetch all profiles linked to group members
+  // 2. Fetch all profiles linked to group members (active only)
   const { data: membersRaw } = await supabase
     .from('group_members')
     .select(`
       user_id,
-      profiles!inner ( id, full_name, nickname, avatar_url, total_xp, current_level )
+      profiles!inner ( id, full_name, nickname, avatar_url, total_xp, current_level, is_active )
     `)
-    .eq('group_id', groupId);
+    .eq('group_id', groupId)
+    .neq('profiles.is_active', false);
 
   type Profile = {
     id: string;

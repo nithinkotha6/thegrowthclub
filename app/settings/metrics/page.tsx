@@ -30,7 +30,7 @@ export default async function SettingsPage() {
     .select(`
       user_id,
       role,
-      profiles!inner ( id, nickname, full_name, avatar_url )
+      profiles!inner ( id, nickname, full_name, avatar_url, is_active )
     `)
     .eq('group_id', session.groupId);
 
@@ -40,7 +40,7 @@ export default async function SettingsPage() {
       .from('group_members')
       .select(`
         user_id,
-        profiles!inner ( id, nickname, full_name, avatar_url )
+        profiles!inner ( id, nickname, full_name, avatar_url, is_active )
       `)
       .eq('group_id', session.groupId);
     membersRaw = secondTryMembers;
