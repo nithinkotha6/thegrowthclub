@@ -1,7 +1,12 @@
 'use client';
 
 import React, { useState, useTransition } from 'react';
-import { createMetricDefinition } from '@/app/actions/metrics';
+import { 
+  createMetricDefinition,
+  adminFetchMetricDefinitions,
+  adminUpdateMetricDefinition,
+  adminDeleteMetricDefinition
+} from '@/app/actions/metrics';
 import { 
   adminResetPin, 
   adminToggleBotMute,
@@ -108,6 +113,18 @@ export default function SettingsClient({
   const [vocabBanks, setVocabBanks] = useState<any[]>([]);
   const [activeBrainTab, setActiveBrainTab] = useState<'lore' | 'vocab'>('lore');
 
+  // Log Editor Filtering states (Module E upgrades)
+  const [memberFilter, setMemberFilter] = useState('');
+  const [metricFilter, setMetricFilter] = useState('');
+
+  // Metric definitions management states
+  const [metricDefinitions, setMetricDefinitions] = useState<any[]>([]);
+  const [editingMetricId, setEditingMetricId] = useState<string | null>(null);
+  const [editMetricName, setEditMetricName] = useState('');
+  const [editMetricUnit, setEditMetricUnit] = useState('');
+  const [editMetricSort, setEditMetricSort] = useState<'asc' | 'desc'>('desc');
+  const [metricFeedback, setMetricFeedback] = useState<{ success: boolean; message: string } | null>(null);
+
   // Lore Editor States
   const [loreEditorUser, setLoreEditorUser] = useState('');
   const [loreStunts, setLoreStunts] = useState('');
@@ -125,7 +142,7 @@ export default function SettingsClient({
   const [vocabWords, setVocabWords] = useState('');
   const [vocabFeedback, setVocabFeedback] = useState<{ success: boolean; message: string } | null>(null);
 
-  // Load Brain Lore and Vocab on Unlock
+  // Load Brain Lore, Vocab, and Metric Definitions on Unlock
   React.useEffect(() => {
     if (unlocked) {
       const fetchBrainData = async () => {
@@ -134,6 +151,8 @@ export default function SettingsClient({
           if (lRes.success) setLoreList(lRes.data);
           const vRes = await adminFetchVocabBanks(session.groupId);
           if (vRes.success) setVocabBanks(vRes.data);
+          const mRes = await adminFetchMetricDefinitions(session.groupId);
+          if (mRes.success) setMetricDefinitions(mRes.data);
         } catch (err) {
           console.error('Failed to load brain data:', err);
         }
@@ -168,6 +187,7 @@ export default function SettingsClient({
         setName('');
         setUnit('');
         setSortDirection('desc');
+        setMetricDefinitions((prev) => [...prev, res.definition].sort((a, b) => a.name.localeCompare(b.name)));
         setStatus({ success: true, message: `Metric "${res.definition.name}" successfully created!` });
       } else {
         setStatus({ success: false, message: res.error || 'Failed to create metric.' });
@@ -345,13 +365,68 @@ export default function SettingsClient({
     }
   };
 
+  const handleEditMetricClick = (m: any) => {
+    setEditingMetricId(m.id);
+    setEditMetricName(m.name);
+    setEditMetricUnit(m.unit);
+    setEditMetricSort(m.sort_direction);
+    setMetricFeedback(null);
+  };
+
+  const handleUpdateMetric = async (id: string) => {
+    if (!editMetricName.trim() || !editMetricUnit.trim()) return;
+    setIsSubmittingAdmin(true);
+    setMetricFeedback(null);
+    const res = await adminUpdateMetricDefinition(id, editMetricName, editMetricUnit, editMetricSort);
+    setIsSubmittingAdmin(false);
+    if (res.success) {
+      const emojiRegex = /[\u{1F300}-\u{1F9FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F1E6}-\u{1F1FF}]/u;
+      const formattedName = emojiRegex.test(editMetricName.trim()) ? editMetricName.trim() : `📊 ${editMetricName.trim()}`;
+
+      setMetricDefinitions((prev) =>
+        prev.map((m) =>
+          m.id === id
+            ? { ...m, name: formattedName, unit: editMetricUnit.trim(), sort_direction: editMetricSort }
+            : m
+        )
+      );
+      setEditingMetricId(null);
+      setMetricFeedback({ success: true, message: 'Metric definition updated successfully!' });
+    } else {
+      setMetricFeedback({ success: false, message: res.error || 'Failed to update metric definition.' });
+    }
+  };
+
+  const handleDeleteMetric = async (id: string) => {
+    if (!window.confirm('Are you sure you want to permanently delete this metric definition? All logged data for this metric slug will remain but the tracker will be removed.')) return;
+    setIsSubmittingAdmin(true);
+    setMetricFeedback(null);
+    const res = await adminDeleteMetricDefinition(id);
+    setIsSubmittingAdmin(false);
+    if (res.success) {
+      setMetricDefinitions((prev) => prev.filter((m) => m.id !== id));
+      setMetricFeedback({ success: true, message: 'Metric definition deleted successfully!' });
+    } else {
+      setMetricFeedback({ success: false, message: res.error || 'Failed to delete metric definition.' });
+    }
+  };
+
   // Filter logs based on search query
   const filteredLogs = logs.filter((log) => {
+    // Text search
     const query = logsSearch.toLowerCase();
     const name = (log.profiles?.nickname || log.profiles?.full_name || '').toLowerCase();
     const metric = (log.metric_slug || '').toLowerCase();
     const val = String(log.value);
-    return name.includes(query) || metric.includes(query) || val.includes(query);
+    const matchesText = name.includes(query) || metric.includes(query) || val.includes(query);
+
+    // Member filter
+    const matchesMember = !memberFilter || log.user_id === memberFilter;
+
+    // Metric filter
+    const matchesMetric = !metricFilter || log.metric_slug === metricFilter;
+
+    return matchesText && matchesMember && matchesMetric;
   });
 
   return (
@@ -562,7 +637,7 @@ export default function SettingsClient({
               {/* Module C: AI Webhook Kill Switch */}
               <div className="bg-emerald-950/10 border border-emerald-500/20 rounded-2xl p-5 flex flex-col gap-3 hover:border-emerald-500/40 transition-all duration-200">
                 <h3 className="text-sm font-black text-gray-900 uppercase tracking-wider">
-                  Module C: AI Bot Control Switch
+                  AI Bot Control Switch
                 </h3>
                 <p className="text-xs text-slate-500">
                   Toggle to mute or unmute @fisky from responding to WhatsApp messages in this group.
@@ -602,7 +677,7 @@ export default function SettingsClient({
               {/* Module A: 4-Digit Kiosk PIN Reset Tool */}
               <div className="bg-blue-950/10 border border-blue-500/20 rounded-2xl p-5 flex flex-col gap-4 hover:border-blue-500/40 transition-all duration-200">
                 <h3 className="text-sm font-black text-gray-900 uppercase tracking-wider">
-                  Module A: Kiosk Credentials Reset
+                  Kiosk Credentials Reset
                 </h3>
                 <p className="text-xs text-slate-500">
                   Instantly overwrite a user&apos;s Kiosk PIN to allow them login access.
@@ -673,7 +748,7 @@ export default function SettingsClient({
             {/* Module B: AI Tone Dispatcher */}
             <div className="bg-purple-950/10 border border-purple-500/20 rounded-2xl p-5 flex flex-col gap-4 hover:border-purple-500/30 transition-all duration-200">
               <h3 className="text-sm font-black text-gray-900 uppercase tracking-wider">
-                Module B: AI Tone Dispatcher
+                AI Tone Dispatcher
               </h3>
               <p className="text-xs text-slate-500">
                 Select a conversational vibe, pick a gang member, and fire an AI broadcast to WhatsApp.
@@ -798,29 +873,73 @@ export default function SettingsClient({
               </form>
             </div>
 
-            {/* Module E: God Mode Log Editor */}
+            {/* God Mode Log Editor */}
             <div className="bg-slate-900/40 border border-slate-700 rounded-2xl p-5 flex flex-col gap-4 col-span-1 lg:col-span-2 hover:border-slate-600 transition-all duration-200">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-sm font-black text-gray-900 uppercase tracking-wider">
-                    Module E: God Mode Log Editor
+                  <h3 className="text-sm font-black text-slate-100 uppercase tracking-wider">
+                    God Mode Log Editor
                   </h3>
                   <p className="text-xs text-slate-500">
                     Correct values, verify status, or delete logs directly in the database.
                   </p>
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1">
+                {/* Filter by Member Dropdown */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    Filter by Member
+                  </label>
+                  <select
+                    value={memberFilter}
+                    onChange={(e) => setMemberFilter(e.target.value)}
+                    className="w-full rounded-xl border border-slate-700 px-3 py-2 text-xs text-slate-300 bg-slate-800/80 focus:outline-none focus:ring-1 focus:ring-slate-500"
+                  >
+                    <option value="">All Members</option>
+                    {members.map((m) => (
+                      <option key={m.user_id} value={m.profiles?.id}>
+                        {m.profiles?.nickname || m.profiles?.full_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Filter by Metric Dropdown */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    Filter by Metric
+                  </label>
+                  <select
+                    value={metricFilter}
+                    onChange={(e) => setMetricFilter(e.target.value)}
+                    className="w-full rounded-xl border border-slate-700 px-3 py-2 text-xs text-slate-300 bg-slate-800/80 focus:outline-none focus:ring-1 focus:ring-slate-500"
+                  >
+                    <option value="">All Metrics</option>
+                    {Array.from(new Set(logs.map(l => l.metric_slug))).sort().map((slug) => (
+                      <option key={slug} value={slug}>
+                        {slug}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-slate-700/50 pt-3">
+                <div></div>
 
                 {/* Search Log Input */}
                 <div className="relative max-w-xs w-full">
-                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-500">
                     <Search size={14} />
                   </span>
                   <input
                     type="text"
-                    placeholder="Search member, metric, or value..."
+                    placeholder="Search logs..."
                     value={logsSearch}
                     onChange={(e) => setLogsSearch(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-black bg-white"
+                    className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-500 bg-slate-800/80 text-slate-300 placeholder-slate-500"
                   />
                 </div>
               </div>
@@ -950,7 +1069,7 @@ export default function SettingsClient({
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-fuchsia-500/10 pb-3">
                 <div>
                   <h3 className="text-sm font-black text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
-                    🧠 Module F: AI Brain Data Editor
+                    🧠 AI Brain Data Editor
                   </h3>
                   <p className="text-xs text-slate-500">
                     Upsert traits, habits, and catchphrases for members, or adjust routed tone slang.
@@ -1244,7 +1363,7 @@ export default function SettingsClient({
             {/* Module G: Manage Users (Soft Delete Engine) */}
             <div className="bg-rose-950/10 border border-rose-500/20 rounded-2xl p-5 flex flex-col gap-4 col-span-1 lg:col-span-2 hover:border-rose-500/30 transition-all duration-200">
               <h3 className="text-sm font-black text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
-                👤 Module G: Manage Users (Soft Delete Engine)
+                👤 Manage Users (Soft Delete Engine)
               </h3>
               <p className="text-xs text-slate-500">
                 Deactivate or reactivate group members. Deactivation hides users on frontend panels without breaking database history.
@@ -1311,6 +1430,133 @@ export default function SettingsClient({
                   </tbody>
                 </table>
               </div>
+            </div>
+
+            {/* Metric Definitions Manager */}
+            <div className="bg-slate-900/40 border border-slate-700 rounded-2xl p-5 flex flex-col gap-4 col-span-1 lg:col-span-2 hover:border-slate-600 transition-all duration-200">
+              <h3 className="text-sm font-black text-slate-100 uppercase tracking-wider flex items-center gap-1.5">
+                📊 Metric Definitions Manager
+              </h3>
+              <p className="text-xs text-slate-500">
+                View, edit, or delete existing target KPI metrics. Modifying values updates dashboard calculations in real-time.
+              </p>
+
+              <div className="max-h-[300px] overflow-y-auto border border-slate-700/60 rounded-xl bg-slate-950/20 text-slate-300">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-800/60 border-b border-slate-700 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                      <th className="px-4 py-3">Metric Name</th>
+                      <th className="px-4 py-3">Unit</th>
+                      <th className="px-4 py-3">Leaderboard Sort</th>
+                      <th className="px-4 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {metricDefinitions.length > 0 ? (
+                      metricDefinitions.map((m) => (
+                        <tr key={m.id} className="border-b border-slate-800 last:border-0 hover:bg-slate-900/20">
+                          <td className="px-4 py-3.5 font-semibold text-slate-100">
+                            {editingMetricId === m.id ? (
+                              <input
+                                type="text"
+                                value={editMetricName}
+                                onChange={(e) => setEditMetricName(e.target.value)}
+                                className="w-full px-2 py-1 border border-slate-600 rounded text-xs focus:outline-none focus:ring-1 focus:ring-slate-400 bg-slate-800 text-white"
+                              />
+                            ) : (
+                              m.name
+                            )}
+                          </td>
+                          <td className="px-4 py-3.5 text-slate-300 font-medium">
+                            {editingMetricId === m.id ? (
+                              <input
+                                type="text"
+                                value={editMetricUnit}
+                                onChange={(e) => setEditMetricUnit(e.target.value)}
+                                className="w-24 px-2 py-1 border border-slate-600 rounded text-xs focus:outline-none focus:ring-1 focus:ring-slate-400 bg-slate-800 text-white"
+                              />
+                            ) : (
+                              m.unit
+                            )}
+                          </td>
+                          <td className="px-4 py-3.5 text-slate-400 font-medium">
+                            {editingMetricId === m.id ? (
+                              <select
+                                value={editMetricSort}
+                                onChange={(e) => setEditMetricSort(e.target.value as 'asc' | 'desc')}
+                                className="px-2 py-1 border border-slate-600 rounded text-xs focus:outline-none focus:ring-1 focus:ring-slate-400 bg-slate-800 text-white"
+                              >
+                                <option value="desc">Higher is Better (Desc)</option>
+                                <option value="asc">Lower is Better (Asc)</option>
+                              </select>
+                            ) : (
+                              m.sort_direction === 'desc' ? 'Higher is Better' : 'Lower is Better'
+                            )}
+                          </td>
+                          <td className="px-4 py-3.5 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {editingMetricId === m.id ? (
+                                <>
+                                  <button
+                                    onClick={() => handleUpdateMetric(m.id)}
+                                    className="p-1.5 rounded-lg bg-emerald-950/40 text-emerald-400 hover:bg-emerald-900/60 transition cursor-pointer animate-in fade-in duration-150"
+                                    title="Save changes"
+                                    disabled={isSubmittingAdmin}
+                                  >
+                                    <Check size={14} />
+                                  </button>
+                                  <button
+                                    onClick={() => setEditingMetricId(null)}
+                                    className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:bg-slate-700 transition cursor-pointer"
+                                    title="Cancel"
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    onClick={() => handleEditMetricClick(m)}
+                                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition cursor-pointer"
+                                    title="Edit metric"
+                                  >
+                                    <Edit3 size={14} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteMetric(m.id)}
+                                    className="p-1.5 rounded-lg text-rose-400 hover:text-rose-600 hover:bg-rose-950/20 transition cursor-pointer"
+                                    title="Delete metric"
+                                    disabled={isSubmittingAdmin}
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={4} className="px-4 py-8 text-center text-slate-500 font-bold">
+                          No metric definitions found.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {metricFeedback && (
+                <div className={`p-3 text-xs flex items-start gap-2 rounded-xl border ${
+                  metricFeedback.success
+                    ? 'bg-emerald-950/20 border-emerald-500/20 text-emerald-400'
+                    : 'bg-red-950/20 border-red-500/20 text-red-400'
+                }`}>
+                  {metricFeedback.success ? <CheckCircle size={14} className="mt-0.5" /> : <AlertCircle size={14} className="mt-0.5" />}
+                  <span>{metricFeedback.message}</span>
+                </div>
+              )}
             </div>
 
           </div>

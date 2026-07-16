@@ -4,7 +4,22 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 import { SESSION_COOKIE, decodeSession } from '@/lib/session';
- 
+
+/**
+ * Ensures the metric name contains exactly one emoji.
+ * If the user has already included an emoji, we return it as is (deduplicated).
+ * If no emoji is found, we prepend a default '📊 ' emoji.
+ */
+function ensureNameHasEmoji(name: string): string {
+  // Regex pattern matching standard emoji character ranges
+  const emojiRegex = /[\u{1F300}-\u{1F9FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F1E6}-\u{1F1FF}]/u;
+  const trimmed = name.trim();
+  if (!emojiRegex.test(trimmed)) {
+    return `📊 ${trimmed}`;
+  }
+  return trimmed;
+}
+
 export async function createMetricDefinition(name: string, unit: string, sortDirection: 'asc' | 'desc') {
   if (!name.trim() || !unit.trim() || !sortDirection) {
     return { success: false, error: 'All fields are required.' };
@@ -17,11 +32,13 @@ export async function createMetricDefinition(name: string, unit: string, sortDir
     return { success: false, error: 'Unauthorized: Session credentials mismatch.' };
   }
 
+  const formattedName = ensureNameHasEmoji(name);
+
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from('metric_definitions')
     .insert({
-      name: name.trim(),
+      name: formattedName,
       unit: unit.trim(),
       sort_direction: sortDirection,
       group_id: session.groupId,
@@ -38,4 +55,68 @@ export async function createMetricDefinition(name: string, unit: string, sortDir
   revalidatePath('/dashboard');
   revalidatePath('/dashboard/leaderboard');
   return { success: true, definition: data };
+}
+
+export async function adminFetchMetricDefinitions(groupId: string) {
+  try {
+    const supabase = createAdminClient();
+    const { data, error } = await supabase
+      .from('metric_definitions')
+      .select('*')
+      .eq('group_id', groupId)
+      .order('name', { ascending: true });
+
+    if (error) throw error;
+    return { success: true, data: data || [] };
+  } catch (err) {
+    console.error('[adminFetchMetricDefinitions] Error:', err);
+    return { success: false, error: err instanceof Error ? err.message : String(err), data: [] };
+  }
+}
+
+export async function adminUpdateMetricDefinition(id: string, name: string, unit: string, sortDirection: 'asc' | 'desc') {
+  try {
+    if (!name.trim() || !unit.trim() || !sortDirection) {
+      return { success: false, error: 'All fields are required.' };
+    }
+
+    const formattedName = ensureNameHasEmoji(name);
+    const supabase = createAdminClient();
+    const { error } = await supabase
+      .from('metric_definitions')
+      .update({
+        name: formattedName,
+        unit: unit.trim(),
+        sort_direction: sortDirection,
+      })
+      .eq('id', id);
+
+    if (error) throw error;
+    revalidatePath('/settings/metrics');
+    revalidatePath('/dashboard');
+    revalidatePath('/dashboard/leaderboard');
+    return { success: true };
+  } catch (err) {
+    console.error('[adminUpdateMetricDefinition] Error:', err);
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export async function adminDeleteMetricDefinition(id: string) {
+  try {
+    const supabase = createAdminClient();
+    const { error } = await supabase
+      .from('metric_definitions')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    revalidatePath('/settings/metrics');
+    revalidatePath('/dashboard');
+    revalidatePath('/dashboard/leaderboard');
+    return { success: true };
+  } catch (err) {
+    console.error('[adminDeleteMetricDefinition] Error:', err);
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
 }
