@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/cron/sync-wearables",
-      "schedule": "0 * * * *"
+      "schedule": "0 0 * * *"
     },
     {
       "path": "/api/cron/whatsapp-digest",
