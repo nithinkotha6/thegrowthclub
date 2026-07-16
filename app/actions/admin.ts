@@ -124,14 +124,32 @@ export async function adminTriggerPoke(userId: string, groupId: string, tone: st
   try {
     const supabase = createAdminClient(groupId);
 
-    // Resolve profile details
-    const { data: profile, error: profError } = await supabase
+    // Resolve profile details defensively to handle cases where the database is missing the gender column
+    let profile: any = null;
+    let profError: any = null;
+
+    const { data: dataWithGender, error: errWithGender } = await supabase
       .from('profiles')
       .select('nickname, full_name, gender')
       .eq('id', userId)
       .single();
 
+    if (errWithGender && errWithGender.message.toLowerCase().includes('gender')) {
+      console.warn('[adminTriggerPoke] Target database is missing the profiles.gender column. Falling back to select without gender.');
+      const { data: dataNoGender, error: errNoGender } = await supabase
+        .from('profiles')
+        .select('nickname, full_name')
+        .eq('id', userId)
+        .single();
+      profile = dataNoGender;
+      profError = errNoGender;
+    } else {
+      profile = dataWithGender;
+      profError = errWithGender;
+    }
+
     if (profError || !profile) {
+      console.error('[adminTriggerPoke] Profile lookup failed:', profError);
       return { success: false, error: 'User profile not found.' };
     }
 

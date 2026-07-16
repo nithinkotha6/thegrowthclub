@@ -286,7 +286,10 @@ export async function signUpAction(
     const cleanPin = sanitizedPin;
     const activeGroupId = group.id;
 
-    const { data: newProfile, error: profileError } = await supabase
+    let newProfile: any = null;
+    let profileError: any = null;
+
+    const { data: directProfile, error: directError } = await supabase
       .from('profiles')
       .insert({
         full_name: cleanFirstName,
@@ -300,6 +303,28 @@ export async function signUpAction(
       })
       .select('id, full_name, nickname, avatar_url')
       .single();
+
+    if (directError && directError.message.toLowerCase().includes('gender')) {
+      console.warn('[signup] Target database is missing the profiles.gender column. Falling back to insert without gender.');
+      const { data: fallbackProfile, error: fallbackError } = await supabase
+        .from('profiles')
+        .insert({
+          full_name: cleanFirstName,
+          nickname: nickname.trim() || null,
+          email: email.trim() || null,
+          pin: cleanPin,
+          group_id: activeGroupId,
+          role: 'member',
+          avatar_url: null,
+        })
+        .select('id, full_name, nickname, avatar_url')
+        .single();
+      newProfile = fallbackProfile;
+      profileError = fallbackError;
+    } else {
+      newProfile = directProfile;
+      profileError = directError;
+    }
 
     if (profileError || !newProfile) {
       if (profileError) {
