@@ -134,7 +134,7 @@ export default function SettingsClient({
     if (isNaN(valNum)) return;
     setIsSubmittingAdmin(true);
     setAdminStatus(null);
-    const res = await adminEditLog(logId, valNum);
+    const res = await adminEditLog(logId, valNum, session.groupId);
     setIsSubmittingAdmin(false);
     if (res.success) {
       setLogs((prev) => prev.map((l) => l.id === logId ? { ...l, value: valNum } : l));
@@ -148,7 +148,7 @@ export default function SettingsClient({
   const handleVerifyLog = async (logId: string) => {
     setIsSubmittingAdmin(true);
     setAdminStatus(null);
-    const res = await adminVerifyLog(logId);
+    const res = await adminVerifyLog(logId, session.groupId);
     setIsSubmittingAdmin(false);
     if (res.success) {
       setLogs((prev) => prev.map((l) => l.id === logId ? { ...l, status: 'verified' } : l));
@@ -162,7 +162,7 @@ export default function SettingsClient({
     if (!window.confirm('Are you sure you want to permanently delete this log?')) return;
     setIsSubmittingAdmin(true);
     setAdminStatus(null);
-    const res = await adminDeleteLog(logId);
+    const res = await adminDeleteLog(logId, session.groupId);
     setIsSubmittingAdmin(false);
     if (res.success) {
       setLogs((prev) => prev.filter((l) => l.id !== logId));
@@ -441,7 +441,7 @@ export default function SettingsClient({
                     if (!resetSelectedUser) return;
                     setAdminStatus(null);
                     setIsSubmittingAdmin(true);
-                    const res = await adminResetPin(resetSelectedUser, newKioskPin);
+                    const res = await adminResetPin(resetSelectedUser, newKioskPin, session.groupId);
                     setIsSubmittingAdmin(false);
                     if (res.success) {
                       setNewKioskPin('');

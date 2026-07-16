@@ -45,13 +45,21 @@ export async function createClient() {
  * on server-side queries (Server Actions, API Routes, Server Components).
  * Safely falls back to the anon client if SUPABASE_SERVICE_ROLE_KEY is not defined.
  */
-export function createAdminClient() {
+export function createAdminClient(groupId?: string) {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   
+  const headersObj: Record<string, string> = {};
+  if (groupId) {
+    headersObj['x-group-id'] = groupId;
+  }
+
   if (!serviceKey || serviceKey.trim() === '') {
     console.warn('[Supabase Server] WARNING: SUPABASE_SERVICE_ROLE_KEY is not defined. Falling back to anon client.');
     return createBaseClient(url, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+      global: {
+        headers: headersObj,
+      },
       auth: {
         persistSession: false,
         autoRefreshToken: false,
@@ -60,6 +68,9 @@ export function createAdminClient() {
   }
 
   return createBaseClient(url, serviceKey, {
+    global: {
+      headers: headersObj,
+    },
     auth: {
       persistSession: false,
       autoRefreshToken: false,

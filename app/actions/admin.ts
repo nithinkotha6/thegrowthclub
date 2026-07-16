@@ -55,14 +55,14 @@ export async function adminToggleBotMute(isMuted: boolean) {
 }
 
 // C. Reset User PIN
-export async function adminResetPin(userId: string, newPin: string) {
+export async function adminResetPin(userId: string, newPin: string, groupId?: string) {
   try {
     const sanitizedPin = newPin.replace(/\s/g, '').trim();
     if (sanitizedPin.length !== 4 || isNaN(Number(sanitizedPin))) {
       return { success: false, error: 'PIN must be exactly 4 digits.' };
     }
 
-    const supabase = createAdminClient();
+    const supabase = createAdminClient(groupId);
     const { error } = await supabase
       .from('profiles')
       .update({ pin: sanitizedPin })
@@ -122,7 +122,7 @@ export async function adminRemoveMember(userId: string, groupId: string) {
 // F. Trigger Poke/Roast Motivation
 export async function adminTriggerPoke(userId: string, groupId: string, tone: string, genderStyle: string = 'auto') {
   try {
-    const supabase = createAdminClient();
+    const supabase = createAdminClient(groupId);
 
     // Resolve profile details
     const { data: profile, error: profError } = await supabase
@@ -217,9 +217,9 @@ Keep it under 60 words. Use emojis. Do not use hashtags or markdown formatting (
 
 /* ── God Mode Log Editor Actions ────────────────────────────────────────── */
 
-export async function adminEditLog(logId: string, newValue: number) {
+export async function adminEditLog(logId: string, newValue: number, groupId?: string) {
   try {
-    const supabase = createAdminClient();
+    const supabase = createAdminClient(groupId);
     const { error } = await supabase
       .from('metric_logs')
       .update({ value: newValue })
@@ -233,9 +233,9 @@ export async function adminEditLog(logId: string, newValue: number) {
   }
 }
 
-export async function adminVerifyLog(logId: string) {
+export async function adminVerifyLog(logId: string, groupId?: string) {
   try {
-    const supabase = createAdminClient();
+    const supabase = createAdminClient(groupId);
     const { error } = await supabase
       .from('metric_logs')
       .update({ status: 'verified' })
@@ -249,9 +249,9 @@ export async function adminVerifyLog(logId: string) {
   }
 }
 
-export async function adminDeleteLog(logId: string) {
+export async function adminDeleteLog(logId: string, groupId?: string) {
   try {
-    const supabase = createAdminClient();
+    const supabase = createAdminClient(groupId);
     const { error } = await supabase
       .from('metric_logs')
       .delete()
