@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { safeCompare } from '@/lib/security';
 
 /**
- * Proactively refreshes the Google Fit Access Token if expired or expiring within 5 minutes.
+ * Proactively refreshes the Google Fit/Health Access Token if expired or expiring within 5 minutes.
  */
 async function refreshGoogleAccessToken(connection: any): Promise<string | null> {
   const expiresAt = new Date(connection.expires_at);
@@ -16,7 +16,7 @@ async function refreshGoogleAccessToken(connection: any): Promise<string | null>
     return connection.access_token;
   }
 
-  console.log(`[Wearables Sync] Refreshing Google Fit access token for user ${connection.user_id}...`);
+  console.log(`[Wearables Sync] Refreshing Google OAuth access token for user ${connection.user_id}...`);
 
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
@@ -50,7 +50,7 @@ async function refreshGoogleAccessToken(connection: any): Promise<string | null>
     if (!response.ok) {
       const errText = await response.text();
       console.error(
-        `[Wearables Sync] ERROR refreshing Google Fit token for user ${connection.user_id}:`,
+        `[Wearables Sync] ERROR refreshing Google OAuth token for user ${connection.user_id}:`,
         errText
       );
       return null;
@@ -76,12 +76,12 @@ async function refreshGoogleAccessToken(connection: any): Promise<string | null>
     }
 
     console.log(
-      `[Wearables Sync] Successfully refreshed Google Fit token for user ${connection.user_id}. New expiry: ${newExpiresAt}`
+      `[Wearables Sync] Successfully refreshed Google Fit/Health token for user ${connection.user_id}. New expiry: ${newExpiresAt}`
     );
     return newAccessToken;
   } catch (err: any) {
     console.error(
-      `[Wearables Sync] ERROR refreshing Google Fit token for user ${connection.user_id}:`,
+      `[Wearables Sync] ERROR refreshing Google Fit/Health token for user ${connection.user_id}:`,
       err?.message || err
     );
     return null;
@@ -375,15 +375,15 @@ async function syncFitbitCloud(connection: any): Promise<number> {
 }
 
 /**
- * Sync process for Google Fit (legacy REST API pulls)
+ * Sync process for Google Health API v4 (daily rollup consolidation)
  */
-async function syncGoogleFit(connection: any): Promise<number> {
+async function syncGoogleHealthV4(connection: any): Promise<number> {
   const supabaseAdmin = createAdminClient();
   const userId = connection.user_id;
 
   const accessToken = await refreshGoogleAccessToken(connection);
   if (!accessToken) {
-    console.warn(`[Wearables Sync] Skipping user ${userId} due to Google Fit token refresh failure.`);
+    console.warn(`[Wearables Sync] Skipping user ${userId} due to Google OAuth token refresh failure.`);
     return 0;
   }
 
@@ -396,14 +396,14 @@ async function syncGoogleFit(connection: any): Promise<number> {
       console.error(`[Wearables OAuth Audit] Token invalid or expired for user ${userId}:`, tokenInfo.error_description);
     } else {
       const grantedScopes = tokenInfo.scope ? tokenInfo.scope.split(' ') : [];
-      const hasActivity = grantedScopes.some((s: string) => s.includes('fitness.activity.read'));
-      const hasSleep = grantedScopes.some((s: string) => s.includes('fitness.sleep.read'));
-      const hasHr = grantedScopes.some((s: string) => s.includes('fitness.heart_rate.read'));
+      const hasHealthActivity = grantedScopes.some((s: string) => s.includes('googlehealth.activity_and_fitness.readonly'));
+      const hasHealthHr = grantedScopes.some((s: string) => s.includes('googlehealth.health_metrics_and_measurements.readonly'));
+      const hasLegacyActivity = grantedScopes.some((s: string) => s.includes('fitness.activity.read'));
 
-      console.log(`[Wearables OAuth Audit] User ${userId} Scope Check: Activity=${hasActivity} | Sleep=${hasSleep} | HeartRate=${hasHr}`);
+      console.log(`[Wearables OAuth Audit] User ${userId} Scope Check: HealthActivity=${hasHealthActivity} | HealthMetrics=${hasHealthHr} | LegacyActivity=${hasLegacyActivity}`);
       
-      if (!hasActivity) {
-        console.error(`[Wearables OAuth Audit] CRITICAL: Access token lacks 'fitness.activity.read'. Google Fit will permanently return empty step arrays until the user re-authenticates!`);
+      if (!hasHealthActivity) {
+        console.error(`[Wearables OAuth Audit] CRITICAL: Access token lacks 'googlehealth.activity_and_fitness.readonly'. Google Health API v4 queries will return 403 Forbidden until the user re-authenticates!`);
       }
     }
   } catch (err) {
@@ -415,13 +415,13 @@ async function syncGoogleFit(connection: any): Promise<number> {
   let endTimeMillis: number;
 
   if (isBackfill) {
-    console.log('[Wearables Tier 1] Initiating chunked 2026 Historical Backfill for user:', userId);
+    console.log('[Wearables Tier 1] Initiating chunked 2026 Google Health v4 Historical Backfill for user:', userId);
     // Start of Jan 1, 2026
     const startOf2026 = new Date(2026, 0, 1, 0, 0, 0, 0);
     startTimeMillis = startOf2026.getTime();
     endTimeMillis = Date.now();
   } else {
-    console.log('[Wearables Tier 2] Executing routine daily cumulative sync for user:', userId);
+    console.log('[Wearables Tier 2] Executing routine Google Health v4 daily cumulative sync for user:', userId);
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     startTimeMillis = startOfToday.getTime();
@@ -436,180 +436,155 @@ async function syncGoogleFit(connection: any): Promise<number> {
   let currentStart = startTimeMillis;
   let hasApiError = false;
 
-  // Chunking API aggregate requests into 30-day windows to avoid Google Fit "duration too large" HTTP 400 errors
+  // Chunking v4 rollup requests into 30-day windows to avoid long latency ranges
   while (currentStart < endTimeMillis) {
     const currentEnd = Math.min(currentStart + THIRTY_DAYS_MS, endTimeMillis);
-    console.log(`[Wearables Sync Chunk] Fetching chunk: ${new Date(currentStart).toISOString()} to ${new Date(currentEnd).toISOString()}`);
-    let chunkStepsCount = 0;
+    console.log(`[Wearables Sync Chunk] Fetching Health v4 chunk: ${new Date(currentStart).toISOString()} to ${new Date(currentEnd).toISOString()}`);
+
+    const startDate = new Date(currentStart);
+    const endDate = new Date(currentEnd);
+
+    const payload = {
+      start: {
+        year: startDate.getUTCFullYear(),
+        month: startDate.getUTCMonth() + 1,
+        day: startDate.getUTCDate(),
+        hours: 0, minutes: 0, seconds: 0
+      },
+      end: {
+        year: endDate.getUTCFullYear(),
+        month: endDate.getUTCMonth() + 1,
+        day: endDate.getUTCDate(),
+        hours: 23, minutes: 59, seconds: 59
+      },
+      pageSize: 1000
+    };
 
     try {
-      const response = await fetch(
-        'https://www.googleapis.com/fitness/v1/users/me/dataset:aggregate',
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            aggregateBy: [
-              { dataTypeName: 'com.google.step_count.delta' },
-              { dataTypeName: 'com.google.sleep.segment' },
-              { dataTypeName: 'com.google.heart_rate.bpm' }
-            ],
-            bucketByTime: { durationMillis: 86400000 },
-            startTimeMillis: currentStart,
-            endTimeMillis: currentEnd,
-          }),
-        }
-      );
+      // 1. Fetch Steps Daily Rollup
+      const stepsUrl = 'https://health.googleapis.com/v4/users/me/dataTypes/steps/dataPoints:dailyRollUp';
+      const stepsRes = await fetch(stepsUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
 
-      if (response.ok) {
-        const aggregateData = await response.json();
-
-        if (aggregateData.error) {
-          console.error(
-            `[Wearables Sync Chunk Error] Google Fit API chunk failed (${new Date(currentStart).toISOString()} to ${new Date(currentEnd).toISOString()}):`,
-            JSON.stringify(aggregateData.error)
-          );
-          hasApiError = true;
-          break;
-        }
-
-        if (aggregateData.bucket) {
-          for (const bucket of aggregateData.bucket) {
-            const bucketStart = Number(bucket.startTimeMillis);
-            const loggedDateStr = new Date(bucketStart).toISOString().split('T')[0];
-
-            // 1. Steps (Index 0)
-            let bucketSteps = 0;
-            const stepsDataset = bucket.dataset?.[0];
-            if (stepsDataset?.point) {
-              for (const pt of stepsDataset.point) {
-                if (pt.value) {
-                  for (const val of pt.value) {
-                    bucketSteps += val.intVal || val.fpVal || 0;
-                  }
-                }
-              }
-            }
-            if (bucketSteps > 0) {
-              chunkStepsCount++;
+      if (stepsRes.ok) {
+        const data = await stepsRes.json();
+        console.log('[Wearables Sync] Google Health v4 Raw Steps Response:', JSON.stringify(data, null, 2));
+        if (data.dailyRollupDataPoints) {
+          data.dailyRollupDataPoints.forEach((point: any) => {
+            const val = point.value?.steps?.countSum ?? 0;
+            if (val > 0) {
+              const dateStr = `${point.start.year}-${String(point.start.month).padStart(2, '0')}-${String(point.start.day).padStart(2, '0')}`;
               stepsPayloads.push({
                 user_id: userId,
                 connection_id: connection.id,
-                logged_date: loggedDateStr,
-                value: bucketSteps,
-                source: 'wearable_sync',
+                logged_date: dateStr,
+                value: val,
+                source: 'google_health_v4',
               });
             }
-
-            // 2. Sleep (Index 1)
-            let bucketSleep = 0;
-            const sleepDataset = bucket.dataset?.[1];
-            if (sleepDataset?.point) {
-              for (const pt of sleepDataset.point) {
-                const startNs = Number(pt.startTimeNanos);
-                const endNs = Number(pt.endTimeNanos);
-                if (endNs > startNs) {
-                  bucketSleep += (endNs - startNs) / (1e6 * 1000 * 60 * 60);
-                }
-              }
-            }
-            if (bucketSleep > 0) {
-              sleepPayloads.push({
-                user_id: userId,
-                connection_id: connection.id,
-                logged_date: loggedDateStr,
-                value: Math.round(bucketSleep * 10) / 10,
-                source: 'wearable_sync',
-              });
-            }
-
-            // 3. Resting HR (Index 2)
-            let minHR = null;
-            const hrDataset = bucket.dataset?.[2];
-            if (hrDataset?.point) {
-              for (const pt of hrDataset.point) {
-                if (pt.value) {
-                  for (const val of pt.value) {
-                    const hrVal = val.fpVal || val.intVal;
-                    if (hrVal && hrVal >= 35 && hrVal <= 120) {
-                      if (minHR === null || hrVal < minHR) {
-                        minHR = hrVal;
-                      }
-                    }
-                  }
-                }
-              }
-            }
-            if (minHR !== null) {
-              hrPayloads.push({
-                user_id: userId,
-                connection_id: connection.id,
-                logged_date: loggedDateStr,
-                value: Math.round(minHR),
-                source: 'wearable_sync',
-              });
-            }
-          }
+          });
         }
       } else {
-        const errText = await response.text();
-        console.error(
-          `[Wearables Sync Chunk Error] API request returned status ${response.status}:`,
-          errText
-        );
+        console.error(`[Wearables Sync Google] Steps rollup failed:`, await stepsRes.text());
         hasApiError = true;
         break;
       }
 
-      // Health Connect Raw Stream Fallback Check (if aggregated query returned 0 steps)
-      if (chunkStepsCount === 0 && !hasApiError) {
-        console.log(`[Wearables Sync Fallback] Aggregate steps returned 0 rows. Running Health Connect raw stream fallback query for chunk...`);
-        try {
-          const fallbackUrl = `https://www.googleapis.com/fitness/v1/users/me/dataSources/derived:com.google.step_count.delta:com.google.android.gms:estimated_steps/datasets/${currentStart}000000-${currentEnd}000000`;
-          const fallbackRes = await fetch(fallbackUrl, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-          });
-          if (fallbackRes.ok) {
-            const fallbackData = await fallbackRes.json();
-            console.log(`[Wearables Sync Fallback] Raw stream response point count: ${fallbackData.point?.length || 0}`);
-            
-            // Aggregate points by day
-            const stepsByDay: Record<string, number> = {};
-            if (fallbackData.point) {
-              for (const pt of fallbackData.point) {
-                const ptStartMs = Number(pt.startTimeNanos) / 1000000;
-                const ptDateStr = new Date(ptStartMs).toISOString().split('T')[0];
-                let ptSteps = 0;
-                if (pt.value) {
-                  for (const val of pt.value) {
-                    ptSteps += val.intVal || val.fpVal || 0;
-                  }
+      // 2. Fetch Sleep Daily Rollup
+      const sleepUrl = 'https://health.googleapis.com/v4/users/me/dataTypes/sleep/dataPoints:dailyRollUp';
+      const sleepRes = await fetch(sleepUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (sleepRes.ok) {
+        const data = await sleepRes.json();
+        console.log('[Wearables Sync] Google Health v4 Raw Sleep Response:', JSON.stringify(data, null, 2));
+        if (data.dailyRollupDataPoints) {
+          data.dailyRollupDataPoints.forEach((point: any) => {
+            const sleepObj = point.value?.sleep;
+            if (sleepObj) {
+              const rawVal = sleepObj.durationSum || sleepObj.duration || sleepObj.durationSeconds || sleepObj.totalDurationSeconds || 0;
+              let sleepVal = 0;
+              if (typeof rawVal === 'string') {
+                const num = parseFloat(rawVal);
+                if (rawVal.endsWith('s')) {
+                  sleepVal = num / 3600;
+                } else {
+                  sleepVal = num / 3600000;
                 }
-                if (ptSteps > 0) {
-                  stepsByDay[ptDateStr] = (stepsByDay[ptDateStr] || 0) + ptSteps;
+              } else if (typeof rawVal === 'number') {
+                if (rawVal > 86400) {
+                  sleepVal = rawVal / 3600000; // ms
+                } else {
+                  sleepVal = rawVal / 3600; // sec
                 }
               }
+              if (sleepVal > 0) {
+                const dateStr = `${point.start.year}-${String(point.start.month).padStart(2, '0')}-${String(point.start.day).padStart(2, '0')}`;
+                sleepPayloads.push({
+                  user_id: userId,
+                  connection_id: connection.id,
+                  logged_date: dateStr,
+                  value: Math.round(sleepVal * 10) / 10,
+                  source: 'google_health_v4',
+                });
+              }
             }
-
-            for (const [day, steps] of Object.entries(stepsByDay)) {
-              stepsPayloads.push({
-                user_id: userId,
-                connection_id: connection.id,
-                logged_date: day,
-                value: steps,
-                source: 'wearable_sync_fallback',
-              });
-              console.log(`[Wearables Sync Fallback] Logged fallback step value ${steps} for day ${day}`);
-            }
-          } else {
-            console.error(`[Wearables Sync Fallback] Health Connect raw stream fallback query failed:`, await fallbackRes.text());
-          }
-        } catch (fallbackErr) {
-          console.error(`[Wearables Sync Fallback] Error in raw stream fallback query:`, fallbackErr);
+          });
         }
+      } else {
+        console.error(`[Wearables Sync Google] Sleep rollup failed:`, await sleepRes.text());
+        hasApiError = true;
+        break;
+      }
+
+      // 3. Fetch Resting HR Daily Rollup
+      const hrUrl = 'https://health.googleapis.com/v4/users/me/dataTypes/daily-resting-heart-rate/dataPoints:dailyRollUp';
+      const hrRes = await fetch(hrUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (hrRes.ok) {
+        const data = await hrRes.json();
+        console.log('[Wearables Sync] Google Health v4 Raw Heart Response:', JSON.stringify(data, null, 2));
+        if (data.dailyRollupDataPoints) {
+          data.dailyRollupDataPoints.forEach((point: any) => {
+            const hrObj = point.value?.['daily-resting-heart-rate'] || point.value?.restingHeartRate || point.value?.resting_heart_rate;
+            if (hrObj) {
+              const hrVal = hrObj.bpm || hrObj.restingHeartRate || hrObj.resting_heart_rate || hrObj.value || 0;
+              if (hrVal > 0) {
+                const dateStr = `${point.start.year}-${String(point.start.month).padStart(2, '0')}-${String(point.start.day).padStart(2, '0')}`;
+                hrPayloads.push({
+                  user_id: userId,
+                  connection_id: connection.id,
+                  logged_date: dateStr,
+                  value: Math.round(hrVal),
+                  source: 'google_health_v4',
+                });
+              }
+            }
+          });
+        }
+      } else {
+        console.error(`[Wearables Sync Google] Heart rate rollup failed:`, await hrRes.text());
+        hasApiError = true;
+        break;
       }
     } catch (err) {
       console.error(`[Wearables Sync Chunk Error] Network exception during chunk fetch:`, err);
@@ -682,7 +657,7 @@ async function syncGoogleFit(connection: any): Promise<number> {
   if (updateErr) {
     console.error(`[Wearables Sync] Failed to update connection status:`, updateErr);
   } else if (isBackfill && !hasApiError && !hasDbError && !isEmptyData) {
-    console.log(`[Wearables Tier 1] Marked Google Fit backfill completed successfully for user ${userId}`);
+    console.log(`[Wearables Tier 1] Marked Google Health v4 backfill completed successfully for user ${userId}`);
   }
 
   return (hasApiError || hasDbError || isEmptyData) ? 0 : totalExtracted;
@@ -803,7 +778,7 @@ async function syncWhoop(connection: any): Promise<number> {
     .update(updateData)
     .eq('id', connection.id);
 
-  return (hasDbError || isEmptyData) ? 0 : totalExtracted;
+  return hasDbError ? 0 : totalExtracted;
 }
 
 /**
@@ -848,8 +823,8 @@ export async function GET(req: Request) {
             inserts = await syncFitbitCloud(connection);
             break;
           case 'google_fit':
-            console.log(`[Wearables Debug] Routing user ${connection.user_id} (Provider: google_fit) to legacy syncGoogleFit`);
-            inserts = await syncGoogleFit(connection);
+            console.log(`[Wearables Debug] Routing user ${connection.user_id} (Provider: google_fit) to native syncGoogleHealthV4`);
+            inserts = await syncGoogleHealthV4(connection);
             break;
           case 'whoop':
             console.log(`[Wearables Debug] Routing user ${connection.user_id} to syncWhoop`);
