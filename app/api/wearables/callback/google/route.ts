@@ -75,12 +75,12 @@ export async function GET(req: Request) {
       .from('wearable_connections')
       .select('id, refresh_token')
       .eq('user_id', userId)
-      .eq('provider', 'google_fit')
+      .eq('provider', 'fitbit')
       .maybeSingle();
 
     const connData: any = {
       user_id: userId,
-      provider: 'google_fit',
+      provider: 'fitbit',
       access_token: tokenData.access_token,
       expires_at: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
       status: 'active',

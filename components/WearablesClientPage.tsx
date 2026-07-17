@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Watch, Heart, Moon, Zap, RefreshCw, Smartphone, Award, Flame } from 'lucide-react';
 import UserAvatar from '@/components/UserAvatar';
 import CheerButton from '@/components/CheerButton';
-import { disconnectWearableAction } from '@/app/actions/wearables';
+import { disconnectWearableAction, connectWearableAction } from '@/app/actions/wearables';
 
 interface GroupMember {
   id: string;
@@ -173,16 +173,16 @@ export default function WearablesClientPage({
       {/* ── Connection Status Indicator Card ──────────────────────── */}
       <div className="bg-white rounded-[24px] border border-white/5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] p-5 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${connection ? 'bg-[#CEFF00]/10 text-gray-900' : 'bg-slate-100 text-slate-400'}`}>
-            <Smartphone size={20} className={connection ? 'text-gray-900 animate-pulse' : ''} />
+          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${connection ? 'bg-[#34C759]/10 text-gray-900' : 'bg-slate-100 text-slate-400'}`}>
+            <Smartphone size={20} className={connection ? 'text-[#34C759] animate-pulse' : ''} />
           </div>
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-2">
               <h3 className="font-extrabold text-sm text-[#111827]">
-                {connection ? (connection.provider === 'google_fit' ? 'Google Fit' : connection.provider) : 'No Device Connected'}
+                {connection ? (connection.provider === 'fitbit' || connection.provider === 'google_fit' ? 'Fitbit' : 'Whoop') : 'No Device Connected'}
               </h3>
-              {connection && connection.provider === 'google_fit' && (
-                <span className="bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-0.5">
+              {connection && (
+                <span className="bg-[#34C759]/10 text-[#34C759] border border-[#34C759]/20 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-0.5">
                   Connected ✓
                 </span>
               )}
@@ -190,7 +190,7 @@ export default function WearablesClientPage({
             <p className="text-[10px] font-bold text-[#6B7280] uppercase tracking-wider">
               {connection 
                 ? `Active · Last synced: ${new Date(connection.last_synced_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` 
-                : 'Connect Google Fit to sync stats automatically'}
+                : 'Connect Fitbit or Whoop to sync stats automatically'}
             </p>
           </div>
         </div>
@@ -199,17 +199,38 @@ export default function WearablesClientPage({
           <button
             onClick={handleDisconnect}
             disabled={isPending}
-            className="px-4 py-2 text-xs font-black uppercase tracking-wider bg-red-50 text-red-600 rounded-xl hover:bg-red-100 active:scale-95 transition-all cursor-pointer"
+            className="px-4 py-2 text-xs font-black uppercase tracking-wider border border-[#34C759] text-[#34C759] bg-white hover:bg-[#34C759]/5 rounded-xl active:scale-95 transition-all cursor-pointer"
           >
             Disconnect
           </button>
         ) : (
-          <a
-            href="/api/wearables/connect/google"
-            className="px-4 py-2.5 text-xs font-black uppercase tracking-wider bg-[#CEFF00] text-gray-900 rounded-xl hover:bg-[#b5e000] active:scale-95 transition-all cursor-pointer flex items-center gap-1.5"
-          >
-            Connect Google Fit
-          </a>
+          <div className="flex gap-2 flex-shrink-0">
+            <a
+              href="/api/wearables/connect/google"
+              className="px-4 py-2.5 text-xs font-black uppercase tracking-wider bg-[#34C759] text-white rounded-xl hover:bg-[#2ea84b] active:scale-95 transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+            >
+              Connect Fitbit
+            </a>
+            <button
+              onClick={async () => {
+                setIsPending(true);
+                try {
+                  const res = await connectWearableAction(userId);
+                  if (res && !res.success) {
+                    console.error(res.error);
+                  }
+                } catch (err) {
+                  console.error(err);
+                } finally {
+                  setIsPending(false);
+                }
+              }}
+              disabled={isPending}
+              className="px-4 py-2.5 text-xs font-black uppercase tracking-wider bg-[#34C759] text-white rounded-xl hover:bg-[#2ea84b] active:scale-95 transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+            >
+              Connect Whoop
+            </button>
+          </div>
         )}
       </div>
 

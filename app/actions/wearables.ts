@@ -32,7 +32,7 @@ export async function connectWearableAction(userId: string) {
     .from('wearable_connections')
     .insert({
       user_id: userId,
-      provider: 'Whoop',
+      provider: 'whoop',
       access_token: 'mock_whoop_token',
       refresh_token: 'mock_whoop_refresh',
       last_synced_at: new Date().toISOString(),

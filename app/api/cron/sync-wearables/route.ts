@@ -44,9 +44,9 @@ async function validateMetricDefinitions(
 }
 
 /**
- * Proactively refreshes the Google Fit Access Token if expired or expiring within 5 minutes.
+ * Proactively refreshes the Fitbit Access Token if expired or expiring within 5 minutes.
  */
-async function refreshGoogleAccessToken(connection: any): Promise<string | null> {
+async function refreshFitbitAccessToken(connection: any): Promise<string | null> {
   const expiresAt = new Date(connection.expires_at);
   const now = new Date();
 
@@ -130,13 +130,13 @@ async function refreshGoogleAccessToken(connection: any): Promise<string | null>
 }
 
 /**
- * Processes live Google Fit REST pulls or mock provider simulation.
+ * Sync process for Fitbit (Google Fit rest pulls)
  */
-async function fetchAndProcessWearableData(connection: any): Promise<number> {
+async function syncFitbit(connection: any): Promise<number> {
   const supabaseAdmin = createAdminClient();
   const userId = connection.user_id;
 
-  // 1. Resolve user group
+  // Resolve user group
   const { data: member } = await supabaseAdmin
     .from('group_members')
     .select('group_id')
@@ -149,96 +149,8 @@ async function fetchAndProcessWearableData(connection: any): Promise<number> {
   }
 
   const groupId = member.group_id;
-  const nowStr = new Date().toISOString();
 
-  if (connection.provider !== 'google_fit') {
-    // Mock simulation processing loop for non-Google Fit connections
-    const stepsVal = Math.round(1500 + Math.random() * 4000);
-    const sleepVal = Math.round((6.0 + Math.random() * 3.0) * 10) / 10;
-    const hrVal = Math.round(48 + Math.random() * 15);
-
-    const mockLogs = [
-      {
-        user_id: userId,
-        group_id: groupId,
-        metric_slug: 'wearable_steps',
-        value: stepsVal,
-        unit: 'steps',
-        status: 'verified',
-        logged_at: nowStr,
-      },
-      {
-        user_id: userId,
-        group_id: groupId,
-        metric_slug: 'wearable_sleep',
-        value: sleepVal,
-        unit: 'hrs',
-        status: 'verified',
-        logged_at: nowStr,
-      },
-      {
-        user_id: userId,
-        group_id: groupId,
-        metric_slug: 'wearable_resting_hr',
-        value: hrVal,
-        unit: 'bpm',
-        status: 'verified',
-        logged_at: nowStr,
-      },
-    ];
-
-    const { verifiedLogs, slugToIdMap } = await validateMetricDefinitions(
-      supabaseAdmin,
-      mockLogs
-    );
-    if (verifiedLogs.length === 0) {
-      console.warn(`[Wearables Sync] No valid metrics to insert for mock user ${userId}.`);
-      return 0;
-    }
-
-    // Truncate time and delete existing duplicate logs for the current calendar day (UTC)
-    const d = new Date();
-    const startOfDay = new Date(
-      Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
-    ).toISOString();
-    const endOfDay = new Date(
-      Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1)
-    ).toISOString();
-
-    for (const log of verifiedLogs) {
-      await supabaseAdmin
-        .from('metric_logs')
-        .delete()
-        .eq('user_id', userId)
-        .eq('metric_slug', log.metric_slug)
-        .gte('logged_at', startOfDay)
-        .lt('logged_at', endOfDay);
-    }
-
-    const { error: insertErr } = await supabaseAdmin.from('metric_logs').insert(verifiedLogs);
-
-    if (insertErr) {
-      console.error('[Wearables Sync] DB INSERT ERROR:', JSON.stringify(insertErr));
-      throw new Error(insertErr.message);
-    }
-
-    for (const log of verifiedLogs) {
-      const metricId = slugToIdMap[log.metric_slug] || log.metric_slug;
-      console.log(
-        `[Wearables Sync] SUCCESS: Logged value ${log.value} for user ${log.user_id} in metric ${metricId}`
-      );
-    }
-
-    await supabaseAdmin
-      .from('wearable_connections')
-      .update({ last_synced_at: nowStr })
-      .eq('id', connection.id);
-
-    return verifiedLogs.length;
-  }
-
-  // 2. Google Fit Real API Handshake & Sync
-  const accessToken = await refreshGoogleAccessToken(connection);
+  const accessToken = await refreshFitbitAccessToken(connection);
   if (!accessToken) {
     console.warn(`[Wearables Sync] Skipping user ${userId} due to token refresh failure.`);
     return 0;
@@ -401,7 +313,6 @@ async function fetchAndProcessWearableData(connection: any): Promise<number> {
     }
 
     if (!hrFetched) {
-      // Fallback: extract minimum heart rate from standard heart rate dataset
       const fallbackUrl = `https://www.googleapis.com/fitness/v1/users/me/dataSources/derived:com.google.heart_rate.bpm:com.google.android.gms:merge_heart_rate_bpm/datasets/${startTimeNanos}-${endTimeNanos}`;
       const fallbackResponse = await fetch(fallbackUrl, {
         headers: { Authorization: `Bearer ${accessToken}` },
@@ -486,23 +397,122 @@ async function fetchAndProcessWearableData(connection: any): Promise<number> {
       );
     }
 
-    const { error: updateErr } = await supabaseAdmin
+    await supabaseAdmin
       .from('wearable_connections')
       .update({ last_synced_at: end.toISOString() })
       .eq('id', connection.id);
-
-    if (updateErr) {
-      console.error(
-        '[Google Fit Sync] Failed to update connection sync tracker:',
-        updateErr.message
-      );
-      throw new Error(updateErr.message);
-    }
 
     return verifiedLogs.length;
   }
 
   return 0;
+}
+
+/**
+ * Sync process for Whoop (mock generation)
+ */
+async function syncWhoop(connection: any): Promise<number> {
+  const supabaseAdmin = createAdminClient();
+  const userId = connection.user_id;
+
+  // Resolve user group
+  const { data: member } = await supabaseAdmin
+    .from('group_members')
+    .select('group_id')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (!member || !member.group_id) {
+    console.warn(`[Wearables Sync] User ${userId} has no active group member record.`);
+    return 0;
+  }
+
+  const groupId = member.group_id;
+  const nowStr = new Date().toISOString();
+
+  // Mock Whoop data simulation
+  const stepsVal = Math.round(1500 + Math.random() * 4000);
+  const sleepVal = Math.round((6.0 + Math.random() * 3.0) * 10) / 10;
+  const hrVal = Math.round(48 + Math.random() * 15);
+
+  const mockLogs = [
+    {
+      user_id: userId,
+      group_id: groupId,
+      metric_slug: 'wearable_steps',
+      value: stepsVal,
+      unit: 'steps',
+      status: 'verified',
+      logged_at: nowStr,
+    },
+    {
+      user_id: userId,
+      group_id: groupId,
+      metric_slug: 'wearable_sleep',
+      value: sleepVal,
+      unit: 'hrs',
+      status: 'verified',
+      logged_at: nowStr,
+    },
+    {
+      user_id: userId,
+      group_id: groupId,
+      metric_slug: 'wearable_resting_hr',
+      value: hrVal,
+      unit: 'bpm',
+      status: 'verified',
+      logged_at: nowStr,
+    },
+  ];
+
+  const { verifiedLogs, slugToIdMap } = await validateMetricDefinitions(
+    supabaseAdmin,
+    mockLogs
+  );
+  if (verifiedLogs.length === 0) {
+    console.warn(`[Wearables Sync] No valid metrics to insert for Whoop user ${userId}.`);
+    return 0;
+  }
+
+  // Truncate time and delete existing duplicate logs for the current calendar day (UTC)
+  const d = new Date();
+  const startOfDay = new Date(
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
+  ).toISOString();
+  const endOfDay = new Date(
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1)
+  ).toISOString();
+
+  for (const log of verifiedLogs) {
+    await supabaseAdmin
+      .from('metric_logs')
+      .delete()
+      .eq('user_id', userId)
+      .eq('metric_slug', log.metric_slug)
+      .gte('logged_at', startOfDay)
+      .lt('logged_at', endOfDay);
+  }
+
+  const { error: insertErr } = await supabaseAdmin.from('metric_logs').insert(verifiedLogs);
+
+  if (insertErr) {
+    console.error('[Wearables Sync] DB INSERT ERROR:', JSON.stringify(insertErr));
+    throw new Error(insertErr.message);
+  }
+
+  for (const log of verifiedLogs) {
+    const metricId = slugToIdMap[log.metric_slug] || log.metric_slug;
+    console.log(
+      `[Wearables Sync] SUCCESS: Logged value ${log.value} for user ${log.user_id} in metric ${metricId}`
+    );
+  }
+
+  await supabaseAdmin
+    .from('wearable_connections')
+    .update({ last_synced_at: nowStr })
+    .eq('id', connection.id);
+
+  return verifiedLogs.length;
 }
 
 /**
@@ -536,14 +546,29 @@ export async function GET(req: Request) {
     let successfulInserts = 0;
     const errorsList: string[] = [];
 
-    for (const conn of list) {
+    // The Provider Switch Statement
+    for (const connection of list) {
       try {
         usersProcessed++;
-        const inserts = await fetchAndProcessWearableData(conn);
-        successfulInserts += inserts || 0;
-      } catch (err: any) {
-        console.error(`[Wearables Cron] Failed on connection ${conn.id}:`, err);
-        errorsList.push(`Connection ${conn.id}: ${err?.message || err}`);
+        let inserts = 0;
+        switch (connection.provider) {
+          case 'fitbit':
+          case 'google_fit': // backward compatibility
+            inserts = await syncFitbit(connection);
+            break;
+          case 'whoop':
+            inserts = await syncWhoop(connection);
+            break;
+          default:
+            console.warn(`[Wearables] Unsupported provider: ${connection.provider}`);
+        }
+        successfulInserts += inserts;
+      } catch (error: any) {
+        console.error(
+          `[Wearables] Failed to sync ${connection.provider} for user ${connection.user_id}:`,
+          error
+        );
+        errorsList.push(`User ${connection.user_id} (${connection.provider}): ${error?.message || error}`);
       }
     }
 
