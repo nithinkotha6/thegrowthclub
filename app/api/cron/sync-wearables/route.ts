@@ -574,15 +574,17 @@ export async function GET(req: Request) {
         usersProcessed++;
         let inserts = 0;
         switch (connection.provider) {
+          case 'google_fit':
           case 'fitbit':
-          case 'google_fit': // backward compatibility
+            console.log(`[Wearables Debug] Routing user ${connection.user_id} (Provider: ${connection.provider}) to syncFitbit/syncGoogleFit`);
             inserts = await syncFitbit(connection);
             break;
           case 'whoop':
+            console.log(`[Wearables Debug] Routing user ${connection.user_id} to syncWhoop`);
             inserts = await syncWhoop(connection);
             break;
           default:
-            console.warn(`[Wearables] Unsupported provider: ${connection.provider}`);
+            console.error(`[Wearables Debug] CRITICAL MISMATCH: Provider "${connection.provider}" did not match any case statement.`);
         }
         successfulInserts += inserts;
       } catch (error: any) {
