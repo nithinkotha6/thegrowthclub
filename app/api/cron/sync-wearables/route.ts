@@ -101,6 +101,29 @@ async function syncFitbit(connection: any): Promise<number> {
     return 0;
   }
 
+  // Automated OAuth Scope Verification Check
+  try {
+    const tokenInfoRes = await fetch(`https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${accessToken}`);
+    const tokenInfo = await tokenInfoRes.json();
+
+    if (tokenInfo.error_description) {
+      console.error(`[Wearables OAuth Audit] Token invalid or expired for user ${userId}:`, tokenInfo.error_description);
+    } else {
+      const grantedScopes = tokenInfo.scope ? tokenInfo.scope.split(' ') : [];
+      const hasActivity = grantedScopes.some((s: string) => s.includes('fitness.activity.read'));
+      const hasSleep = grantedScopes.some((s: string) => s.includes('fitness.sleep.read'));
+      const hasHr = grantedScopes.some((s: string) => s.includes('fitness.heart_rate.read'));
+
+      console.log(`[Wearables OAuth Audit] User ${userId} Scope Check: Activity=${hasActivity} | Sleep=${hasSleep} | HeartRate=${hasHr}`);
+      
+      if (!hasActivity) {
+        console.error(`[Wearables OAuth Audit] CRITICAL: Access token lacks 'fitness.activity.read'. Google Fit will permanently return empty step arrays until the user re-authenticates!`);
+      }
+    }
+  } catch (err) {
+    console.error(`[Wearables OAuth Audit] Failed to verify token scopes:`, err);
+  }
+
   const isBackfill = connection.backfill_completed !== true;
   let startTimeMillis: number;
   let endTimeMillis: number;
@@ -131,6 +154,7 @@ async function syncFitbit(connection: any): Promise<number> {
   while (currentStart < endTimeMillis) {
     const currentEnd = Math.min(currentStart + THIRTY_DAYS_MS, endTimeMillis);
     console.log(`[Wearables Sync Chunk] Fetching chunk: ${new Date(currentStart).toISOString()} to ${new Date(currentEnd).toISOString()}`);
+    let chunkStepsCount = 0;
 
     try {
       const response = await fetch(
@@ -184,6 +208,7 @@ async function syncFitbit(connection: any): Promise<number> {
               }
             }
             if (bucketSteps > 0) {
+              chunkStepsCount++;
               stepsPayloads.push({
                 user_id: userId,
                 connection_id: connection.id,
@@ -251,6 +276,54 @@ async function syncFitbit(connection: any): Promise<number> {
         );
         hasApiError = true;
         break;
+      }
+
+      // Health Connect Raw Stream Fallback Check (if aggregated query returned 0 steps)
+      if (chunkStepsCount === 0 && !hasApiError) {
+        console.log(`[Wearables Sync Fallback] Aggregate steps returned 0 rows. Running Health Connect raw stream fallback query for chunk...`);
+        try {
+          const fallbackUrl = `https://www.googleapis.com/fitness/v1/users/me/dataSources/derived:com.google.step_count.delta:com.google.android.gms:estimated_steps/datasets/${currentStart}000000-${currentEnd}000000`;
+          const fallbackRes = await fetch(fallbackUrl, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          if (fallbackRes.ok) {
+            const fallbackData = await fallbackRes.json();
+            console.log(`[Wearables Sync Fallback] Raw stream response point count: ${fallbackData.point?.length || 0}`);
+            
+            // Aggregate points by day
+            const stepsByDay: Record<string, number> = {};
+            if (fallbackData.point) {
+              for (const pt of fallbackData.point) {
+                const ptStartMs = Number(pt.startTimeNanos) / 1000000;
+                const ptDateStr = new Date(ptStartMs).toISOString().split('T')[0];
+                let ptSteps = 0;
+                if (pt.value) {
+                  for (const val of pt.value) {
+                    ptSteps += val.intVal || val.fpVal || 0;
+                  }
+                }
+                if (ptSteps > 0) {
+                  stepsByDay[ptDateStr] = (stepsByDay[ptDateStr] || 0) + ptSteps;
+                }
+              }
+            }
+
+            for (const [day, steps] of Object.entries(stepsByDay)) {
+              stepsPayloads.push({
+                user_id: userId,
+                connection_id: connection.id,
+                logged_date: day,
+                value: steps,
+                source: 'wearable_sync_fallback',
+              });
+              console.log(`[Wearables Sync Fallback] Logged fallback step value ${steps} for day ${day}`);
+            }
+          } else {
+            console.error(`[Wearables Sync Fallback] Health Connect raw stream fallback query failed:`, await fallbackRes.text());
+          }
+        } catch (fallbackErr) {
+          console.error(`[Wearables Sync Fallback] Error in raw stream fallback query:`, fallbackErr);
+        }
       }
     } catch (err) {
       console.error(`[Wearables Sync Chunk Error] Network exception during chunk fetch:`, err);
