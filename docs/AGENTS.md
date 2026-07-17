@@ -17,45 +17,107 @@ The following Mermaid sequence diagram illustrates the lifecycle of a message fr
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as WhatsApp User
-    participant Green as GreenAPI Gateway
-    participant Webhook as Webhook Route (route.ts)
-    participant DB as Supabase Database
-    participant Gemini as Google Gemini LLM
+    actor User as "WhatsApp User"
+    participant Green as "GreenAPI Gateway"
+    participant Webhook as "Webhook Route (route.ts)"
+    participant DB as "Supabase Database"
+    participant Gemini as "Google Gemini LLM"
     
     User->>Green: Sends WhatsApp message in group
-    Green->>Webhook: HTTP POST Webhook (incomingMessageReceived)
-    Note over Webhook: Validate Instance ID & Group ID<br/>Return 200 OK immediately to GreenAPI
+    Green->>Webhook: HTTP POST Webhook incomingMessageReceived
+    Note over Webhook: Validate Instance ID and Group ID<br/>Return 200 OK immediately to GreenAPI
     
     rect rgb(240, 248, 255)
-        Note over Webhook: Background Worker (after / waitUntil)
+        Note over Webhook: Background Worker after or waitUntil
         Webhook->>DB: Query User Profile by clean phone number
-        DB-->>Webhook: Return Sender's Nickname & Gender
+        DB-->>Webhook: Return Sender Nickname and Gender
         
-        Webhook->>DB: Query Chat History (Last 3 messages)
+        Webhook->>DB: Query Chat History of last 3 messages
         DB-->>Webhook: Return chronologically sorted history
         
         Webhook->>DB: Query 5 Recent Verified Activity Logs
         DB-->>Webhook: Return recent logs list
         
-        Webhook->>DB: Query Leaderboard logs (metric: top_golf)
+        Webhook->>DB: Query Leaderboard logs for top_golf
         DB-->>Webhook: Return athlete standings data
         
-        Note over Webhook: Build Prompt & Select Flirting Style<br/>10% chance to trigger Coach Interruption Phrase
+        Note over Webhook: Build Prompt and Select Flirting Style<br/>10% chance to trigger Coach Interruption Phrase
         
-        Webhook->>Gemini: Call LLM (System prompt + History + Context)
-        Gemini-->>Webhook: Return raw plain text response (No Markdown)
+        Webhook->>Gemini: Call LLM with System prompt, History, and Context
+        Gemini-->>Webhook: Return raw plain text response without Markdown
         
-        Webhook->>Green: HTTP POST (sendMessage + quotedMessageId)
+        Webhook->>Green: HTTP POST sendMessage with quotedMessageId
         Green->>User: Deliver quoted reply message to Group
         
-        Webhook->>DB: Save User & Assistant logs to chat_history
+        Webhook->>DB: Save User and Assistant logs to chat_history
     end
+``` 
+
+---
+
+## 2. End-to-End Visual Ingestion Flowchart
+
+The following flowchart outlines the logic branches, validation checks, database joins, and asynchronous workers involved in the webhook lifecycle.
+
+```mermaid
+graph TD
+    classDef startEnd fill:#f8fafc,stroke:#475569,stroke-width:2px,shape:stadium;
+    classDef process fill:#ffffff,stroke:#cbd5e1,stroke-width:1.5px,rx:8px;
+    classDef decision fill:#ffffff,stroke:#94a3b8,stroke-width:1.5px,shape:diamond;
+    classDef database fill:#f8fafc,stroke:#64748b,stroke-width:1.5px,shape:cylinder;
+    classDef api fill:#f0fdf4,stroke:#4ade80,stroke-width:1.5px;
+
+    Start(["WhatsApp Message Received"]) --> Ingestion["1. Inbound Webhook Payload Ingested"]
+    Ingestion --> CheckMute{"Is Bot Muted?"}
+    
+    CheckMute -- "Yes" --> TerminateMuted(["Halt and Return 200 OK"])
+    CheckMute -- "No" --> VerifyInst{"Verify GreenAPI Instance ID"}
+    
+    VerifyInst -- "No" --> TerminateInst(["Halt and Return 200 OK"])
+    VerifyInst -- "Yes" --> VerifyChat{"Verify Chat ID and Msg Type"}
+    
+    VerifyChat -- "No" --> TerminateChat(["Halt and Ignore Payload"])
+    VerifyChat -- "Yes" --> CheckCmd{"Is Message /clear?"}
+    
+    CheckCmd -- "Yes" --> ClearMemory["Wipe Chat History in DB"]
+    ClearMemory --> SendClear["Send Clear Confirmation Message"]
+    SendClear --> EndClear(["End Request"])
+    
+    CheckCmd -- "No" --> ForkWorker["2. Return 200 OK and Fork Background Worker"]
+    
+    subgraph BackgroundWorker["Asynchronous Background Ingestion Process"]
+        ForkWorker --> FetchProfile[("Query Sender Profile")]
+        FetchProfile --> ResolveGender{"Resolve Gender Style"}
+        
+        ResolveGender -- "Male" --> SetFemale["Set Tollywood Female Persona"]
+        ResolveGender -- "Female" --> SetSigma["Set Sigma Male Persona"]
+        ResolveGender -- "Unknown" --> SetSassy["Set Sassy Instigator Persona"]
+        
+        SetFemale --> FetchContext[("Query Last 3 Chats and Activities")]
+        SetSigma --> FetchContext
+        SetSassy --> FetchContext
+        
+        FetchContext --> Interruption{"10% Coach Interruption Chance?"}
+        Interruption -- "Yes" --> InjectCoach["Inject Coach Telugu Phrase"]
+        Interruption -- "No" --> BuildPrompt["Build LLM System Instructions"]
+        InjectCoach --> BuildPrompt
+        
+        BuildPrompt --> CallGemini[["3. Query Gemini LLM with Key Rotation"]]
+        CallGemini --> SendMsg[["4. Dispatch Quoted Response via GreenAPI"]]
+        SendMsg --> LogConv[("Write Chat Logs to Database")]
+        LogConv --> WorkerDone(["Background Ingestion Done"])
+    end
+    
+    class Start,TerminateMuted,TerminateInst,TerminateChat,EndClear,WorkerDone startEnd;
+    class Ingestion,ClearMemory,SendClear,SetFemale,SetSigma,SetSassy,InjectCoach,BuildPrompt process;
+    class CheckMute,VerifyInst,VerifyChat,CheckCmd,ResolveGender,Interruption decision;
+    class FetchProfile,FetchContext,LogConv database;
+    class CallGemini,SendMsg api;
 ```
 
 ---
 
-## 2. Inbound Webhook Ingestion
+## 3. Inbound Webhook Ingestion
 
 GreenAPI forwards incoming messages to our webhook endpoint at `/api/webhooks/whatsapp`.
 
@@ -94,7 +156,7 @@ A typical webhook payload for `incomingMessageReceived` looks as follows:
 
 ---
 
-## 3. Context Processing & Profile Mapping
+## 4. Context Processing & Profile Mapping
 
 Once verified, the webhook triggers an asynchronous worker execution using Next.js `after(...)` block to keep client response times fast.
 
@@ -116,7 +178,7 @@ To prevent token bloat, session drift, and hallucinations, the chat history cont
 
 ---
 
-## 4. Prompt Engineering & Conditional Flirting
+## 5. Prompt Engineering & Conditional Flirting
 
 The system prompt is dynamically assembled on the server. The target sender's gender is passed into `buildGroupAssistantPrompt` to determine the flirting vibe.
 
@@ -137,7 +199,7 @@ The system prompt is dynamically assembled on the server. The target sender's ge
 
 ---
 
-## 5. Outbound Communication Invocations
+## 6. Outbound Communication Invocations
 
 When the LLM response is returned, the webhook calls the GreenAPI outbound messenger:
 
@@ -158,7 +220,7 @@ The API endpoint `/sendMessage/` is invoked. By passing the inbound payload's `i
 
 ---
 
-## 6. Parameters & Safety Configurations
+## 7. Parameters & Safety Configurations
 
 * **LLM Model:** Google Gemini models (managed under `GeminiPool` key rotation).
 * **Timeout Limits:** `maxDuration = 60` seconds.
