@@ -15,6 +15,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 The following Mermaid sequence diagram illustrates the lifecycle of a message from the user's phone to the AI engine, database, and back to the group chat.
 
 ```mermaid
+%%{init: { 'theme': 'base', 'themeVariables': { 'primaryColor': '#83a3c3ff', 'primaryTextColor': '#253a6bff', 'lineColor': '#64748B', 'actorBkg': '#e9eef4ff', 'actorBorder': '#475569', 'actorTextColor': '#0F172A', 'signalColor': '#0284C7', 'signalTextColor': '#0284C7', 'noteBkgColor': '#FEF08A', 'noteTextColor': '#854D0E', 'rectBkgColor': '#deeae1ff', 'rectBorderColor': '#86EFAC' }}}%%
 sequenceDiagram
     autonumber
     actor User as "WhatsApp User"
@@ -60,12 +61,13 @@ sequenceDiagram
 The following flowchart outlines the logic branches, validation checks, database joins, and asynchronous workers involved in the webhook lifecycle.
 
 ```mermaid
+%%{init: { 'theme': 'base', 'themeVariables': { 'primaryColor': '#F8FAFC', 'primaryTextColor': '#1b2b50ff', 'edgeLabelBackground': '#FFFFFF', 'lineColor': '#64748B' }}}%%
 graph TD
-    classDef startEnd fill:#f8fafc,stroke:#475569,stroke-width:2px,shape:stadium;
-    classDef process fill:#ffffff,stroke:#cbd5e1,stroke-width:1.5px,rx:8px;
-    classDef decision fill:#ffffff,stroke:#94a3b8,stroke-width:1.5px,shape:diamond;
-    classDef database fill:#f8fafc,stroke:#64748b,stroke-width:1.5px,shape:cylinder;
-    classDef api fill:#f0fdf4,stroke:#4ade80,stroke-width:1.5px;
+    classDef startEnd fill:#F1F5F9,stroke:#475569,stroke-width:2px,color:#0F172A;
+    classDef process fill:#E0F2FE,stroke:#0284C7,stroke-width:1.5px,color:#0369A1;
+    classDef decision fill:#F3E8FF,stroke:#7C3AED,stroke-width:1.5px,color:#6D28D9;
+    classDef database fill:#FEF3C7,stroke:#D97706,stroke-width:1.5px,color:#B45309;
+    classDef api fill:#ECFDF5,stroke:#059669,stroke-width:1.5px,color:#047857;
 
     Start(["WhatsApp Message Received"]) --> Ingestion["1. Inbound Webhook Payload Ingested"]
     Ingestion --> CheckMute{"Is Bot Muted?"}
