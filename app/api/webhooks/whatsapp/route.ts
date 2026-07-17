@@ -324,8 +324,8 @@ export async function POST(req: Request) {
           { role: 'user' as const, content: promptText }
         ];
 
-        // 20% chance to organically trigger fitness coach interruption phrase
-        const triggerInterruption = Math.random() < 0.20;
+        // 10% chance to organically trigger fitness coach interruption phrase (truly rare and random)
+        const triggerInterruption = Math.random() < 0.10;
 
         try {
           const result = await executeWithKeyRotation(async (modelInstance) => {
