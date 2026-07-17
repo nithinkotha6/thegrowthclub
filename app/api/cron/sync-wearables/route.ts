@@ -3,9 +3,9 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { safeCompare } from '@/lib/security';
 
 /**
- * Proactively refreshes the Fitbit Access Token if expired or expiring within 5 minutes.
+ * Proactively refreshes the Google Fit Access Token if expired or expiring within 5 minutes.
  */
-async function refreshFitbitAccessToken(connection: any): Promise<string | null> {
+async function refreshGoogleAccessToken(connection: any): Promise<string | null> {
   const expiresAt = new Date(connection.expires_at);
   const now = new Date();
 
@@ -16,7 +16,7 @@ async function refreshFitbitAccessToken(connection: any): Promise<string | null>
     return connection.access_token;
   }
 
-  console.log(`[Wearables Sync] Refreshing access token for user ${connection.user_id}...`);
+  console.log(`[Wearables Sync] Refreshing Google Fit access token for user ${connection.user_id}...`);
 
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
@@ -50,7 +50,7 @@ async function refreshFitbitAccessToken(connection: any): Promise<string | null>
     if (!response.ok) {
       const errText = await response.text();
       console.error(
-        `[Wearables Sync] ERROR refreshing token for user ${connection.user_id}:`,
+        `[Wearables Sync] ERROR refreshing Google Fit token for user ${connection.user_id}:`,
         errText
       );
       return null;
@@ -76,12 +76,12 @@ async function refreshFitbitAccessToken(connection: any): Promise<string | null>
     }
 
     console.log(
-      `[Wearables Sync] Successfully refreshed token for user ${connection.user_id}. New expiry: ${newExpiresAt}`
+      `[Wearables Sync] Successfully refreshed Google Fit token for user ${connection.user_id}. New expiry: ${newExpiresAt}`
     );
     return newAccessToken;
   } catch (err: any) {
     console.error(
-      `[Wearables Sync] ERROR refreshing token for user ${connection.user_id}:`,
+      `[Wearables Sync] ERROR refreshing Google Fit token for user ${connection.user_id}:`,
       err?.message || err
     );
     return null;
@@ -89,15 +89,301 @@ async function refreshFitbitAccessToken(connection: any): Promise<string | null>
 }
 
 /**
- * Sync process for Fitbit (Google Fit rest pulls)
+ * Proactively refreshes the Fitbit Web access token.
  */
-async function syncFitbit(connection: any): Promise<number> {
+async function refreshFitbitWebAccessToken(connection: any): Promise<string | null> {
+  const expiresAt = new Date(connection.expires_at);
+  const now = new Date();
+
+  // Refresh if expired or expiring in less than 5 minutes (300,000ms)
+  const isExpiring = expiresAt.getTime() - now.getTime() < 300000;
+
+  if (!isExpiring) {
+    return connection.access_token;
+  }
+
+  console.log(`[Wearables Sync] Refreshing Fitbit Web access token for user ${connection.user_id}...`);
+
+  const clientId = process.env.FITBIT_CLIENT_ID || process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.FITBIT_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret) {
+    console.error(
+      `[Wearables Sync] ERROR refreshing token for user ${connection.user_id}: Fitbit OAuth credentials not configured in process environment.`
+    );
+    return null;
+  }
+
+  if (!connection.refresh_token) {
+    console.error(
+      `[Wearables Sync] ERROR refreshing token for user ${connection.user_id}: No refresh token available in database.`
+    );
+    return null;
+  }
+
+  try {
+    const authHeader = 'Basic ' + Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+    const response = await fetch('https://api.fitbit.com/oauth2/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Authorization: authHeader,
+      },
+      body: new URLSearchParams({
+        refresh_token: connection.refresh_token,
+        grant_type: 'refresh_token',
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error(
+        `[Wearables Sync] ERROR refreshing Fitbit Web token for user ${connection.user_id}:`,
+        errText
+      );
+      return null;
+    }
+
+    const data = await response.json();
+    const newAccessToken = data.access_token;
+    const newExpiresAt = new Date(Date.now() + data.expires_in * 1000).toISOString();
+
+    const supabaseAdmin = createAdminClient();
+    const { error: updateErr } = await supabaseAdmin
+      .from('wearable_connections')
+      .update({
+        access_token: newAccessToken,
+        expires_at: newExpiresAt,
+        refresh_token: data.refresh_token || connection.refresh_token,
+      })
+      .eq('id', connection.id);
+
+    if (updateErr) {
+      console.error(`[Wearables Sync] Failed to save refreshed Fitbit Web credentials:`, updateErr);
+      return null;
+    }
+
+    console.log(
+      `[Wearables Sync] Successfully refreshed Fitbit Web token for user ${connection.user_id}. New expiry: ${newExpiresAt}`
+    );
+    return newAccessToken;
+  } catch (err: any) {
+    console.error(
+      `[Wearables Sync] ERROR refreshing Fitbit Web token for user ${connection.user_id}:`,
+      err?.message || err
+    );
+    return null;
+  }
+}
+
+/**
+ * Sync process for native Fitbit Web Cloud (api.fitbit.com)
+ */
+async function syncFitbitCloud(connection: any): Promise<number> {
   const supabaseAdmin = createAdminClient();
   const userId = connection.user_id;
 
-  const accessToken = await refreshFitbitAccessToken(connection);
+  const accessToken = await refreshFitbitWebAccessToken(connection);
   if (!accessToken) {
-    console.warn(`[Wearables Sync] Skipping user ${userId} due to token refresh failure.`);
+    console.warn(`[Wearables Sync] Skipping user ${userId} due to Fitbit Web token refresh failure.`);
+    return 0;
+  }
+
+  const isBackfill = connection.backfill_completed !== true;
+  let startTimeMillis: number;
+  let endTimeMillis: number;
+
+  if (isBackfill) {
+    console.log('[Wearables Tier 1] Initiating native Fitbit Cloud 2026 Historical Backfill for user:', userId);
+    const startOf2026 = new Date(2026, 0, 1, 0, 0, 0, 0);
+    startTimeMillis = startOf2026.getTime();
+    endTimeMillis = Date.now();
+  } else {
+    console.log('[Wearables Tier 2] Executing routine Fitbit Cloud daily cumulative sync for user:', userId);
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    startTimeMillis = startOfToday.getTime();
+    endTimeMillis = now.getTime();
+  }
+
+  const stepsPayloads: any[] = [];
+  const sleepPayloads: any[] = [];
+  const hrPayloads: any[] = [];
+
+  const startDateStr = new Date(startTimeMillis).toISOString().split('T')[0];
+  const endDateStr = new Date(endTimeMillis).toISOString().split('T')[0];
+
+  let hasApiError = false;
+
+  try {
+    // 1. Fetch Steps from tracker steps endpoint
+    const stepsRes = await fetch(
+      `https://api.fitbit.com/1/user/-/activities/tracker/steps/date/${startDateStr}/${endDateStr}.json`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+
+    if (stepsRes.ok) {
+      const data = await stepsRes.json();
+      console.log('[Wearables Sync] Fitbit Cloud Raw Steps Response:', JSON.stringify(data, null, 2));
+      const arr = data['activities-tracker-steps'] || [];
+      for (const item of arr) {
+        const stepsVal = parseInt(item.value);
+        if (stepsVal > 0) {
+          stepsPayloads.push({
+            user_id: userId,
+            connection_id: connection.id,
+            logged_date: item.dateTime,
+            value: stepsVal,
+            source: 'fitbit_cloud',
+          });
+        }
+      }
+    } else {
+      console.error(`[Wearables Sync Fitbit] Steps fetch failed:`, await stepsRes.text());
+      hasApiError = true;
+    }
+
+    // 2. Fetch Sleep duration (V1.2)
+    const sleepRes = await fetch(
+      `https://api.fitbit.com/1.2/user/-/sleep/date/${startDateStr}/${endDateStr}.json`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+
+    if (sleepRes.ok) {
+      const data = await sleepRes.json();
+      console.log('[Wearables Sync] Fitbit Cloud Raw Sleep Response:', JSON.stringify(data, null, 2));
+      const arr = data.sleep || [];
+      const sleepByDay: Record<string, number> = {};
+      for (const item of arr) {
+        const dateKey = item.dateOfSleep;
+        const hrs = (item.duration || 0) / (1000 * 60 * 60);
+        sleepByDay[dateKey] = (sleepByDay[dateKey] || 0) + hrs;
+      }
+      for (const [day, hrs] of Object.entries(sleepByDay)) {
+        if (hrs > 0) {
+          sleepPayloads.push({
+            user_id: userId,
+            connection_id: connection.id,
+            logged_date: day,
+            value: Math.round(hrs * 10) / 10,
+            source: 'fitbit_cloud',
+          });
+        }
+      }
+    } else {
+      console.error(`[Wearables Sync Fitbit] Sleep fetch failed:`, await sleepRes.text());
+      hasApiError = true;
+    }
+
+    // 3. Fetch Heart Rate zones and resting HR summary
+    const hrRes = await fetch(
+      `https://api.fitbit.com/1/user/-/activities/heart/date/${startDateStr}/${endDateStr}.json`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+
+    if (hrRes.ok) {
+      const data = await hrRes.json();
+      console.log('[Wearables Sync] Fitbit Cloud Raw Heart Response:', JSON.stringify(data, null, 2));
+      const arr = data['activities-heart'] || [];
+      for (const item of arr) {
+        const hrVal = item.value?.restingHeartRate;
+        if (hrVal && hrVal > 0) {
+          hrPayloads.push({
+            user_id: userId,
+            connection_id: connection.id,
+            logged_date: item.dateTime,
+            value: Math.round(hrVal),
+            source: 'fitbit_cloud',
+          });
+        }
+      }
+    } else {
+      console.error(`[Wearables Sync Fitbit] Heart rate fetch failed:`, await hrRes.text());
+      hasApiError = true;
+    }
+  } catch (err) {
+    console.error(`[Wearables Sync Fitbit] Exception in fetch calls:`, err);
+    hasApiError = true;
+  }
+
+  let hasDbError = false;
+  const totalExtracted = stepsPayloads.length + sleepPayloads.length + hrPayloads.length;
+  const isEmptyData = totalExtracted === 0;
+
+  if (isEmptyData) {
+    console.warn(`[Wearables Sync] Empty-Data Gate triggered. No records extracted for user ${userId}.`);
+  }
+
+  // Ingest parsed records strictly if there are logs and no API errors occurred to guarantee transactional safety
+  if (!hasApiError && !isEmptyData) {
+    // 1. Ingest Steps
+    if (stepsPayloads.length > 0) {
+      console.log(`[Wearables Audit] Committing to wearable_steps: ${stepsPayloads.length} rows`);
+      const { error: stepsError } = await supabaseAdmin
+        .from('wearable_steps')
+        .upsert(stepsPayloads, { onConflict: 'user_id,logged_date' });
+      if (stepsError) {
+        console.error('[Wearables Audit] Steps Upsert Error:', JSON.stringify(stepsError));
+        hasDbError = true;
+      }
+    }
+
+    // 2. Ingest Sleep
+    if (sleepPayloads.length > 0) {
+      console.log(`[Wearables Audit] Committing to wearable_sleep: ${sleepPayloads.length} rows`);
+      const { error: sleepError } = await supabaseAdmin
+        .from('wearable_sleep')
+        .upsert(sleepPayloads, { onConflict: 'user_id,logged_date' });
+      if (sleepError) {
+        console.error('[Wearables Audit] Sleep Upsert Error:', JSON.stringify(sleepError));
+        hasDbError = true;
+      }
+    }
+
+    // 3. Ingest Heart Rate
+    if (hrPayloads.length > 0) {
+      console.log(`[Wearables Audit] Committing to wearable_resting_hr: ${hrPayloads.length} rows`);
+      const { error: hrError } = await supabaseAdmin
+        .from('wearable_resting_hr')
+        .upsert(hrPayloads, { onConflict: 'user_id,logged_date' });
+      if (hrError) {
+        console.error('[Wearables Audit] Heart Rate Upsert Error:', JSON.stringify(hrError));
+        hasDbError = true;
+      }
+    }
+  }
+
+  // Update connection sync date and set backfill completed strictly if no api/db/empty errors occurred
+  const nowIso = new Date().toISOString();
+  const updateData: any = { last_synced_at: nowIso };
+  if (isBackfill && !hasApiError && !hasDbError && !isEmptyData) {
+    updateData.backfill_completed = true;
+  }
+
+  const { error: updateErr } = await supabaseAdmin
+    .from('wearable_connections')
+    .update(updateData)
+    .eq('id', connection.id);
+
+  if (updateErr) {
+    console.error(`[Wearables Sync] Failed to update connection status:`, updateErr);
+  } else if (isBackfill && !hasApiError && !hasDbError && !isEmptyData) {
+    console.log(`[Wearables Tier 1] Marked Fitbit Cloud backfill completed successfully for user ${userId}`);
+  }
+
+  return (hasApiError || hasDbError || isEmptyData) ? 0 : totalExtracted;
+}
+
+/**
+ * Sync process for Google Fit (legacy REST API pulls)
+ */
+async function syncGoogleFit(connection: any): Promise<number> {
+  const supabaseAdmin = createAdminClient();
+  const userId = connection.user_id;
+
+  const accessToken = await refreshGoogleAccessToken(connection);
+  if (!accessToken) {
+    console.warn(`[Wearables Sync] Skipping user ${userId} due to Google Fit token refresh failure.`);
     return 0;
   }
 
@@ -335,9 +621,15 @@ async function syncFitbit(connection: any): Promise<number> {
   }
 
   let hasDbError = false;
+  const totalExtracted = stepsPayloads.length + sleepPayloads.length + hrPayloads.length;
+  const isEmptyData = totalExtracted === 0;
+
+  if (isEmptyData) {
+    console.warn(`[Wearables Sync] Empty-Data Gate triggered. No records extracted for user ${userId}.`);
+  }
 
   // Ingest parsed records only if there are logs and no API errors occurred to guarantee transactional safety
-  if (!hasApiError) {
+  if (!hasApiError && !isEmptyData) {
     // 1. Ingest Steps
     if (stepsPayloads.length > 0) {
       console.log(`[Wearables Audit] Committing to wearable_steps: ${stepsPayloads.length} rows`);
@@ -375,10 +667,10 @@ async function syncFitbit(connection: any): Promise<number> {
     }
   }
 
-  // Update connection sync date and set backfill completed strictly if no api or db errors occurred
+  // Update connection sync date and set backfill completed strictly if no api/db/empty errors occurred
   const nowIso = new Date().toISOString();
   const updateData: any = { last_synced_at: nowIso };
-  if (isBackfill && !hasApiError && !hasDbError) {
+  if (isBackfill && !hasApiError && !hasDbError && !isEmptyData) {
     updateData.backfill_completed = true;
   }
 
@@ -389,11 +681,11 @@ async function syncFitbit(connection: any): Promise<number> {
 
   if (updateErr) {
     console.error(`[Wearables Sync] Failed to update connection status:`, updateErr);
-  } else if (isBackfill && !hasApiError && !hasDbError) {
-    console.log(`[Wearables Tier 1] Marked backfill completed successfully for user ${userId}`);
+  } else if (isBackfill && !hasApiError && !hasDbError && !isEmptyData) {
+    console.log(`[Wearables Tier 1] Marked Google Fit backfill completed successfully for user ${userId}`);
   }
 
-  return (hasApiError || hasDbError) ? 0 : (stepsPayloads.length + sleepPayloads.length + hrPayloads.length);
+  return (hasApiError || hasDbError || isEmptyData) ? 0 : totalExtracted;
 }
 
 /**
@@ -455,46 +747,54 @@ async function syncWhoop(connection: any): Promise<number> {
   }
 
   let hasDbError = false;
+  const totalExtracted = stepsPayloads.length + sleepPayloads.length + hrPayloads.length;
+  const isEmptyData = totalExtracted === 0;
 
-  // 1. Ingest Steps
-  if (stepsPayloads.length > 0) {
-    console.log(`[Wearables Audit] Committing to wearable_steps: ${stepsPayloads.length} rows`);
-    const { error: stepsError } = await supabaseAdmin
-      .from('wearable_steps')
-      .upsert(stepsPayloads, { onConflict: 'user_id,logged_date' });
-    if (stepsError) {
-      console.error('[Wearables Audit] Steps Upsert Error:', JSON.stringify(stepsError));
-      hasDbError = true;
+  if (isEmptyData) {
+    console.warn(`[Wearables Sync] Whoop Empty-Data Gate triggered.`);
+  }
+
+  if (!isEmptyData) {
+    // 1. Ingest Steps
+    if (stepsPayloads.length > 0) {
+      console.log(`[Wearables Audit] Committing to wearable_steps: ${stepsPayloads.length} rows`);
+      const { error: stepsError } = await supabaseAdmin
+        .from('wearable_steps')
+        .upsert(stepsPayloads, { onConflict: 'user_id,logged_date' });
+      if (stepsError) {
+        console.error('[Wearables Audit] Steps Upsert Error:', JSON.stringify(stepsError));
+        hasDbError = true;
+      }
+    }
+
+    // 2. Ingest Sleep
+    if (sleepPayloads.length > 0) {
+      console.log(`[Wearables Audit] Committing to wearable_sleep: ${sleepPayloads.length} rows`);
+      const { error: sleepError } = await supabaseAdmin
+        .from('wearable_sleep')
+        .upsert(sleepPayloads, { onConflict: 'user_id,logged_date' });
+      if (sleepError) {
+        console.error('[Wearables Audit] Sleep Upsert Error:', JSON.stringify(sleepError));
+        hasDbError = true;
+      }
+    }
+
+    // 3. Ingest Heart Rate
+    if (hrPayloads.length > 0) {
+      console.log(`[Wearables Audit] Committing to wearable_resting_hr: ${hrPayloads.length} rows`);
+      const { error: hrError } = await supabaseAdmin
+        .from('wearable_resting_hr')
+        .upsert(hrPayloads, { onConflict: 'user_id,logged_date' });
+      if (hrError) {
+        console.error('[Wearables Audit] Heart Rate Upsert Error:', JSON.stringify(hrError));
+        hasDbError = true;
+      }
     }
   }
 
-  // 2. Ingest Sleep
-  if (sleepPayloads.length > 0) {
-    console.log(`[Wearables Audit] Committing to wearable_sleep: ${sleepPayloads.length} rows`);
-    const { error: sleepError } = await supabaseAdmin
-      .from('wearable_sleep')
-      .upsert(sleepPayloads, { onConflict: 'user_id,logged_date' });
-    if (sleepError) {
-      console.error('[Wearables Audit] Sleep Upsert Error:', JSON.stringify(sleepError));
-      hasDbError = true;
-    }
-  }
-
-  // 3. Ingest Heart Rate
-  if (hrPayloads.length > 0) {
-    console.log(`[Wearables Audit] Committing to wearable_resting_hr: ${hrPayloads.length} rows`);
-    const { error: hrError } = await supabaseAdmin
-      .from('wearable_resting_hr')
-      .upsert(hrPayloads, { onConflict: 'user_id,logged_date' });
-    if (hrError) {
-      console.error('[Wearables Audit] Heart Rate Upsert Error:', JSON.stringify(hrError));
-      hasDbError = true;
-    }
-  }
-
-  // Update connection state strictly if no DB errors occurred
+  // Update connection state
   const updateData: any = { last_synced_at: now.toISOString() };
-  if (isBackfill && !hasDbError) {
+  if (isBackfill && !hasDbError && !isEmptyData) {
     updateData.backfill_completed = true;
   }
 
@@ -503,7 +803,7 @@ async function syncWhoop(connection: any): Promise<number> {
     .update(updateData)
     .eq('id', connection.id);
 
-  return hasDbError ? 0 : (stepsPayloads.length + sleepPayloads.length + hrPayloads.length);
+  return (hasDbError || isEmptyData) ? 0 : totalExtracted;
 }
 
 /**
@@ -543,17 +843,20 @@ export async function GET(req: Request) {
         usersProcessed++;
         let inserts = 0;
         switch (connection.provider) {
-          case 'google_fit':
           case 'fitbit':
-            console.log(`[Wearables Debug] Routing user ${connection.user_id} (Provider: ${connection.provider}) to syncFitbit/syncGoogleFit`);
-            inserts = await syncFitbit(connection);
+            console.log(`[Wearables Debug] Routing user ${connection.user_id} (Provider: fitbit) to native syncFitbitCloud`);
+            inserts = await syncFitbitCloud(connection);
+            break;
+          case 'google_fit':
+            console.log(`[Wearables Debug] Routing user ${connection.user_id} (Provider: google_fit) to legacy syncGoogleFit`);
+            inserts = await syncGoogleFit(connection);
             break;
           case 'whoop':
             console.log(`[Wearables Debug] Routing user ${connection.user_id} to syncWhoop`);
             inserts = await syncWhoop(connection);
             break;
           default:
-            console.error(`[Wearables Debug] CRITICAL MISMATCH: Provider "${connection.provider}" did not match any case statement.`);
+            console.error(`[Wearables Debug] Unsupported provider: ${connection.provider}`);
         }
         successfulInserts += inserts;
       } catch (error: any) {
