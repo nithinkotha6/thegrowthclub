@@ -161,7 +161,7 @@ async function syncFitbit(connection: any): Promise<number> {
   let endTimeMillis: number;
 
   if (isBackfill) {
-    console.log('[Wearables Tier 1] Initiating 2026 Historical Backfill for user:', userId);
+    console.log('[Wearables Tier 1] Initiating chunked 2026 Historical Backfill for user:', userId);
     // Start of Jan 1, 2026
     const startOf2026 = new Date(2026, 0, 1, 0, 0, 0, 0);
     startTimeMillis = startOf2026.getTime();
@@ -175,150 +175,171 @@ async function syncFitbit(connection: any): Promise<number> {
   }
 
   const insertLogs: any[] = [];
+  const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+  let currentStart = startTimeMillis;
+  let hasApiError = false;
 
-  // Unified Google Fit Aggregate Query
-  try {
-    const response = await fetch(
-      'https://www.googleapis.com/fitness/v1/users/me/dataset:aggregate',
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          aggregateBy: [
-            { dataTypeName: 'com.google.step_count.delta' },
-            { dataTypeName: 'com.google.sleep.segment' },
-            { dataTypeName: 'com.google.heart_rate.bpm' }
-          ],
-          bucketByTime: { durationMillis: 86400000 },
-          startTimeMillis,
-          endTimeMillis,
-        }),
-      }
-    );
+  // Chunking API aggregate requests into 30-day windows to avoid Google Fit "duration too large" HTTP 400 errors
+  while (currentStart < endTimeMillis) {
+    const currentEnd = Math.min(currentStart + THIRTY_DAYS_MS, endTimeMillis);
+    console.log(`[Wearables Sync Chunk] Fetching chunk: ${new Date(currentStart).toISOString()} to ${new Date(currentEnd).toISOString()}`);
 
-    if (response.ok) {
-      const aggregateData = await response.json();
-      console.log(
-        '[Wearables Sync] Raw Google Fit Aggregate Response for user',
-        userId,
-        JSON.stringify(aggregateData, null, 2)
+    try {
+      const response = await fetch(
+        'https://www.googleapis.com/fitness/v1/users/me/dataset:aggregate',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            aggregateBy: [
+              { dataTypeName: 'com.google.step_count.delta' },
+              { dataTypeName: 'com.google.sleep.segment' },
+              { dataTypeName: 'com.google.heart_rate.bpm' }
+            ],
+            bucketByTime: { durationMillis: 86400000 },
+            startTimeMillis: currentStart,
+            endTimeMillis: currentEnd,
+          }),
+        }
       );
 
-      if (aggregateData.bucket) {
-        for (const bucket of aggregateData.bucket) {
-          const bucketStart = Number(bucket.startTimeMillis);
-          const bucketDateStr = new Date(bucketStart).toISOString();
+      if (response.ok) {
+        const aggregateData = await response.json();
 
-          // 1. Steps (Index 0)
-          let bucketSteps = 0;
-          const stepsDataset = bucket.dataset?.[0];
-          if (stepsDataset?.point) {
-            for (const pt of stepsDataset.point) {
-              if (pt.value) {
-                for (const val of pt.value) {
-                  bucketSteps += val.intVal || val.fpVal || 0;
+        if (aggregateData.error) {
+          console.error(
+            `[Wearables Sync Chunk Error] Google Fit API chunk failed (${new Date(currentStart).toISOString()} to ${new Date(currentEnd).toISOString()}):`,
+            JSON.stringify(aggregateData.error)
+          );
+          hasApiError = true;
+          break;
+        }
+
+        if (aggregateData.bucket) {
+          for (const bucket of aggregateData.bucket) {
+            const bucketStart = Number(bucket.startTimeMillis);
+            const bucketDateStr = new Date(bucketStart).toISOString();
+
+            // 1. Steps (Index 0)
+            let bucketSteps = 0;
+            const stepsDataset = bucket.dataset?.[0];
+            if (stepsDataset?.point) {
+              for (const pt of stepsDataset.point) {
+                if (pt.value) {
+                  for (const val of pt.value) {
+                    bucketSteps += val.intVal || val.fpVal || 0;
+                  }
                 }
               }
             }
-          }
-          if (bucketSteps > 0) {
-            insertLogs.push({
-              user_id: userId,
-              group_id: groupId,
-              metric_slug: 'wearable_steps',
-              value: bucketSteps,
-              unit: 'steps',
-              status: 'verified',
-              logged_at: bucketDateStr,
-            });
-          }
+            if (bucketSteps > 0) {
+              insertLogs.push({
+                user_id: userId,
+                group_id: groupId,
+                metric_slug: 'wearable_steps',
+                value: bucketSteps,
+                unit: 'steps',
+                status: 'verified',
+                logged_at: bucketDateStr,
+              });
+            }
 
-          // 2. Sleep (Index 1)
-          let bucketSleep = 0;
-          const sleepDataset = bucket.dataset?.[1];
-          if (sleepDataset?.point) {
-            for (const pt of sleepDataset.point) {
-              const startNs = Number(pt.startTimeNanos);
-              const endNs = Number(pt.endTimeNanos);
-              if (endNs > startNs) {
-                bucketSleep += (endNs - startNs) / (1e6 * 1000 * 60 * 60);
+            // 2. Sleep (Index 1)
+            let bucketSleep = 0;
+            const sleepDataset = bucket.dataset?.[1];
+            if (sleepDataset?.point) {
+              for (const pt of sleepDataset.point) {
+                const startNs = Number(pt.startTimeNanos);
+                const endNs = Number(pt.endTimeNanos);
+                if (endNs > startNs) {
+                  bucketSleep += (endNs - startNs) / (1e6 * 1000 * 60 * 60);
+                }
               }
             }
-          }
-          if (bucketSleep > 0) {
-            insertLogs.push({
-              user_id: userId,
-              group_id: groupId,
-              metric_slug: 'wearable_sleep',
-              value: Math.round(bucketSleep * 10) / 10,
-              unit: 'hrs',
-              status: 'verified',
-              logged_at: bucketDateStr,
-            });
-          }
+            if (bucketSleep > 0) {
+              insertLogs.push({
+                user_id: userId,
+                group_id: groupId,
+                metric_slug: 'wearable_sleep',
+                value: Math.round(bucketSleep * 10) / 10,
+                unit: 'hrs',
+                status: 'verified',
+                logged_at: bucketDateStr,
+              });
+            }
 
-          // 3. Resting HR (Index 2)
-          let minHR = null;
-          const hrDataset = bucket.dataset?.[2];
-          if (hrDataset?.point) {
-            for (const pt of hrDataset.point) {
-              if (pt.value) {
-                for (const val of pt.value) {
-                  const hrVal = val.fpVal || val.intVal;
-                  if (hrVal && hrVal >= 35 && hrVal <= 120) {
-                    if (minHR === null || hrVal < minHR) {
-                      minHR = hrVal;
+            // 3. Resting HR (Index 2)
+            let minHR = null;
+            const hrDataset = bucket.dataset?.[2];
+            if (hrDataset?.point) {
+              for (const pt of hrDataset.point) {
+                if (pt.value) {
+                  for (const val of pt.value) {
+                    const hrVal = val.fpVal || val.intVal;
+                    if (hrVal && hrVal >= 35 && hrVal <= 120) {
+                      if (minHR === null || hrVal < minHR) {
+                        minHR = hrVal;
+                      }
                     }
                   }
                 }
               }
             }
-          }
-          if (minHR !== null) {
-            insertLogs.push({
-              user_id: userId,
-              group_id: groupId,
-              metric_slug: 'wearable_resting_hr',
-              value: Math.round(minHR),
-              unit: 'bpm',
-              status: 'verified',
-              logged_at: bucketDateStr,
-            });
+            if (minHR !== null) {
+              insertLogs.push({
+                user_id: userId,
+                group_id: groupId,
+                metric_slug: 'wearable_resting_hr',
+                value: Math.round(minHR),
+                unit: 'bpm',
+                status: 'verified',
+                logged_at: bucketDateStr,
+              });
+            }
           }
         }
+      } else {
+        const errText = await response.text();
+        console.error(
+          `[Wearables Sync Chunk Error] API request returned status ${response.status}:`,
+          errText
+        );
+        hasApiError = true;
+        break;
       }
-    } else {
-      const errText = await response.text();
-      console.error(
-        `[Wearables Sync] Google Fit aggregate query failed for user ${userId}:`,
-        errText
-      );
+    } catch (err) {
+      console.error(`[Wearables Sync Chunk Error] Network exception during chunk fetch:`, err);
+      hasApiError = true;
+      break;
     }
-  } catch (err) {
-    console.error(`[Google Fit Sync] Aggregate call failed:`, err);
+
+    currentStart = currentEnd;
   }
 
-  if (insertLogs.length > 0) {
+  // Insert verified records only if there are logs and no API errors occurred to guarantee transactional safety
+  if (insertLogs.length > 0 && !hasApiError) {
     const { verifiedLogs, slugToIdMap } = await validateMetricDefinitions(
       supabaseAdmin,
       insertLogs
     );
 
     if (verifiedLogs.length > 0) {
-      // Bulk range delete of existing records to avoid duplicate keys or double-counting
-      const rangeStartStr = new Date(startTimeMillis).toISOString();
-      const rangeEndStr = new Date(endTimeMillis).toISOString();
+      // Safe targeted deduplication delete matching only the exact dates and metrics we are replacing
+      const metrics = Array.from(new Set(verifiedLogs.map((l) => l.metric_slug)));
+      for (const metric of metrics) {
+        const metricLogs = verifiedLogs.filter((l) => l.metric_slug === metric);
+        const metricDates = Array.from(new Set(metricLogs.map((l) => l.logged_at)));
 
-      await supabaseAdmin
-        .from('metric_logs')
-        .delete()
-        .eq('user_id', userId)
-        .in('metric_slug', ['wearable_steps', 'wearable_sleep', 'wearable_resting_hr'])
-        .gte('logged_at', rangeStartStr)
-        .lte('logged_at', rangeEndStr);
+        await supabaseAdmin
+          .from('metric_logs')
+          .delete()
+          .eq('user_id', userId)
+          .eq('metric_slug', metric)
+          .in('logged_at', metricDates);
+      }
 
       const { error: insertErr } = await supabaseAdmin.from('metric_logs').insert(verifiedLogs);
       if (insertErr) {
@@ -335,10 +356,10 @@ async function syncFitbit(connection: any): Promise<number> {
     }
   }
 
-  // Update connection sync date and set backfill completed
+  // Update connection sync date and set backfill completed strictly if no api errors occurred
   const nowIso = new Date().toISOString();
   const updateData: any = { last_synced_at: nowIso };
-  if (isBackfill) {
+  if (isBackfill && !hasApiError) {
     updateData.backfill_completed = true;
   }
 
@@ -349,11 +370,11 @@ async function syncFitbit(connection: any): Promise<number> {
 
   if (updateErr) {
     console.error(`[Wearables Sync] Failed to update connection status:`, updateErr);
-  } else if (isBackfill) {
+  } else if (isBackfill && !hasApiError) {
     console.log(`[Wearables Tier 1] Marked backfill completed successfully for user ${userId}`);
   }
 
-  return insertLogs.length;
+  return hasApiError ? 0 : insertLogs.length;
 }
 
 /**
@@ -441,14 +462,19 @@ async function syncWhoop(connection: any): Promise<number> {
     return 0;
   }
 
-  // Delete existing in range
-  await supabaseAdmin
-    .from('metric_logs')
-    .delete()
-    .eq('user_id', userId)
-    .in('metric_slug', ['wearable_steps', 'wearable_sleep', 'wearable_resting_hr'])
-    .gte('logged_at', start.toISOString())
-    .lte('logged_at', now.toISOString());
+  // Safe targeted deduplication delete matching only the exact dates we are replacing
+  const metrics = Array.from(new Set(verifiedLogs.map((l) => l.metric_slug)));
+  for (const metric of metrics) {
+    const metricLogs = verifiedLogs.filter((l) => l.metric_slug === metric);
+    const metricDates = Array.from(new Set(metricLogs.map((l) => l.logged_at)));
+
+    await supabaseAdmin
+      .from('metric_logs')
+      .delete()
+      .eq('user_id', userId)
+      .eq('metric_slug', metric)
+      .in('logged_at', metricDates);
+  }
 
   const { error: insertErr } = await supabaseAdmin.from('metric_logs').insert(verifiedLogs);
   if (insertErr) {
