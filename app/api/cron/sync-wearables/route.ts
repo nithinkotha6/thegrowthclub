@@ -150,6 +150,58 @@ async function syncGoogleHealthV4(connection: any): Promise<number> {
   let currentStart = startTimeMillis;
   let hasApiError = false;
 
+  // Helper function to query v4 dailyRollUp
+  const fetchRollUp = async (dataType: string, chunkStart: Date, chunkEnd: Date) => {
+    const url = `https://health.googleapis.com/v4/users/me/dataTypes/${dataType}/dataPoints:dailyRollUp`;
+    
+    // Google Health API v4 requires a top-level "range" object containing CivilDateTime structures
+    const body = {
+      range: {
+        start: {
+          date: {
+            year: chunkStart.getUTCFullYear(),
+            month: chunkStart.getUTCMonth() + 1,
+            day: chunkStart.getUTCDate()
+          },
+          time: { hours: 0, minutes: 0, seconds: 0 }
+        },
+        end: {
+          date: {
+            year: chunkEnd.getUTCFullYear(),
+            month: chunkEnd.getUTCMonth() + 1,
+            day: chunkEnd.getUTCDate()
+          },
+          time: { hours: 23, minutes: 59, seconds: 59 }
+        }
+      },
+      windowSizeDays: 1,
+      pageSize: 1000
+    };
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+      });
+      
+      const json = await res.json();
+      if (json.error) {
+        console.error(`[Wearables Google Health v4 Error] (${dataType}):`, JSON.stringify(json.error));
+        hasApiError = true;
+        return [];
+      }
+      return json.rollupDataPoints || json.dailyRollupDataPoints || json.dataPoints || [];
+    } catch (err) {
+      console.error(`[Wearables Google Health v4 Exception] (${dataType}):`, err);
+      hasApiError = true;
+      return [];
+    }
+  };
+
   // Chunking v4 rollup requests into 30-day windows to avoid long latency ranges
   while (currentStart < endTimeMillis) {
     const currentEnd = Math.min(currentStart + THIRTY_DAYS_MS, endTimeMillis);
@@ -158,153 +210,95 @@ async function syncGoogleHealthV4(connection: any): Promise<number> {
     const startDate = new Date(currentStart);
     const endDate = new Date(currentEnd);
 
-    const payload = {
-      start: {
-        year: startDate.getUTCFullYear(),
-        month: startDate.getUTCMonth() + 1,
-        day: startDate.getUTCDate(),
-        hours: 0, minutes: 0, seconds: 0
-      },
-      end: {
-        year: endDate.getUTCFullYear(),
-        month: endDate.getUTCMonth() + 1,
-        day: endDate.getUTCDate(),
-        hours: 23, minutes: 59, seconds: 59
-      },
-      pageSize: 1000
-    };
+    // 1. Fetch Steps
+    const stepsPoints = await fetchRollUp('steps', startDate, endDate);
+    if (hasApiError) break;
 
-    try {
-      // 1. Fetch Steps Daily Rollup
-      const stepsUrl = 'https://health.googleapis.com/v4/users/me/dataTypes/steps/dataPoints:dailyRollUp';
-      const stepsRes = await fetch(stepsUrl, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
+    stepsPoints.forEach((point: any) => {
+      const val = point.value?.steps?.countSum ?? 0;
+      const startObj = point.start || point.range?.start;
+      const year = startObj?.date?.year || startObj?.year;
+      const month = startObj?.date?.month || startObj?.month;
+      const day = startObj?.date?.day || startObj?.day;
 
-      if (stepsRes.ok) {
-        const data = await stepsRes.json();
-        console.log('[Wearables Sync] Google Health v4 Raw Steps Response:', JSON.stringify(data, null, 2));
-        if (data.dailyRollupDataPoints) {
-          data.dailyRollupDataPoints.forEach((point: any) => {
-            const val = point.value?.steps?.countSum ?? 0;
-            if (val > 0) {
-              const dateStr = `${point.start.year}-${String(point.start.month).padStart(2, '0')}-${String(point.start.day).padStart(2, '0')}`;
-              stepsPayloads.push({
-                user_id: userId,
-                connection_id: connection.id,
-                logged_date: dateStr,
-                value: val,
-                source: 'google_health_v4',
-              });
-            }
+      if (val > 0 && year && month && day) {
+        const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        stepsPayloads.push({
+          user_id: userId,
+          connection_id: connection.id,
+          logged_date: dateStr,
+          value: val,
+          source: 'google_health_v4',
+        });
+      }
+    });
+
+    // 2. Fetch Sleep
+    const sleepPoints = await fetchRollUp('sleep', startDate, endDate);
+    if (hasApiError) break;
+
+    sleepPoints.forEach((point: any) => {
+      const sleepObj = point.value?.sleep;
+      const startObj = point.start || point.range?.start;
+      const year = startObj?.date?.year || startObj?.year;
+      const month = startObj?.date?.month || startObj?.month;
+      const day = startObj?.date?.day || startObj?.day;
+
+      if (sleepObj && year && month && day) {
+        const rawVal = sleepObj.durationSum || sleepObj.duration || sleepObj.durationSeconds || sleepObj.totalDurationSeconds || 0;
+        let sleepVal = 0;
+        if (typeof rawVal === 'string') {
+          const num = parseFloat(rawVal);
+          if (rawVal.endsWith('s')) {
+            sleepVal = num / 3600;
+          } else {
+            sleepVal = num / 3600000;
+          }
+        } else if (typeof rawVal === 'number') {
+          if (rawVal > 86400) {
+            sleepVal = rawVal / 3600000; // ms
+          } else {
+            sleepVal = rawVal / 3600; // sec
+          }
+        }
+        if (sleepVal > 0) {
+          const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+          sleepPayloads.push({
+            user_id: userId,
+            connection_id: connection.id,
+            logged_date: dateStr,
+            value: Math.round(sleepVal * 10) / 10,
+            source: 'google_health_v4',
           });
         }
-      } else {
-        console.error(`[Wearables Sync Google] Steps rollup failed:`, await stepsRes.text());
-        hasApiError = true;
-        break;
       }
+    });
 
-      // 2. Fetch Sleep Daily Rollup
-      const sleepUrl = 'https://health.googleapis.com/v4/users/me/dataTypes/sleep/dataPoints:dailyRollUp';
-      const sleepRes = await fetch(sleepUrl, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
+    // 3. Fetch Heart Rate
+    const hrPoints = await fetchRollUp('daily-resting-heart-rate', startDate, endDate);
+    if (hasApiError) break;
 
-      if (sleepRes.ok) {
-        const data = await sleepRes.json();
-        console.log('[Wearables Sync] Google Health v4 Raw Sleep Response:', JSON.stringify(data, null, 2));
-        if (data.dailyRollupDataPoints) {
-          data.dailyRollupDataPoints.forEach((point: any) => {
-            const sleepObj = point.value?.sleep;
-            if (sleepObj) {
-              const rawVal = sleepObj.durationSum || sleepObj.duration || sleepObj.durationSeconds || sleepObj.totalDurationSeconds || 0;
-              let sleepVal = 0;
-              if (typeof rawVal === 'string') {
-                const num = parseFloat(rawVal);
-                if (rawVal.endsWith('s')) {
-                  sleepVal = num / 3600;
-                } else {
-                  sleepVal = num / 3600000;
-                }
-              } else if (typeof rawVal === 'number') {
-                if (rawVal > 86400) {
-                  sleepVal = rawVal / 3600000; // ms
-                } else {
-                  sleepVal = rawVal / 3600; // sec
-                }
-              }
-              if (sleepVal > 0) {
-                const dateStr = `${point.start.year}-${String(point.start.month).padStart(2, '0')}-${String(point.start.day).padStart(2, '0')}`;
-                sleepPayloads.push({
-                  user_id: userId,
-                  connection_id: connection.id,
-                  logged_date: dateStr,
-                  value: Math.round(sleepVal * 10) / 10,
-                  source: 'google_health_v4',
-                });
-              }
-            }
+    hrPoints.forEach((point: any) => {
+      const hrObj = point.value?.['daily-resting-heart-rate'] || point.value?.restingHeartRate || point.value?.resting_heart_rate;
+      const startObj = point.start || point.range?.start;
+      const year = startObj?.date?.year || startObj?.year;
+      const month = startObj?.date?.month || startObj?.month;
+      const day = startObj?.date?.day || startObj?.day;
+
+      if (hrObj && year && month && day) {
+        const hrVal = hrObj.bpm || hrObj.restingHeartRate || hrObj.resting_heart_rate || hrObj.value || 0;
+        if (hrVal > 0) {
+          const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+          hrPayloads.push({
+            user_id: userId,
+            connection_id: connection.id,
+            logged_date: dateStr,
+            value: Math.round(hrVal),
+            source: 'google_health_v4',
           });
         }
-      } else {
-        console.error(`[Wearables Sync Google] Sleep rollup failed:`, await sleepRes.text());
-        hasApiError = true;
-        break;
       }
-
-      // 3. Fetch Resting HR Daily Rollup
-      const hrUrl = 'https://health.googleapis.com/v4/users/me/dataTypes/daily-resting-heart-rate/dataPoints:dailyRollUp';
-      const hrRes = await fetch(hrUrl, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (hrRes.ok) {
-        const data = await hrRes.json();
-        console.log('[Wearables Sync] Google Health v4 Raw Heart Response:', JSON.stringify(data, null, 2));
-        if (data.dailyRollupDataPoints) {
-          data.dailyRollupDataPoints.forEach((point: any) => {
-            const hrObj = point.value?.['daily-resting-heart-rate'] || point.value?.restingHeartRate || point.value?.resting_heart_rate;
-            if (hrObj) {
-              const hrVal = hrObj.bpm || hrObj.restingHeartRate || hrObj.resting_heart_rate || hrObj.value || 0;
-              if (hrVal > 0) {
-                const dateStr = `${point.start.year}-${String(point.start.month).padStart(2, '0')}-${String(point.start.day).padStart(2, '0')}`;
-                hrPayloads.push({
-                  user_id: userId,
-                  connection_id: connection.id,
-                  logged_date: dateStr,
-                  value: Math.round(hrVal),
-                  source: 'google_health_v4',
-                });
-              }
-            }
-          });
-        }
-      } else {
-        console.error(`[Wearables Sync Google] Heart rate rollup failed:`, await hrRes.text());
-        hasApiError = true;
-        break;
-      }
-    } catch (err) {
-      console.error(`[Wearables Sync Chunk Error] Network exception during chunk fetch:`, err);
-      hasApiError = true;
-      break;
-    }
+    });
 
     currentStart = currentEnd;
   }
