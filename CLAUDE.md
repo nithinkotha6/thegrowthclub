@@ -1,5 +1,3 @@
-@AGENTS.md
-
 # Global AI Instructions: The Growth Club Dashboard
 
 ## 🚨 Strict Execution Guardrails (OG Senior Dev Mode)
