@@ -89,7 +89,7 @@ async function refreshGoogleAccessToken(connection: any): Promise<string | null>
 }
 
 /**
- * Sync process for Google Health API v4 (daily rollup consolidation)
+ * Sync process for Google Health API v4 (daily rollup consolidation & list details)
  */
 async function syncGoogleHealthV4(connection: any): Promise<number> {
   const supabaseAdmin = createAdminClient();
@@ -148,31 +148,35 @@ async function syncGoogleHealthV4(connection: any): Promise<number> {
 
   let hasApiError = false;
 
-  // Helper function to query v4 dailyRollUp
-  const fetchRollUp = async (dataType: string, chunkStart: Date, chunkEnd: Date) => {
-    const url = `https://health.googleapis.com/v4/users/me/dataTypes/${dataType}/dataPoints:dailyRollUp`;
+  // Dynamic fetcher that selects the correct action based on DataType
+  const fetchGoogleHealthData = async (dataType: string, chunkStart: Date, chunkEnd: Date) => {
+    // Determine the correct action: steps/resting-hr use dailyRollUp, sleep uses list
+    const action = (dataType === 'steps' || dataType === 'daily-resting-heart-rate' || dataType === 'heart-rate') 
+      ? ':dailyRollUp' 
+      : ':list';
+      
+    const url = `https://health.googleapis.com/v4/users/me/dataTypes/${dataType}/dataPoints${action}`;
     
-    // Google Health API v4 requires a top-level "range" object containing CivilDateTime structures
-    const body = {
-      range: {
-        start: {
-          date: {
-            year: chunkStart.getUTCFullYear(),
-            month: chunkStart.getUTCMonth() + 1,
-            day: chunkStart.getUTCDate()
-          },
-          time: { hours: 0, minutes: 0, seconds: 0 }
-        },
-        end: {
-          date: {
-            year: chunkEnd.getUTCFullYear(),
-            month: chunkEnd.getUTCMonth() + 1,
-            day: chunkEnd.getUTCDate()
-          },
-          time: { hours: 0, minutes: 0, seconds: 0 }
+    // For :list actions, we use a timeRange parameter structure
+    const body = (action === ':dailyRollUp') 
+      ? {
+          range: {
+            start: {
+              date: { year: chunkStart.getUTCFullYear(), month: chunkStart.getUTCMonth() + 1, day: chunkStart.getUTCDate() },
+              time: { hours: 0, minutes: 0, seconds: 0 }
+            },
+            end: {
+              date: { year: chunkEnd.getUTCFullYear(), month: chunkEnd.getUTCMonth() + 1, day: chunkEnd.getUTCDate() },
+              time: { hours: 0, minutes: 0, seconds: 0 }
+            }
+          }
         }
-      }
-    };
+      : {
+          timeRange: {
+            startTime: chunkStart.toISOString(),
+            endTime: chunkEnd.toISOString()
+          }
+        };
 
     try {
       const res = await fetch(url, {
@@ -213,8 +217,8 @@ async function syncGoogleHealthV4(connection: any): Promise<number> {
 
     console.log(`[Wearables Sync Chunk] Fetching Health v4 safe window: ${currentStart.toISOString()} to ${currentEnd.toISOString()}`);
 
-    // 1. Fetch Steps
-    const stepsPoints = await fetchRollUp('steps', currentStart, currentEnd);
+    // 1. Fetch Steps (:dailyRollUp)
+    const stepsPoints = await fetchGoogleHealthData('steps', currentStart, currentEnd);
     if (hasApiError) break;
 
     stepsPoints.forEach((point: any) => {
@@ -236,18 +240,22 @@ async function syncGoogleHealthV4(connection: any): Promise<number> {
       }
     });
 
-    // 2. Fetch Sleep
-    const sleepPoints = await fetchRollUp('sleep', currentStart, currentEnd);
+    // 2. Fetch Sleep (:list)
+    const sleepPoints = await fetchGoogleHealthData('sleep', currentStart, currentEnd);
     if (hasApiError) break;
 
+    const sleepByDay: Record<string, number> = {};
     sleepPoints.forEach((point: any) => {
       const sleepObj = point.value?.sleep;
       const startObj = point.start || point.range?.start;
-      const year = startObj?.date?.year || startObj?.year;
-      const month = startObj?.date?.month || startObj?.month;
-      const day = startObj?.date?.day || startObj?.day;
+      let dateStr = '';
+      if (startObj?.date) {
+        dateStr = `${startObj.date.year}-${String(startObj.date.month).padStart(2, '0')}-${String(startObj.date.day).padStart(2, '0')}`;
+      } else if (point.startTime) {
+        dateStr = point.startTime.split('T')[0];
+      }
 
-      if (sleepObj && year && month && day) {
+      if (sleepObj && dateStr) {
         const rawVal = sleepObj.durationSum || sleepObj.duration || sleepObj.durationSeconds || sleepObj.totalDurationSeconds || 0;
         let sleepVal = 0;
         if (typeof rawVal === 'string') {
@@ -265,20 +273,23 @@ async function syncGoogleHealthV4(connection: any): Promise<number> {
           }
         }
         if (sleepVal > 0) {
-          const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-          sleepPayloads.push({
-            user_id: userId,
-            connection_id: connection.id,
-            logged_date: dateStr,
-            value: Math.round(sleepVal * 10) / 10,
-            source: 'google_health_v4',
-          });
+          sleepByDay[dateStr] = (sleepByDay[dateStr] || 0) + sleepVal;
         }
       }
     });
 
-    // 3. Fetch Heart Rate
-    const hrPoints = await fetchRollUp('daily-resting-heart-rate', currentStart, currentEnd);
+    for (const [day, val] of Object.entries(sleepByDay)) {
+      sleepPayloads.push({
+        user_id: userId,
+        connection_id: connection.id,
+        logged_date: day,
+        value: Math.round(val * 10) / 10,
+        source: 'google_health_v4',
+      });
+    }
+
+    // 3. Fetch Heart Rate (:dailyRollUp)
+    const hrPoints = await fetchGoogleHealthData('daily-resting-heart-rate', currentStart, currentEnd);
     if (hasApiError) break;
 
     hrPoints.forEach((point: any) => {
