@@ -146,8 +146,6 @@ async function syncGoogleHealthV4(connection: any): Promise<number> {
   const sleepPayloads: any[] = [];
   const hrPayloads: any[] = [];
 
-  const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-  let currentStart = startTimeMillis;
   let hasApiError = false;
 
   // Helper function to query v4 dailyRollUp
@@ -202,16 +200,23 @@ async function syncGoogleHealthV4(connection: any): Promise<number> {
     }
   };
 
-  // Chunking v4 rollup requests into 30-day windows to avoid long latency ranges
-  while (currentStart < endTimeMillis) {
-    const currentEnd = Math.min(currentStart + THIRTY_DAYS_MS, endTimeMillis);
-    console.log(`[Wearables Sync Chunk] Fetching Health v4 chunk: ${new Date(currentStart).toISOString()} to ${new Date(currentEnd).toISOString()}`);
+  const MAX_CHUNK_DAYS = 30;
+  let currentStart = new Date(startTimeMillis);
+  const targetEnd = new Date(endTimeMillis);
 
-    const startDate = new Date(currentStart);
-    const endDate = new Date(currentEnd);
+  // Date-based chunking loop to strictly avoid INVALID_ROLLUP_QUERY_DURATION error on 90-day limit
+  while (currentStart < targetEnd) {
+    let currentEnd = new Date(currentStart);
+    currentEnd.setDate(currentStart.getDate() + MAX_CHUNK_DAYS);
+
+    if (currentEnd > targetEnd) {
+      currentEnd = new Date(targetEnd);
+    }
+
+    console.log(`[Wearables Sync Chunk] Fetching Health v4 safe window: ${currentStart.toISOString()} to ${currentEnd.toISOString()}`);
 
     // 1. Fetch Steps
-    const stepsPoints = await fetchRollUp('steps', startDate, endDate);
+    const stepsPoints = await fetchRollUp('steps', currentStart, currentEnd);
     if (hasApiError) break;
 
     stepsPoints.forEach((point: any) => {
@@ -234,7 +239,7 @@ async function syncGoogleHealthV4(connection: any): Promise<number> {
     });
 
     // 2. Fetch Sleep
-    const sleepPoints = await fetchRollUp('sleep', startDate, endDate);
+    const sleepPoints = await fetchRollUp('sleep', currentStart, currentEnd);
     if (hasApiError) break;
 
     sleepPoints.forEach((point: any) => {
@@ -275,7 +280,7 @@ async function syncGoogleHealthV4(connection: any): Promise<number> {
     });
 
     // 3. Fetch Heart Rate
-    const hrPoints = await fetchRollUp('daily-resting-heart-rate', startDate, endDate);
+    const hrPoints = await fetchRollUp('daily-resting-heart-rate', currentStart, currentEnd);
     if (hasApiError) break;
 
     hrPoints.forEach((point: any) => {
