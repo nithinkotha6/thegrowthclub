@@ -169,11 +169,9 @@ async function syncGoogleHealthV4(connection: any): Promise<number> {
             month: chunkEnd.getUTCMonth() + 1,
             day: chunkEnd.getUTCDate()
           },
-          time: { hours: 23, minutes: 59, seconds: 59 }
+          time: { hours: 0, minutes: 0, seconds: 0 }
         }
-      },
-      windowSizeDays: 1,
-      pageSize: 1000
+      }
     };
 
     try {
