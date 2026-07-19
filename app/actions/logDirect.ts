@@ -107,7 +107,6 @@ export async function logDirectActivity(
   }
  
   revalidatePath('/dashboard');
-  revalidatePath('/dashboard/leaderboard');
   return { success: true, metric_slug: metricSlug, value, unit };
 }
  
@@ -184,7 +183,6 @@ export async function logActivityManual(
         return { success: false, error: `Database error (retry): ${retryErr.message} (Code: ${retryErr.code})` };
       }
       revalidatePath('/dashboard');
-      revalidatePath('/dashboard/leaderboard');
       return { success: true, metric_slug: metricSlug, value, unit };
     }
  
@@ -197,6 +195,5 @@ export async function logActivityManual(
   }
 
   revalidatePath('/dashboard');
-  revalidatePath('/dashboard/leaderboard');
   return { success: true, metric_slug: metricSlug, value, unit };
 }

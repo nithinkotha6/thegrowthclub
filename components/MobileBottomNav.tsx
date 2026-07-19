@@ -1,11 +1,11 @@
 'use client';
 
-import { LayoutDashboard, BarChart2, Users, Image, Watch } from 'lucide-react';
+import { LayoutDashboard, Trophy, Users, Image, Watch } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 
 const ITEMS = [
   { icon: LayoutDashboard, label: 'Home',        href: '/dashboard' },
-  { icon: BarChart2,       label: 'Leaderboard', href: '/dashboard/leaderboard' },
+  { icon: Trophy,          label: 'Challenges',  href: '/dashboard/challenges' },
   { icon: Watch,           label: 'Wearables',   href: '/dashboard/wearables' },
   { icon: Image,           label: 'Memories',    href: '/dashboard/memories' },
   { icon: Users,           label: 'Gang',        href: '/dashboard/gang' },

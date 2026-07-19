@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { ListChecks, TrendingUp, Swords } from 'lucide-react';
 import DailyGoalsPanel from '@/components/challenges/DailyGoalsPanel';
 import ProgressionChallengePanel from '@/components/challenges/ProgressionChallengePanel';
@@ -52,24 +53,34 @@ export default function ChallengesModule(props: ChallengesModuleProps) {
       </div>
 
       <div className="p-5">
-        {activeTab === 'daily' && (
-          <DailyGoalsPanel goals={props.dailyGoals} completions={props.dailyGoalCompletions} userId={props.userId} />
-        )}
-        {activeTab === 'challenges' && (
-          <ProgressionChallengePanel
-            progression={props.progression}
-            history={props.challengeHistory}
-            userId={props.userId}
-            challengeTypes={props.progressionChallengeTypes}
-          />
-        )}
-        {activeTab === 'leagues' && (
-          <LeagueMatchPanel
-            assignments={props.leagueAssignments}
-            challenges={props.leagueChallenges}
-            matches={props.leagueMatches}
-          />
-        )}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.15, ease: 'easeOut' }}
+          >
+            {activeTab === 'daily' && (
+              <DailyGoalsPanel goals={props.dailyGoals} completions={props.dailyGoalCompletions} userId={props.userId} />
+            )}
+            {activeTab === 'challenges' && (
+              <ProgressionChallengePanel
+                progression={props.progression}
+                history={props.challengeHistory}
+                userId={props.userId}
+                challengeTypes={props.progressionChallengeTypes}
+              />
+            )}
+            {activeTab === 'leagues' && (
+              <LeagueMatchPanel
+                assignments={props.leagueAssignments}
+                challenges={props.leagueChallenges}
+                matches={props.leagueMatches}
+              />
+            )}
+          </motion.div>
+        </AnimatePresence>
       </div>
     </div>
   );

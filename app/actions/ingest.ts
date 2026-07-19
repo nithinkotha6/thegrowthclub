@@ -184,10 +184,9 @@ User text: "${rawText}"`,
   }
  
   const { revalidatePath } = await import('next/cache');
-  // PERF-06: log ingestion only affects the dashboard chart/feed and
-  // leaderboard, not the whole layout.
+  // PERF-06: log ingestion only affects the dashboard chart/feed/rankings,
+  // not the whole layout.
   revalidatePath('/dashboard');
-  revalidatePath('/dashboard/leaderboard');
  
   return {
     success:     true,

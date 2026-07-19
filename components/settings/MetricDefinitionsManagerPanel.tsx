@@ -6,17 +6,23 @@ import {
   adminDeleteMetricDefinition,
   adminToggleMetricHidden,
   adminToggleMetricRequiresVerification,
+  adminUpdateMetricConfig,
+  adminToggleMetricConfigHidden,
 } from '@/app/actions/metrics';
 import { Edit3, Trash2, Check, X, CheckCircle, AlertCircle } from 'lucide-react';
 
 interface MetricDefinitionsManagerPanelProps {
   metricDefinitions: any[];
   setMetricDefinitions: React.Dispatch<React.SetStateAction<any[]>>;
+  metricsConfig: any[];
+  setMetricsConfig: React.Dispatch<React.SetStateAction<any[]>>;
 }
 
 export default function MetricDefinitionsManagerPanel({
   metricDefinitions,
   setMetricDefinitions,
+  metricsConfig,
+  setMetricsConfig,
 }: MetricDefinitionsManagerPanelProps) {
   const [editingMetricId, setEditingMetricId] = useState<string | null>(null);
   const [editMetricName, setEditMetricName] = useState('');
@@ -24,6 +30,51 @@ export default function MetricDefinitionsManagerPanel({
   const [editMetricSort, setEditMetricSort] = useState<'asc' | 'desc'>('desc');
   const [metricFeedback, setMetricFeedback] = useState<{ success: boolean; message: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Built-in metrics_config editing state (separate from custom metric_definitions above)
+  const [editingConfigSlug, setEditingConfigSlug] = useState<string | null>(null);
+  const [editConfigName, setEditConfigName] = useState('');
+  const [editConfigUnit, setEditConfigUnit] = useState('');
+
+  const handleEditConfigClick = (m: any) => {
+    setEditingConfigSlug(m.slug);
+    setEditConfigName(m.display_name);
+    setEditConfigUnit(m.unit);
+    setMetricFeedback(null);
+  };
+
+  const handleUpdateConfig = async (slug: string) => {
+    if (!editConfigName.trim() || !editConfigUnit.trim()) return;
+    setIsSubmitting(true);
+    setMetricFeedback(null);
+    const res = await adminUpdateMetricConfig(slug, editConfigName, editConfigUnit);
+    setIsSubmitting(false);
+    if (res.success) {
+      setMetricsConfig((prev) =>
+        prev.map((m) =>
+          m.slug === slug ? { ...m, display_name: editConfigName.trim(), unit: editConfigUnit.trim() } : m
+        )
+      );
+      setEditingConfigSlug(null);
+      setMetricFeedback({ success: true, message: 'Metric updated successfully!' });
+    } else {
+      setMetricFeedback({ success: false, message: res.error || 'Failed to update metric.' });
+    }
+  };
+
+  const handleToggleConfigHidden = async (slug: string, currentHidden: boolean) => {
+    setIsSubmitting(true);
+    setMetricFeedback(null);
+    const target = !currentHidden;
+    const res = await adminToggleMetricConfigHidden(slug, target);
+    setIsSubmitting(false);
+    if (res.success) {
+      setMetricsConfig((prev) => prev.map((m) => (m.slug === slug ? { ...m, is_hidden: target } : m)));
+      setMetricFeedback({ success: true, message: `Metric visibility updated to ${target ? 'Hidden' : 'Visible'}.` });
+    } else {
+      setMetricFeedback({ success: false, message: res.error || 'Failed to toggle metric visibility.' });
+    }
+  };
 
   const handleEditMetricClick = (m: any) => {
     setEditingMetricId(m.id);
@@ -247,6 +298,107 @@ export default function MetricDefinitionsManagerPanel({
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-center text-slate-400 font-bold">
                   No metric definitions found.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* ── Built-in Dashboard Metrics (metrics_config) ─────────────────── */}
+      <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-tight flex items-center gap-1.5 mt-2">
+        ⭐ Built-in Metrics
+      </h3>
+      <p className="text-xs text-slate-500 -mt-2">
+        Rename or hide the default dashboard pills (Top Golf, Weight, etc.). Deleting isn't offered — these slugs are wired into chart/feed formatting; hide instead.
+      </p>
+      <div className="max-h-[300px] overflow-y-auto border border-slate-200 rounded-xl bg-white text-slate-900">
+        <table className="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+              <th className="px-4 py-3">Metric Name</th>
+              <th className="px-4 py-3">Unit</th>
+              <th className="px-4 py-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {metricsConfig.length > 0 ? (
+              metricsConfig.map((m) => (
+                <tr key={m.slug} className="border-b border-slate-200 last:border-0 hover:bg-slate-50 text-slate-900 bg-white">
+                  <td className="px-4 py-3.5 font-semibold text-slate-900">
+                    {editingConfigSlug === m.slug ? (
+                      <input
+                        type="text"
+                        value={editConfigName}
+                        onChange={(e) => setEditConfigName(e.target.value)}
+                        className="w-full p-1 border border-slate-200 rounded text-xs bg-slate-50 text-slate-900 focus:outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-400"
+                      />
+                    ) : (
+                      m.display_name
+                    )}
+                  </td>
+                  <td className="px-4 py-3.5 text-slate-700 font-medium">
+                    {editingConfigSlug === m.slug ? (
+                      <input
+                        type="text"
+                        value={editConfigUnit}
+                        onChange={(e) => setEditConfigUnit(e.target.value)}
+                        className="w-24 p-1 border border-slate-200 rounded text-xs bg-slate-50 text-slate-900 focus:outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-400"
+                      />
+                    ) : (
+                      m.unit
+                    )}
+                  </td>
+                  <td className="px-4 py-3.5 text-right">
+                    <div className="flex items-center justify-end gap-1.5">
+                      {editingConfigSlug === m.slug ? (
+                        <>
+                          <button
+                            onClick={() => handleUpdateConfig(m.slug)}
+                            className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white border border-emerald-200 transition cursor-pointer animate-in fade-in duration-150"
+                            title="Save changes"
+                            disabled={isSubmitting}
+                          >
+                            <Check size={14} />
+                          </button>
+                          <button
+                            onClick={() => setEditingConfigSlug(null)}
+                            className="p-1.5 rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 transition cursor-pointer"
+                            title="Cancel"
+                          >
+                            <X size={14} />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => handleEditConfigClick(m)}
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                            title="Edit metric"
+                          >
+                            <Edit3 size={14} />
+                          </button>
+                          <button
+                            onClick={() => handleToggleConfigHidden(m.slug, m.is_hidden)}
+                            className={`px-2 py-1 rounded text-[10px] font-bold border transition cursor-pointer ${
+                              m.is_hidden
+                                ? 'bg-emerald-50 border-emerald-200 text-emerald-600 hover:bg-emerald-600 hover:text-white'
+                                : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                            }`}
+                            title={m.is_hidden ? 'Show on dashboard' : 'Hide from dashboard'}
+                          >
+                            {m.is_hidden ? 'Unhide' : 'Hide'}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={3} className="px-4 py-8 text-center text-slate-400 font-bold">
+                  No built-in metrics found.
                 </td>
               </tr>
             )}

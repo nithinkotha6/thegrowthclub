@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { adminFetchMetricDefinitions } from '@/app/actions/metrics';
-import { Sliders, CheckCircle, AlertCircle, ChevronDown } from 'lucide-react';
+import { adminFetchMetricDefinitions, adminFetchMetricsConfig } from '@/app/actions/metrics';
+import { Sliders, CheckCircle, AlertCircle } from 'lucide-react';
 
 import GroupsPanel from '@/components/settings/GroupsPanel';
 import CreateMetricPanel from '@/components/settings/CreateMetricPanel';
@@ -79,13 +79,14 @@ export default function SettingsClient({
   });
   const [pinInput, setPinInput] = useState('');
   const [pinUnlockError, setPinUnlockError] = useState<string | null>(null);
-  const [adminConsoleOpen, setAdminConsoleOpen] = useState(false);
 
   const [members, setMembers] = useState<GroupMemberRow[]>(initialMembers);
   const [adminStatus, setAdminStatus] = useState<{ success: boolean; message: string } | null>(null);
 
   // Metric definitions management state (shared between Create Metric form and Metric Definitions Manager)
   const [metricDefinitions, setMetricDefinitions] = useState<any[]>([]);
+  // Built-in metrics_config rows (Top Golf, Weight, etc.) — same manager panel
+  const [metricsConfig, setMetricsConfig] = useState<any[]>([]);
 
   // Load Metric Definitions on Unlock
   React.useEffect(() => {
@@ -94,6 +95,8 @@ export default function SettingsClient({
         try {
           const mRes = await adminFetchMetricDefinitions(session.groupId);
           if (mRes.success) setMetricDefinitions(mRes.data);
+          const cRes = await adminFetchMetricsConfig();
+          if (cRes.success) setMetricsConfig(cRes.data);
         } catch (err) {
           console.error('Failed to load metric definitions:', err);
         }
@@ -128,12 +131,8 @@ export default function SettingsClient({
       <hr className="border-slate-200 my-4" />
 
       <section className="bg-white border border-slate-200 rounded-2xl shadow-sm hover:border-slate-300 transition-all duration-200 text-slate-900 overflow-hidden">
-        {/* Accordion Header */}
-        <button
-          type="button"
-          onClick={() => setAdminConsoleOpen(!adminConsoleOpen)}
-          className="w-full flex items-center justify-between p-6 md:p-8 text-left cursor-pointer focus:outline-none"
-        >
+        {/* Command Center header — always visible, no collapse/toggle */}
+        <div className="w-full flex items-center justify-between p-6 md:p-8 text-left">
           <div>
             <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2 uppercase">
               👑 Command Center
@@ -142,16 +141,9 @@ export default function SettingsClient({
               Emergency room overrides, password resets, and AI webhook control.
             </p>
           </div>
-          <ChevronDown
-            size={20}
-            className={`text-slate-500 transition-transform duration-200 ${
-              adminConsoleOpen ? 'rotate-180' : ''
-            }`}
-          />
-        </button>
+        </div>
 
-        {adminConsoleOpen && (
-          <div className="p-6 md:p-8 pt-0 border-t border-slate-100 flex flex-col gap-5">
+        <div className="p-6 md:p-8 pt-0 border-t border-slate-100 flex flex-col gap-5">
             <div className="flex flex-col md:flex-row md:items-center justify-end gap-4 mt-2">
               {unlocked && (
                 <button
@@ -271,11 +263,12 @@ export default function SettingsClient({
             <MetricDefinitionsManagerPanel
               metricDefinitions={metricDefinitions}
               setMetricDefinitions={setMetricDefinitions}
+              metricsConfig={metricsConfig}
+              setMetricsConfig={setMetricsConfig}
             />
           </div>
         )}
-          </div>
-        )}
+        </div>
       </section>
     </div>
   );

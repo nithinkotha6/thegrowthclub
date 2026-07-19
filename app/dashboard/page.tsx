@@ -3,11 +3,13 @@ import { cookies }   from 'next/headers';
 import { redirect }  from 'next/navigation';
 import { createAdminClient }  from '@/lib/supabase/server';
 import { decodeSession, SESSION_COOKIE } from '@/lib/session';
-import { METRIC_PILLS, RANGE_OPTIONS, PROGRESSION_CHALLENGE_TYPES, type RangeValue } from '@/lib/metrics';
-import { getChartData, getFeedItems } from '@/lib/queries';
+import { METRIC_PILLS, RANGE_OPTIONS, type RangeValue } from '@/lib/metrics';
+import { getChartData, getFeedItems, getLeaderboardEntries } from '@/lib/queries';
 import type { FeedRow } from '@/lib/queries';
 import AddActivityModal        from '@/components/AddActivityModal';
 import MetricChart             from '@/components/MetricChartDynamic';
+import Podium                  from '@/components/dashboard/Podium';
+import RankingsList             from '@/components/dashboard/RankingsList';
 import BreakingNewsFeed, { type FeedItem } from '@/components/BreakingNewsFeed';
 import MetricPillSelector      from '@/components/MetricPillSelector';
 import DateRangeSelector       from '@/components/DateRangeSelector';
@@ -15,10 +17,7 @@ import VotingPanel             from '@/components/VotingPanel';
 import LiveAchievementTicker   from '@/components/LiveAchievementTicker';
 import PeerReviewModal         from '@/components/PeerReviewModal';
 import SwitchUserButton         from '@/components/SwitchUserButton';
-import ChallengesModule        from '@/components/ChallengesModule';
-import { getDailyGoals, getDailyGoalCompletions } from '@/app/actions/dailyGoals';
-import { getMyChallengeProgression, getChallengeHistory } from '@/app/actions/progression';
-import { getLeagueAssignments, getLeagueChallenges, getLeagueMatches } from '@/app/actions/leagues';
+
 
 /**
  * Dashboard page — async Server Component.
@@ -147,7 +146,30 @@ export default async function DashboardPage({
     sort_direction: def.sort_direction
   }));
 
-  const allPills = [...METRIC_PILLS, ...customPills];
+  // Built-in metrics (Top Golf, Weight, etc.) can be renamed/hidden via
+  // metrics_config from Settings — merge those overrides onto METRIC_PILLS.
+  // Defensive: migration 0040 (metrics_config.is_hidden) may not be applied
+  // yet, same fallback pattern as the metric_definitions query above.
+  let metricsConfigRows: { slug: string; display_name: string; unit: string; is_hidden: boolean }[] = [];
+  const { data: configRows, error: configErr } = await supabase
+    .from('metrics_config')
+    .select('slug, display_name, unit, is_hidden');
+
+  if (configErr) {
+    console.warn('[dashboard] Failed to query metrics_config.is_hidden (migration 0040 might be pending), skipping built-in overrides.');
+  } else {
+    metricsConfigRows = configRows || [];
+  }
+
+  const configBySlug = new Map(metricsConfigRows.map((c) => [c.slug, c]));
+  const builtInPills = METRIC_PILLS
+    .filter((p) => !configBySlug.get(p.id)?.is_hidden)
+    .map((p) => {
+      const override = configBySlug.get(p.id);
+      return override ? { ...p, label: override.display_name, unit: override.unit } : p;
+    });
+
+  const allPills = [...builtInPills, ...customPills];
   const validSlugs = allPills.map((p) => p.id) as string[];
   const rawMetric = params.metric ?? 'top_golf';
   const activeMetric = validSlugs.includes(rawMetric) ? rawMetric : 'top_golf';
@@ -178,13 +200,7 @@ export default async function DashboardPage({
     { data: recordData },
     chartData,
     feedRows,
-    dailyGoalsRes,
-    dailyGoalCompletionsRes,
-    progressionRes,
-    challengeHistoryRes,
-    leagueAssignmentsRes,
-    leagueChallengesRes,
-    leagueMatchesRes,
+    leaderboard,
   ] = await Promise.all([
     supabase
       .from('metric_logs')
@@ -196,13 +212,7 @@ export default async function DashboardPage({
       .limit(1),
     resolveChartData(),
     getFeedItems(supabase, groupId, 12),
-    getDailyGoals(),
-    getDailyGoalCompletions(),
-    getMyChallengeProgression(),
-    getChallengeHistory(),
-    getLeagueAssignments(),
-    getLeagueChallenges(),
-    getLeagueMatches(),
+    getLeaderboardEntries(supabase, groupId, activeMetric, activeRange, activePill),
   ]);
 
   const recordHolder = recordData && recordData.length > 0 ? recordData[0] : null;
@@ -281,7 +291,7 @@ export default async function DashboardPage({
         </div>
 
         {/* ── Row 4: Horizontal Scrolling Metric Pill Selector ─────── */}
-        <MetricPillSelector activeMetric={activeMetric} customPills={customPills} />
+        <MetricPillSelector activeMetric={activeMetric} customPills={customPills} builtInPills={builtInPills} />
 
         {/* ── Group-ID Debug Banner (only when data is empty) ─────── */}
         {series.length === 0 && feedRows.length === 0 && (
@@ -293,34 +303,32 @@ export default async function DashboardPage({
           </div>
         )}
 
-        {/* ── Row 5: Primary Chart Card + Breaking News Feed ─────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-5 md:gap-6">
-          <MetricChart
-            dateLabels={dateLabels}
-            series={series}
-            title={chartTitle}
-            unit={activePill.unit}
-            metricLabel={activePill.label}
-            rangeLabel={activeRangeLabel}
-            bucketSize={bucketSize}
-            recordValue={recordValue}
-            recordHolderName={recordHolderName}
-          />
-          <BreakingNewsFeed items={feedItems} currentUserId={userId} />
-        </div>
-
-        {/* ── Challenges Module: Daily Goals | Challenges | Leagues ── */}
-        <ChallengesModule
-          userId={userId}
-          dailyGoals={dailyGoalsRes.success ? dailyGoalsRes.goals : []}
-          dailyGoalCompletions={dailyGoalCompletionsRes.success ? dailyGoalCompletionsRes.completions : []}
-          progression={progressionRes.success ? progressionRes.progression : []}
-          challengeHistory={challengeHistoryRes.success ? challengeHistoryRes.history : []}
-          progressionChallengeTypes={PROGRESSION_CHALLENGE_TYPES}
-          leagueAssignments={leagueAssignmentsRes.success ? leagueAssignmentsRes.assignments : []}
-          leagueChallenges={leagueChallengesRes.success ? leagueChallengesRes.challenges : []}
-          leagueMatches={leagueMatchesRes.success ? leagueMatchesRes.matches : []}
+        {/* ── Row 5: Primary Chart Card ────────────────────────────── */}
+        <MetricChart
+          dateLabels={dateLabels}
+          series={series}
+          title={chartTitle}
+          unit={activePill.unit}
+          metricLabel={activePill.label}
+          rangeLabel={activeRangeLabel}
+          bucketSize={bucketSize}
+          recordValue={recordValue}
+          recordHolderName={recordHolderName}
         />
+
+        {/* ── Row 6: Podium (top 3) — inherits activeMetric/activeRange ── */}
+        <Podium leaderboard={leaderboard} unit={activePill.unit} />
+
+        {/* ── Row 7: Rankings List (4th place & below) ─────────────── */}
+        <RankingsList
+          leaderboard={leaderboard}
+          unit={activePill.unit}
+          currentUserId={userId}
+          metricLabel={activePill.label}
+        />
+
+        {/* ── Row 8: Recent Activities (Breaking News Feed) ────────── */}
+        <BreakingNewsFeed items={feedItems} currentUserId={userId} />
 
         {/* Center-aligned Switch User button at the bottom */}
         <div className="flex justify-center mt-6">

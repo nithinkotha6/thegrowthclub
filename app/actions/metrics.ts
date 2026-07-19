@@ -87,7 +87,6 @@ export async function adminUpdateMetricDefinition(id: string, name: string, unit
     if (error) throw error;
     revalidatePath('/settings/metrics');
     revalidatePath('/dashboard');
-    revalidatePath('/dashboard/leaderboard');
     return { success: true };
   } catch (err) {
     console.error('[adminUpdateMetricDefinition] Error:', err);
@@ -106,7 +105,6 @@ export async function adminDeleteMetricDefinition(id: string) {
     if (error) throw error;
     revalidatePath('/settings/metrics');
     revalidatePath('/dashboard');
-    revalidatePath('/dashboard/leaderboard');
     return { success: true };
   } catch (err) {
     console.error('[adminDeleteMetricDefinition] Error:', err);
@@ -130,7 +128,6 @@ export async function adminToggleMetricHidden(id: string, isHidden: boolean) {
     }
     revalidatePath('/settings/metrics');
     revalidatePath('/dashboard');
-    revalidatePath('/dashboard/leaderboard');
     return { success: true };
   } catch (err) {
     console.error('[adminToggleMetricHidden] Error:', err);
@@ -154,10 +151,79 @@ export async function adminToggleMetricRequiresVerification(id: string, requires
     }
     revalidatePath('/settings/metrics');
     revalidatePath('/dashboard');
-    revalidatePath('/dashboard/leaderboard');
     return { success: true };
   } catch (err) {
     console.error('[adminToggleMetricRequiresVerification] Error:', err);
     return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
+
+/* ── Built-in metrics_config management ──────────────────────────────────────
+ * The 9 built-in dashboard metrics (Top Golf, Weight, etc. — hardcoded in
+ * lib/metrics.ts) can now also be renamed/hidden via metrics_config rows,
+ * mirroring the custom metric_definitions management above. Deleting a
+ * built-in isn't offered — the slug is hardcoded across chart/feed/ticker
+ * formatting logic, so removing the row would just orphan those, not
+ * actually remove the pill. Hide is the safe equivalent.
+ */
+
+export async function adminFetchMetricsConfig() {
+  try {
+    const supabase = createAdminClient();
+    const { data, error } = await supabase
+      .from('metrics_config')
+      .select('id, slug, display_name, unit, is_hidden')
+      .order('display_name', { ascending: true });
+
+    if (error) throw error;
+    return { success: true, data: data || [] };
+  } catch (err) {
+    console.error('[adminFetchMetricsConfig] Error:', err);
+    return { success: false, error: err instanceof Error ? err.message : String(err), data: [] };
+  }
+}
+
+export async function adminUpdateMetricConfig(slug: string, displayName: string, unit: string) {
+  try {
+    if (!displayName.trim() || !unit.trim()) {
+      return { success: false, error: 'Name and unit are required.' };
+    }
+    const supabase = createAdminClient();
+    const { error } = await supabase
+      .from('metrics_config')
+      .update({ display_name: displayName.trim(), unit: unit.trim() })
+      .eq('slug', slug);
+
+    if (error) throw error;
+    revalidatePath('/settings/metrics');
+    revalidatePath('/dashboard');
+    return { success: true };
+  } catch (err) {
+    console.error('[adminUpdateMetricConfig] Error:', err);
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export async function adminToggleMetricConfigHidden(slug: string, isHidden: boolean) {
+  try {
+    const supabase = createAdminClient();
+    const { error } = await supabase
+      .from('metrics_config')
+      .update({ is_hidden: isHidden })
+      .eq('slug', slug);
+
+    if (error) {
+      if (error.message.toLowerCase().includes('is_hidden')) {
+        return { success: false, error: 'Database column is_hidden is missing. Please run migration 0040_metrics_config_is_hidden.sql first.' };
+      }
+      throw error;
+    }
+    revalidatePath('/settings/metrics');
+    revalidatePath('/dashboard');
+    return { success: true };
+  } catch (err) {
+    console.error('[adminToggleMetricConfigHidden] Error:', err);
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+

@@ -27,16 +27,17 @@ export default async function DashboardLayout({
   // Safety net — should never happen if middleware is correctly configured
   if (!session) redirect('/');
 
-  // Fetch live XP + level for the sidebar profile block
+  // Fetch live XP + level + avatar for the sidebar profile block
   const supabase = await createClient();
   const { data: profile } = await supabase
     .from('profiles')
-    .select('total_xp, current_level')
+    .select('total_xp, current_level, avatar_url')
     .eq('id', session.userId)
     .single();
 
   const totalXp      = profile ? (profile.total_xp as number) : 0;
   const currentLevel = profile ? (profile.current_level as number) : 1;
+  const avatarUrl     = profile ? (profile.avatar_url as string | null) : null;
 
   return (
     <div className="flex min-h-screen">
@@ -47,6 +48,7 @@ export default async function DashboardLayout({
         userId={session.userId}
         totalXp={totalXp}
         currentLevel={currentLevel}
+        avatarUrl={avatarUrl}
       />
 
       {/* Light main content — pb-28 on mobile to clear fixed bottom nav + safe areas */}

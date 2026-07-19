@@ -40,7 +40,8 @@ export async function fetchGangRoster() {
       .single();
 
     // 2. Fetch all profiles linked to group members (active only)
-    const { data: membersRaw } = await supabase
+    let membersRaw: unknown[] | null = null;
+    const { data: membersWithStreak, error: rosterErr } = await supabase
       .from('group_members')
       .select(`
         user_id,
@@ -49,8 +50,32 @@ export async function fetchGangRoster() {
       .eq('group_id', groupId)
       .neq('profiles.is_active', false);
 
+    if (rosterErr) {
+      // Defensive fallback: migration 0039 (profiles.streak_count) may not
+      // be applied to this DB yet — retry without it rather than silently
+      // returning an empty roster (matches the is_hidden fallback pattern
+      // already used in app/dashboard/page.tsx).
+      console.warn('[fetchGangRoster] Query with streak_count failed (migration 0039 might be pending), falling back without it:', rosterErr.message);
+      const { data: fallbackMembers, error: fallbackErr } = await supabase
+        .from('group_members')
+        .select(`
+          user_id,
+          profiles!inner ( id, full_name, nickname, avatar_url, total_xp, current_level, is_active )
+        `)
+        .eq('group_id', groupId)
+        .neq('profiles.is_active', false);
+
+      if (fallbackErr) throw fallbackErr;
+      membersRaw = (fallbackMembers ?? []).map((m) => ({
+        ...m,
+        profiles: m.profiles ? { ...m.profiles, streak_count: 0 } : m.profiles,
+      }));
+    } else {
+      membersRaw = membersWithStreak;
+    }
+
     const roster = (membersRaw ?? [])
-      .map((m) => m.profiles as unknown as GangProfile)
+      .map((m) => (m as { profiles: GangProfile | null }).profiles as unknown as GangProfile)
       .filter((p): p is GangProfile => !!p)
       .sort((a, b) => b.total_xp - a.total_xp);
 

@@ -22,6 +22,9 @@ const PILL_EMOJIS: Record<string, string> = {
 interface MetricPillSelectorProps {
   activeMetric: string;
   customPills?: { id: string; label: string; unit: string }[];
+  /** Server-computed built-in pills with metrics_config hide/rename overrides
+   * already applied. Falls back to the raw hardcoded METRIC_PILLS if omitted. */
+  builtInPills?: { id: string; label: string }[];
 }
 
 /**
@@ -29,7 +32,7 @@ interface MetricPillSelectorProps {
  * Memoized to eliminate redundant renders.
  * Uses Optimistic UI to toggle active states instantly (<100ms) while Next.js fetches data.
  */
-function MetricPillSelector({ activeMetric, customPills }: MetricPillSelectorProps) {
+function MetricPillSelector({ activeMetric, customPills, builtInPills }: MetricPillSelectorProps) {
   const router       = useRouter();
   const pathname     = usePathname();
   const searchParams = useSearchParams();
@@ -54,7 +57,7 @@ function MetricPillSelector({ activeMetric, customPills }: MetricPillSelectorPro
   }, [searchParams, pathname, router]);
 
   const allPills = [
-    ...METRIC_PILLS.filter(p => !p.id.startsWith('wearable_')),
+    ...(builtInPills ?? METRIC_PILLS).filter(p => !p.id.startsWith('wearable_')),
     ...(customPills || [])
   ];
 

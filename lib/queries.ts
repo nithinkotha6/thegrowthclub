@@ -321,3 +321,201 @@ export async function getPendingLogsForGroup(
 
   return (data ?? []) as unknown as MetricLogRow[];
 }
+
+/* ── getLeaderboardEntries ────────────────────────────────────────────────── */
+
+export type LeaderboardProfile = {
+  id: string;
+  full_name: string | null;
+  nickname: string | null;
+  avatar_url: string | null;
+  total_xp: number;
+  current_level: number;
+  streak_count: number;
+};
+
+export type LeaderboardEntry = {
+  profile: LeaderboardProfile;
+  score: number;
+  hasLogged: boolean;
+};
+
+/**
+ * Ranking aggregation shared by the dashboard's Podium/Rankings and (formerly)
+ * the standalone leaderboard route. Same algorithm moved verbatim from
+ * `app/dashboard/leaderboard/page.tsx` — no scoring-logic changes — just
+ * parameterized by `activeRange` so it can share the dashboard's single
+ * source-of-truth metric/range state instead of running its own filters.
+ */
+export async function getLeaderboardEntries(
+  supabase: SupabaseClient,
+  groupId: string,
+  activeMetric: string,
+  activeRange: string,
+  metricPill: { isCumulative: boolean; sort_direction?: string },
+): Promise<LeaderboardEntry[]> {
+  const MEMBERS_SELECT_WITH_STREAK = `
+      user_id,
+      profiles!inner ( id, full_name, nickname, avatar_url, total_xp, current_level, streak_count, is_active )
+    `;
+  const MEMBERS_SELECT_NO_STREAK = `
+      user_id,
+      profiles!inner ( id, full_name, nickname, avatar_url, total_xp, current_level, is_active )
+    `;
+
+  let hasStreakColumn = true;
+  let membersRaw: unknown[] | null;
+  {
+    const { data, error } = await supabase
+      .from('group_members')
+      .select(MEMBERS_SELECT_WITH_STREAK)
+      .eq('group_id', groupId)
+      .neq('profiles.is_active', false);
+
+    if (error) {
+      // Defensive fallback: migration 0039 (profiles.streak_count) may not be
+      // applied to this DB yet — retry without it instead of silently
+      // returning an empty ranking (matches the is_hidden fallback pattern
+      // already used in app/dashboard/page.tsx).
+      console.warn('[getLeaderboardEntries] Query with streak_count failed (migration 0039 might be pending), falling back without it:', error.message);
+      hasStreakColumn = false;
+      const { data: fallbackData, error: fallbackErr } = await supabase
+        .from('group_members')
+        .select(MEMBERS_SELECT_NO_STREAK)
+        .eq('group_id', groupId)
+        .neq('profiles.is_active', false);
+      if (fallbackErr) console.error('[getLeaderboardEntries] Member fallback query error:', fallbackErr.message);
+      membersRaw = fallbackData ?? [];
+    } else {
+      membersRaw = data ?? [];
+    }
+  }
+
+  const sinceIso = new Date(Date.now() - rangeToDays(activeRange) * 86_400_000).toISOString();
+
+  const runLogsQuery = (withStreak: boolean) => {
+    const q = supabase
+      .from('metric_logs')
+      .select(`
+      user_id,
+      value,
+      metric_slug,
+      logged_at,
+      profiles!inner ( id, full_name, nickname, avatar_url, total_xp, current_level${withStreak ? ', streak_count' : ''}, is_active )
+    `)
+      .eq('group_id', groupId)
+      .eq('status', 'verified')
+      .gte('logged_at', sinceIso)
+      .neq('profiles.is_active', false);
+
+    if (activeMetric !== 'total_activities') {
+      q.eq('metric_slug', activeMetric);
+    }
+    return q;
+  };
+
+  let logsRaw: unknown[] | null;
+  {
+    const { data, error } = await runLogsQuery(hasStreakColumn);
+    if (error && hasStreakColumn) {
+      console.warn('[getLeaderboardEntries] Logs query with streak_count failed, falling back without it:', error.message);
+      const { data: fallbackData, error: fallbackErr } = await runLogsQuery(false);
+      if (fallbackErr) console.error('[getLeaderboardEntries] Logs fallback query error:', fallbackErr.message);
+      logsRaw = fallbackData ?? [];
+    } else {
+      logsRaw = data ?? [];
+    }
+  }
+
+  type MemberProfile = { profiles: LeaderboardProfile | null };
+  type LogWithProfile = {
+    user_id: string;
+    value: number;
+    metric_slug: string;
+    logged_at: string;
+    profiles: LeaderboardProfile | null;
+  };
+
+  const members = ((membersRaw as unknown as MemberProfile[]) ?? []).map((m) => ({
+    profiles: m.profiles ? { ...m.profiles, streak_count: m.profiles.streak_count ?? 0 } : m.profiles,
+  }));
+  const logs = ((logsRaw as unknown as LogWithProfile[]) ?? []).map((l) => ({
+    ...l,
+    profiles: l.profiles ? { ...l.profiles, streak_count: l.profiles.streak_count ?? 0 } : l.profiles,
+  }));
+
+  const userMap = new Map<string, LeaderboardEntry>();
+
+  for (const m of members) {
+    if (m.profiles) {
+      userMap.set(m.profiles.id, { profile: m.profiles, score: 0, hasLogged: false });
+    }
+  }
+
+  const isLowerBetter = activeMetric === 'marathon' || metricPill.sort_direction === 'asc';
+
+  if (activeMetric === 'weight') {
+    const userLogsMap = new Map<string, LogWithProfile[]>();
+    for (const log of logs) {
+      if (!userLogsMap.has(log.user_id)) userLogsMap.set(log.user_id, []);
+      userLogsMap.get(log.user_id)!.push(log);
+    }
+
+    for (const [userId, userLogs] of userLogsMap.entries()) {
+      if (userLogs.length === 0) continue;
+      userLogs.sort((a, b) => new Date(a.logged_at).getTime() - new Date(b.logged_at).getTime());
+
+      const firstLog = userLogs[0];
+      const lastLog = userLogs[userLogs.length - 1];
+      const delta = Number(lastLog.value) - Number(firstLog.value);
+
+      const existing = userMap.get(userId);
+      if (existing) {
+        existing.score = delta;
+        existing.hasLogged = true;
+      } else if (firstLog.profiles) {
+        userMap.set(userId, { profile: firstLog.profiles, score: delta, hasLogged: true });
+      }
+    }
+  } else {
+    for (const log of logs) {
+      const profile = log.profiles;
+      if (!profile) continue;
+
+      const existing = userMap.get(log.user_id);
+      const logValue = Number(log.value);
+
+      if (!existing) {
+        userMap.set(log.user_id, {
+          profile,
+          score: activeMetric === 'total_activities' ? 1 : logValue,
+          hasLogged: true,
+        });
+        continue;
+      }
+
+      if (activeMetric === 'total_activities') {
+        existing.score = existing.hasLogged ? existing.score + 1 : 1;
+        existing.hasLogged = true;
+      } else if (metricPill.isCumulative) {
+        existing.score = existing.hasLogged ? existing.score + logValue : logValue;
+        existing.hasLogged = true;
+      } else if (!existing.hasLogged) {
+        existing.score = logValue;
+        existing.hasLogged = true;
+      } else {
+        existing.score = isLowerBetter ? Math.min(existing.score, logValue) : Math.max(existing.score, logValue);
+      }
+    }
+  }
+
+  return Array.from(userMap.values())
+    .map((entry) => ({ ...entry, score: Math.round(entry.score * 10) / 10 }))
+    .sort((a, b) => {
+      if (a.hasLogged && !b.hasLogged) return -1;
+      if (!a.hasLogged && b.hasLogged) return 1;
+      if (!a.hasLogged && !b.hasLogged) return 0;
+      return isLowerBetter ? a.score - b.score : b.score - a.score;
+    });
+}
+

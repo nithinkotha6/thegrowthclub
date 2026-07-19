@@ -3,7 +3,7 @@
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
-  BarChart2,
+  Trophy,
   Users,
   LogOut,
   Image,
@@ -11,10 +11,11 @@ import {
   Settings,
 } from 'lucide-react';
 import { logoutAction } from '@/app/actions/auth';
+import UserAvatar from '@/components/UserAvatar';
 
 const NAV_ITEMS = [
   { icon: LayoutDashboard, label: 'Dashboard',   href: '/dashboard' },
-  { icon: BarChart2,       label: 'Leaderboard', href: '/dashboard/leaderboard' },
+  { icon: Trophy,          label: 'Challenges',  href: '/dashboard/challenges' },
   { icon: Users,           label: 'Gang',        href: '/dashboard/gang' },
   { icon: Watch,           label: 'Wearables',   href: '/dashboard/wearables' },
   { icon: Image,           label: 'Memories',    href: '/dashboard/memories' },
@@ -27,13 +28,14 @@ interface SidebarProps {
   userId:       string;
   totalXp:      number;
   currentLevel: number;
+  avatarUrl?:   string | null;
 }
 
 /**
  * Dark-theme left sidebar — client component using dynamic pathname.
  * bg: #0A0A0A | accent: #CEFF00 (Neon Lime)
  */
-export default function Sidebar({ userName, groupName, totalXp, currentLevel }: SidebarProps) {
+export default function Sidebar({ userName, groupName, totalXp, currentLevel, avatarUrl }: SidebarProps) {
   const pathname = usePathname();
 
   // Quadratic XP level progression (matching award_xp_on_verify trigger formula)
@@ -49,7 +51,6 @@ export default function Sidebar({ userName, groupName, totalXp, currentLevel }: 
   } else {
     xpBarPct = 100;
   }
-  const initials = userName?.charAt(0)?.toUpperCase() ?? '?';
 
   return (
     <aside
@@ -92,12 +93,11 @@ export default function Sidebar({ userName, groupName, totalXp, currentLevel }: 
 
         {/* Avatar + name + level */}
         <div className="flex items-center gap-3 mb-3">
-          <div
-            className="w-10 h-10 rounded-full bg-[#CEFF00] flex-shrink-0 flex items-center justify-center"
-            aria-hidden="true"
-          >
-            <span className="text-[#0A0A0A] text-sm font-black">{initials}</span>
-          </div>
+          <UserAvatar
+            user={{ avatar_url: avatarUrl, full_name: userName, nickname: userName }}
+            size="lg"
+            className="flex-shrink-0"
+          />
           <div className="flex flex-col leading-tight min-w-0">
             <span className="text-white text-sm font-semibold truncate">{userName}</span>
             <span className="text-[#6B7280] text-xs">{groupName}</span>
