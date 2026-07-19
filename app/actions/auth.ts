@@ -1,9 +1,10 @@
 'use server';
  
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { createClient, createAdminClient } from '@/lib/supabase/server';
-import { safeCompare } from '@/lib/security';
+import { hashPin, verifyPin, isPinTakenInGroup } from '@/lib/security';
+import { checkLoginLockout, recordFailedLoginAttempt, clearLoginAttempts } from '@/lib/rateLimit';
 import { z } from 'zod';
 
 const SignUpSchema = z.object({
@@ -101,64 +102,87 @@ export async function loginWithPersonalPinAction(
   // Sanitize: strip whitespace, keep only digits
   const sanitizedPin = pin.replace(/\s/g, '').trim();
 
+  const hdrs = await headers();
+  const ip = hdrs.get('x-forwarded-for')?.split(',')[0].trim() || hdrs.get('x-real-ip') || 'unknown';
+
   try {
-    console.log("LOGIN ATTEMPT:", { groupId, pin });
     const supabase = createAdminClient();
 
-    // Step 1: Find a profile with this PIN that belongs to the given group.
-    // Filter directly on profiles.pin in the query to avoid downloading other users' PINs
+    // Brute-force defense: reject immediately if this ip is locked out from a
+    // prior burst of wrong PINs, before touching the profiles table at all.
+    const lockout = await checkLoginLockout(supabase, groupId, ip);
+    if (lockout.locked) {
+      return { success: false, error: `Too many attempts. Please wait ${lockout.retryAfterMinutes} minute(s) and try again.` };
+    }
+
+    // Step 1: Find the profiles belonging to this group. PINs are now
+    // bcrypt-hashed (SEC-04), so we can no longer filter by exact value in
+    // the query itself — fetch the group's roster (bounded to one small
+    // friend group) and verify each candidate in application code instead.
     const { data: members, error: membersError } = await supabase
       .from('group_members')
       .select(`
         group_id,
         profiles!inner ( id, full_name, nickname, pin, avatar_url )
       `)
-      .eq('group_id', groupId)
-      .eq('profiles.pin', sanitizedPin);
+      .eq('group_id', groupId);
 
     if (membersError) {
       console.error('[loginWithPersonalPinAction] members query error:', membersError);
       return { success: false, error: 'Login failed. Please try again.' };
     }
 
+    type ProfileRow = {
+      id: string;
+      full_name: string | null;
+      nickname: string | null;
+      pin: string | null;
+      avatar_url: string | null;
+    };
     type MemberRow = {
       group_id: string;
-      profiles: {
-        id: string;
-        full_name: string | null;
-        nickname: string | null;
-        pin: string | null;
-        avatar_url: string | null;
-      } | {
-        id: string;
-        full_name: string | null;
-        nickname: string | null;
-        pin: string | null;
-        avatar_url: string | null;
-      }[] | null;
+      profiles: ProfileRow | ProfileRow[] | null;
     };
 
-    // Filter in application code with timing-safe comparison
+    // Verify the PIN (bcrypt hash, or legacy plaintext pending upgrade)
+    // against every member's profile in this group with a timing-safe check.
     const membersTyped = (members as unknown as MemberRow[]) ?? [];
-    const match = membersTyped.find((m) => {
+    let match: MemberRow | null = null;
+    let profile: ProfileRow | null = null;
+    let needsRehash = false;
+
+    outer: for (const m of membersTyped) {
       const profiles = Array.isArray(m.profiles) ? m.profiles : [m.profiles];
-      return profiles.some((p) => p && p.pin && safeCompare(p.pin, sanitizedPin));
-    });
+      for (const p of profiles) {
+        if (!p || !p.pin) continue;
+        const result = await verifyPin(sanitizedPin, p.pin);
+        if (result.match) {
+          match = m;
+          profile = p;
+          needsRehash = result.needsRehash;
+          break outer;
+        }
+      }
+    }
 
-    if (!match) {
-      // Delay to mitigate brute force PIN cracking attempts
+    if (!match || !profile) {
+      // Delay to mitigate brute force PIN cracking attempts, plus record the
+      // failed attempt so repeated bursts get locked out (OTHER-04).
+      await recordFailedLoginAttempt(supabase, groupId, ip);
       await new Promise((resolve) => setTimeout(resolve, 1000));
       return { success: false, error: 'Invalid PIN. Please try again.' };
     }
 
-    // Extract the matched profile (handle both array and object shapes)
-    const profilesArr = Array.isArray(match.profiles) ? match.profiles : [match.profiles];
-    const profile = profilesArr.find((p) => p && p.pin && safeCompare(p.pin, sanitizedPin));
-
-    if (!profile) {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      return { success: false, error: 'Invalid PIN. Please try again.' };
+    // SEC-04 lazy migration: transparently upgrade a legacy plaintext PIN to
+    // a bcrypt hash now that we've confirmed it matches — no bulk migration
+    // or forced logout required.
+    if (needsRehash) {
+      const newHash = await hashPin(sanitizedPin);
+      await supabase.from('profiles').update({ pin: newHash }).eq('id', profile.id);
     }
+
+    // Successful PIN match — clear any tracked failed attempts for this ip.
+    await clearLoginAttempts(supabase, groupId, ip);
 
     // Step 2: Get the group name
     const { data: group, error: groupError } = await supabase
@@ -292,8 +316,17 @@ export async function signUpAction(
 
     // 3. Generate a new profile with sanitized payload matching the active database schema
     const validGender = (gender === 'Male' || gender === 'Female') ? gender : 'Male';
-    const cleanPin = sanitizedPin;
     const activeGroupId = group.id;
+
+    // QA-01: bcrypt hashing (SEC-04) defeated the DB's UNIQUE(group_id, pin)
+    // constraint (every hash is salted differently even for the same PIN),
+    // so PIN collisions within a group must be checked in application code.
+    if (await isPinTakenInGroup(supabase, activeGroupId, sanitizedPin)) {
+      return { success: false, error: 'That PIN is already in use in this group. Please choose a different 4-digit PIN.' };
+    }
+
+    // SEC-04: PINs are hashed with bcrypt before being persisted, never stored as plaintext.
+    const cleanPin = await hashPin(sanitizedPin);
 
     const { data: newProfile, error: profileError } = await supabase
       .from('profiles')
@@ -314,7 +347,15 @@ export async function signUpAction(
     if (profileError || !newProfile) {
       if (profileError) {
         console.error("SIGNUP CRASH:", profileError.message, profileError.details, profileError.code);
-        return { success: false, error: `Failed to create user profile: ${profileError.message}` };
+        // QA-03: don't leak raw Postgres error text (constraint names, column
+        // names) to the client. A unique-violation (23505) here means a
+        // concurrent signup won the race on email/phone/PIN after our
+        // earlier application-level checks passed — surface a clean,
+        // actionable message instead of the DB internals.
+        if (profileError.code === '23505') {
+          return { success: false, error: 'An account with these details already exists. Please try logging in instead.' };
+        }
+        return { success: false, error: 'Failed to create user profile. Please try again.' };
       }
       return { success: false, error: 'Failed to create user profile.' };
     }

@@ -77,6 +77,12 @@ export default async function SettingsPage() {
   const initialPersistentMood = persistentState?.persistent_mood || 'Normal';
   const initialPersistentTarget = persistentState?.target_user_id || '';
 
+  const { data: groupRow } = await supabase
+    .from('groups')
+    .select('id, name, invite_code, whatsapp_instance_id, whatsapp_token, whatsapp_group_id')
+    .eq('id', session.groupId)
+    .maybeSingle();
+
   return (
     <div className="flex min-h-screen">
       <Sidebar
@@ -97,6 +103,7 @@ export default async function SettingsPage() {
           initialLogs={(recentLogsRaw || []) as unknown as AdminLogItem[]}
           initialPersistentMood={initialPersistentMood}
           initialPersistentTarget={initialPersistentTarget}
+          initialGroupDetails={groupRow || null}
         />
       </main>
       <MobileBottomNav />

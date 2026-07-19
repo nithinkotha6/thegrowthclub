@@ -1,161 +1,142 @@
-# Beyond Yesterday: The Growth Club
+<div align="center">
+
+# 🏆 The Growth Club
+
+### The competitive fitness dashboard your group chat has been missing.
+
+**Log it. Prove it. Flex it.** Turn your friend group, gym crew, or family fitness challenge into a living leaderboard — with an AI hype-man that lives in your WhatsApp group and never lets anyone slack off quietly.
 
 <p align="center">
   <img src="https://img.shields.io/badge/Next.js-16-black?style=for-the-badge&logo=next.dot.js" alt="Next.js" />
   <img src="https://img.shields.io/badge/TypeScript-5-blue?style=for-the-badge&logo=typescript" alt="TypeScript" />
-  <img src="https://img.shields.io/badge/Supabase-Database-green?style=for-the-badge&logo=supabase" alt="Supabase" />
+  <img src="https://img.shields.io/badge/Supabase-Database-3ECF8E?style=for-the-badge&logo=supabase" alt="Supabase" />
   <img src="https://img.shields.io/badge/Vercel_AI_SDK-latest-black?style=for-the-badge&logo=vercel" alt="Vercel AI SDK" />
-  <img src="https://img.shields.io/badge/Google_Gemini-2.5-orange?style=for-the-badge&logo=google-gemini" alt="Google Gemini" />
+  <img src="https://img.shields.io/badge/Google_Gemini-2.5-8E75B2?style=for-the-badge&logo=google-gemini" alt="Google Gemini" />
+  <img src="https://img.shields.io/badge/WHOOP-Connected-000000?style=for-the-badge" alt="Whoop" />
+  <img src="https://img.shields.io/badge/Fitbit-Connected-00B0B9?style=for-the-badge&logo=fitbit" alt="Fitbit" />
 </p>
 
----
-
-## 🎯 The Growth Club Philosophy
-**Beyond Yesterday** is a mobile-first workout tracking and competitive dashboard built for friend groups, sports clubs, teams, and families. It empowers members to log activities, view real-time scores, and compete on a dynamic leaderboard. 
-
-To prevent slacking, it integrates **Fisky**—an automated, AI-driven WhatsApp banter agent speaking in *Classy Urban Hyderabadi Telugu* slang that sends morning sports broadcasts, roasts inactive users, and responds to real-time chat banter directly inside the WhatsApp group.
+</div>
 
 ---
 
-## 🚀 Key Systems & Architecture
+## ✨ Why groups love it
 
-### 1. PIN-Based Authentication Scoping (Kiosk Auth)
-- The app operates on a "Kiosk Auth" model. Users enter a personal 4-digit PIN matched against their profile within a specific group.
-- **Session Scoping:** Successful login decodes and sets an HTTP-only secure cookie `app_session` storing the `userId` and `groupId`. All queries and mutations are dynamically scoped to this session's `groupId` to enforce tenancy boundaries.
+No spreadsheets. No "did you actually run that?" arguments. No bot that forgets your name. The Growth Club is built to make friendly competition effortless — and a little savage.
 
-### 2. Dual-Mode Activity Logging Engine
-- **AI Assist Mode:** Powered by Google Gemini. Extracts structured `{ metric_slug, value, unit }` from freeform natural language text (e.g. *"Ran 5.2 miles in 45m"*).
-- **Manual Log Mode:** Default structured forms. Supports standard numerical metrics and endurance/time-based metrics (which render a distance field and a structured duration picker). Total seconds are compressed and appended to the comment block.
-
-### 3. Targeted Peer-Review Verification Lifecycle
-- **Everyday Auto-Verification:** Basic logging metrics (such as `highest_steps`, `marathon`, `catan_wins`, etc.) bypass the voting queue and auto-verify to `'verified'` immediately upon insertion.
-- **Extreme Feats Gate:** High-profile logs (`car_top_speed` and `most_beers`) are inserted with `status = 'pending'`.
-- **Peer Voting:** Pending logs require **3 approvals** from other group members to transition from `'pending'` to `'verified'` (which triggers XP rewards). Peer approvals are logged in the `log_votes` table.
-
-### 4. Wearables Auto-Sync Engine & Google Fit Integration
-- **Google Fit integration:** End-to-end OAuth flow (`/api/wearables/connect/google` and `/api/wearables/callback/google`) linking Google accounts to profile rows, saving the `refresh_token` securely.
-- **Automated Sync Cron:** Runs via `/api/cron/sync-wearables`. Refreshes access tokens and aggregates steps, sleep hours, and resting heart rates into the database, setting them directly to `'verified'` to update scoreboard states.
+| | |
+|---|---|
+| 🔥 **Instant Leaderboards** | Every logged activity updates group rankings in real time — steps, workouts, sleep, custom challenges, all of it. |
+| 🤖 **Fisky, Your AI Hype-Man** | An AI persona that lives inside your WhatsApp group — cheering wins, roasting the lazy, and keeping the chat alive 24/7. |
+| ⌚ **Auto-Sync Wearables** | Connect a Fitbit or WHOOP once and stop manually logging steps, sleep, and heart rate forever. |
+| 🗳️ **Peer-Verified Bragging Rights** | Big claims ("I hit 120 mph!") get put to a group vote before they count — no more unverified flexing. |
+| 🎙️ **Speak It, Don't Type It** | Tell the app what you did in plain English ("ran 5 miles in 40 minutes") and AI turns it into a clean logged entry. |
+| 👑 **Full Admin Control** | Group owners get a real console — manage members, edit logs, tune the AI's personality, and run the show. |
+| 🔐 **Kiosk-Style Login** | Tap your name, punch in your PIN, you're in. Built for a shared family tablet or a phone passed around at the gym. |
+| 🌙 **Never Miss a Beat** | Daily morning briefings, streak tracking, and end-of-day recaps land straight in the group chat automatically. |
 
 ---
 
-## 👑 Admin Settings & Console
+## 🚀 The Experience
 
-When unlocked with the master password PIN, the Admin Settings tab exposes powerful controls for managing group metrics, users, and AI parameters:
+### Log anything, your way
+Type it like you'd text a friend — *"ran 5.2 miles in 45 minutes"* — and the AI extracts the metric, value, and unit automatically. Prefer structure? Use the manual form with built-in duration pickers for time-based challenges. Either way, it's logged in seconds.
 
-- **AI Tone Dispatcher:** Trigger a custom broadcast to the WhatsApp group. Select a target member, choose a tone vibe (Ragebait, Fun-Roast, Sarcastic, Praise, Flirt, Motivate), select a gender style override (Auto, Male, Female, Gay), inject situational text, and dispatch immediately.
-- **Log Editor:** View all recent activity logs for the group, filter by member or metric type, search captions, edit log values, manually verify pending logs, or permanently delete log entries.
-- **AI Brain Editor:** Adjust the AI's core banter engine through custom inputs:
-  - **Member Lore:** Upsert user-specific traits, good/bad habits, catchphrases, and select their personal gang nemesis (opponent) for personalized LLM roasts.
-  - **Vocabulary Banks:** Define tone-specific and target-gender routed slang words (e.g. Hyderabad colloquialisms) that the AI dynamically pulls from to inject mass-appeal banter.
-- **Manage Users (Soft Delete Engine):** View all active members. Support deactivating/reactivating profiles (Soft Hide) to hide them from list directories and leaderboards, or permanently deleting profiles from the database (Hard Drop).
-- **Metric Definitions Manager:** View, edit, hide, or delete active metrics tracked by the team. Toggling unhide/hide updates dashboard computations in real-time.
+### Compete without the drama
+Everyday activities post straight to the leaderboard. But when someone claims a record-breaking feat, the group gets final say — three peer approvals turn a claim into a verified, XP-earning win. Bragging rights, earned.
+
+### Fisky: the bot that keeps your group chat alive
+Fisky isn't a boring reminder bot. It drops a morning briefing with the day's stats, jumps into chat with real banter, and can be aimed at anyone with a custom roast, hype speech, or challenge — tuned to whatever tone your group vibes with. Every group can fully customize Fisky's personality, vocabulary, and running jokes.
+
+### Wearables that just work
+Connect once, forget about it. **Fitbit** (via Google Health Connect — covers every Fitbit model, from the Inspire up to the Charge 6) and **WHOOP** (every generation — 3.0, 4.0, 5.0, MG) sync automatically in the background, feeding steps, sleep, and resting heart rate straight into the scoreboard. No manual entry, no forgetting to log a rest day.
+
+### A dashboard that actually looks good
+Clean cards, bold typography, a signature neon accent, and charts that make your progress genuinely satisfying to look at — on desktop, tablet, or the phone in your pocket.
+
+### An admin console with real teeth
+Group owners aren't stuck guessing. Reset a forgotten PIN, edit or verify a log, deactivate a member who left the group, retune Fisky's slang and personality per member, or manage the metrics your group actually cares about — all from one settings panel.
 
 ---
 
-## 🗺️ High-Level System Architecture
+## 🗺️ How it all connects
 
 ```mermaid
 graph TD
-    subgraph Users ["WhatsApp Group (The Growth Club)"]
+    subgraph Users ["Your Group's WhatsApp Chat"]
         W[Group Members]
     end
 
-    subgraph Infrastructure ["Vercel Serverless Architecture"]
-        UI[Next.js Web Dashboard]
-        CRON["/api/cron/whatsapp-digest"]
-        WEBHOOK["/api/webhooks/whatsapp"]
+    subgraph Infrastructure ["The Growth Club — Vercel"]
+        UI[Web Dashboard]
+        CRON["Daily Digest & Sync Jobs"]
+        WEBHOOK["Fisky Live Chat Engine"]
     end
 
-    subgraph External ["External Cloud Services"]
-        GH[GitHub Actions Scheduler]
-        GA[Green API WhatsApp Bridge]
-        SB[(Supabase PostgreSQL DB)]
-        GEM[Google Gemini AI Studio]
+    subgraph External ["Connected Services"]
+        GA[WhatsApp Bridge]
+        SB[(Supabase Database)]
+        GEM[Google Gemini AI]
+        WEAR[Fitbit / WHOOP]
     end
 
-    %% Web UI Flows
-    W -->|Log Activities & Check Leaderboard| UI
-    UI <-->|Anonymized / RLS Queries| SB
+    W -->|Log activities, check leaderboard| UI
+    UI <-->|Real-time, group-isolated data| SB
+    WEAR -->|Auto-sync steps, sleep, heart rate| SB
 
-    %% Cron Flow (Morning Digest)
-    GH -->|13:00 UTC Trigger + CRON_SECRET| CRON
-    CRON -->|Service Role Fetch| SB
-    CRON -->|Generate Sports Broadcast| GEM
-    CRON -->|POST Outgoing Broadcast| GA
-    GA -->|Deliver WhatsApp Message| W
+    CRON -->|Morning briefing & stat recaps| GEM
+    CRON -->|Deliver broadcast| GA
+    GA -->|Message the group| W
 
-    %% Webhook Flow (Real-Time Banter)
-    W -->|Text Message| GA
-    GA -->|Incoming Message Webhook| WEBHOOK
-    WEBHOOK -->|Verify Chat ID & Filter Noise| WEBHOOK
-    WEBHOOK -->|Service Role Fetch| SB
-    WEBHOOK -->|Injected Context + Lore + Slang| GEM
-    WEBHOOK -->|POST Witty Banter| GA
+    W -->|Chat message| GA
+    GA -->|Incoming message| WEBHOOK
+    WEBHOOK -->|Personality + group context| GEM
+    WEBHOOK -->|Witty reply| GA
 ```
 
 ---
 
-## 📊 Database Schema (Supabase PostgreSQL 15)
+## 🎨 Design Language
 
-### Core User Directory
-- **`groups`:** `id` (UUID PK), `name` (text), `invite_code` (text unique), `created_at` (timestamptz).
-- **`profiles`:** `id` (UUID PK), `full_name` (text), `nickname` (text), `email` (text), `pin` (varchar 4), `avatar_url` (text), `total_xp` (int), `current_level` (int), `is_active` (boolean default true), `created_at` (timestamptz).
-- **`group_members`:** `user_id` (UUID FK), `group_id` (UUID FK), `role` (text default 'member'), `joined_at` (timestamptz). *Composite PK: (user_id, group_id).*
+The Growth Club follows a clean, confident visual system:
 
-### Activity & Ingestion
-- **`metric_definitions`:** `id` (UUID PK), `name` (text), `unit` (text), `sort_direction` (text), `group_id` (UUID FK), `is_hidden` (boolean default false), `created_at` (timestamptz).
-- **`metric_logs`:** `id` (UUID PK), `user_id` (UUID FK), `group_id` (UUID FK), `metric_slug` (text), `value` (numeric), `unit` (text), `status` (text pending|verified|rejected), `evidence_url` (text), `caption` (text), `logged_at` (timestamptz).
-- **`log_votes`:** `id` (UUID PK), `log_id` (UUID FK), `user_id` (UUID FK), `cast_at` (timestamptz). *Unique constraint: (log_id, user_id).*
-
-### AI Brain & Persona Customization
-- **`member_lore`:** `user_id` (UUID PK references profiles), `stunts` (text array), `good_habits` (text array), `bad_habits` (text array), `ego_trigger` (text), `catchphrase` (text), `nemesis_id` (UUID FK references profiles).
-- **`vocab_banks`:** `id` (UUID PK), `tone` (text), `target_gender` (text), `words` (text array). *Unique constraint: (tone, target_gender).*
-- **`chat_history`:** `id` (UUID PK), `group_id` (UUID FK), `role` (text), `sender_name` (text), `content` (text), `created_at` (timestamptz).
-
-### Wearables Data Integration
-- **`wearable_connections`:** `id` (UUID PK), `user_id` (UUID FK unique), `provider` (text), `access_token` (text), `refresh_token` (text), `token_expires_at` (timestamptz), `last_synced_at` (timestamptz), `created_at` (timestamptz).
-- **`wearable_steps`:** `id` (UUID PK), `connection_id` (UUID FK), `logged_date` (date unique), `value` (int), `updated_at` (timestamptz).
-- **`wearable_sleep`:** `id` (UUID PK), `connection_id` (UUID FK), `logged_date` (date unique), `value` (numeric), `updated_at` (timestamptz).
-- **`wearable_resting_hr`:** `id` (UUID PK), `connection_id` (UUID FK), `logged_date` (date unique), `value` (int), `updated_at` (timestamptz).
+- **Bright, airy canvas** — off-white backgrounds that keep the focus on your data, not the chrome.
+- **Crisp white cards** with subtle borders and soft shadows — no murky dark panels.
+- **Signature neon accent** (`#CEFF00`) for highlights, active states, and the moments worth celebrating.
+- **Bold, confident typography** — dark, high-contrast headers with muted supporting text.
 
 ---
 
-## 🎨 UI/UX Design System Standard
+## 🛠️ Built On
 
-The dashboard adheres to a strict, modern design clone of the **Wearables Tab** color palette and typography rules:
+Modern, reliable, production-grade tooling under the hood:
 
-- **Canvas Background:** Light mode off-white (`#F7F8FA` or `#FBFBFB`).
-- **Dashboard & Console Cards:** Pure white card surfaces (`#FFFFFF`) with thin gray outlines (`border-slate-200`) and slight box shadows. Dark card containers are completely banned.
-- **Primary Highlights & Active Toggles:** Neon Yellow/Green color accent (`#CEFF00`) with dark slate typography.
-- **Core Typography:** Dark slate colors (`text-slate-900`) for high contrast bold headers and gray subtitles (`text-slate-500`) for muted text descriptions.
-
----
-
-## 🛠️ Technology Stack
-- **Frontend & Routing:** Next.js 16 (App Router, Turbopack) with `swr` caching
-- **Database:** Supabase Cloud (PostgreSQL 15, RLS, pg_cron)
-- **AI Processing:** Google Gemini via Vercel AI SDK
-- **Data Visualization:** Apache ECharts (`echarts-for-react`)
-- **Styling:** Tailwind CSS (v4 with PostCSS inline theme mapping)
+- **Next.js 16** (App Router + Turbopack) for a fast, modern web experience
+- **Supabase (PostgreSQL)** for real-time, secure, group-isolated data
+- **Google Gemini** via the Vercel AI SDK for natural-language logging and Fisky's personality
+- **Apache ECharts** for the data visualizations
+- **Tailwind CSS v4** for the design system
+- **WHOOP API** and **Google Health Connect (Fitbit)** for automatic wearable sync
 
 ---
 
-## 💻 Local Development Workflow
+## 💻 Getting Started Locally
 
 ### 1. Install dependencies
 ```bash
 npm install
 ```
 
-### 2. Configure Environment Variables
-Create a `.env.local` file from the provided template:
+### 2. Configure environment variables
+Copy the template and fill in your own credentials (Supabase, Gemini, WhatsApp, Fitbit/WHOOP OAuth, etc.):
 ```bash
-cp .env.local.example .env.local
+cp .env.example .env.local
 ```
-Fill in the database, Vercel AI, and Green API tokens as listed in the `.env.local.example` directory.
 
 ### 3. Start the dev server
 ```bash
 npm run dev
 ```
-The dashboard is now running at `http://localhost:3000`.
+Your dashboard is now live at `http://localhost:3000`. 🎉
+
+

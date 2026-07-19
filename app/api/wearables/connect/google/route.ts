@@ -34,7 +34,9 @@ export async function GET(req: Request) {
     googleAuthUrl.searchParams.set('response_type', 'code');
     googleAuthUrl.searchParams.set('access_type', 'offline');
     googleAuthUrl.searchParams.set('prompt', 'consent');
-    googleAuthUrl.searchParams.set('state', userId);
+    // State carries both userId and groupId (see ISO-06) so the callback can
+    // tag the new wearable_connections row with the caller's own group.
+    googleAuthUrl.searchParams.set('state', `${userId}:${session.groupId}`);
     const scopes = [
       'https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly',
       'https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly',

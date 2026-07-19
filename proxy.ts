@@ -2,8 +2,8 @@
  * proxy.ts — Next.js 16 Request Proxy/Interception Boundary.
  * Replaces the deprecated middleware.ts file convention.
  *
- * Guards all /dashboard routes. If the `app_session` cookie is absent or
- * cannot be decoded (expired, tampered), the user is redirected to /.
+ * Guards all /dashboard and /settings routes. If the `app_session` cookie is
+ * absent or cannot be decoded (expired, tampered), the user is redirected to /.
  *
  * Spec: architecture.md §7
  */
@@ -15,8 +15,8 @@ import { SESSION_COOKIE, getSecret }   from './lib/session';
 export async function proxy(req: NextRequest): Promise<NextResponse> {
   const { pathname } = req.nextUrl;
 
-  // Only guard dashboard routes (including sub-paths)
-  if (!pathname.startsWith('/dashboard')) {
+  // Only guard dashboard and settings routes (including sub-paths)
+  if (!pathname.startsWith('/dashboard') && !pathname.startsWith('/settings')) {
     return NextResponse.next();
   }
 
@@ -41,5 +41,5 @@ export async function proxy(req: NextRequest): Promise<NextResponse> {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*'],
+  matcher: ['/dashboard/:path*', '/settings/:path*'],
 };

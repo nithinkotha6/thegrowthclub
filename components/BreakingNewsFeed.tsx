@@ -84,7 +84,7 @@ function BreakingNewsFeed({ items, currentUserId }: BreakingNewsFeedProps) {
   const hasItems = visibleItems.length > 0;
 
   return (
-    <div className="rounded-[24px] bg-white shadow-[0_2px_10px_rgba(0,0,0,0.04)] p-6 flex flex-col max-h-[640px]">
+    <div className="rounded-card bg-white shadow-raised p-6 flex flex-col max-h-[640px]">
       <h2 className="text-base font-bold text-[#111827] mb-5">Recent Activities</h2>
 
       {/* Constrained Vertically Scrollable Container */}

@@ -1,9 +1,19 @@
 # 03 — Ingestion & AI Pipelines
 
+> **Last updated:** 2026-07-19
 > **AI Provider**: Google Gemini (via `@ai-sdk/google` + Vercel AI SDK)
 > **Key Management**: Multi-key rotation pool with model cascade
-> **Ingestion Channels**: Web UI (NL + Manual), Telegram Bot, WhatsApp Bot
-> **Source of Truth**: [utils/geminiPool.ts](file:///c:/Users/nithi/Downloads/Beyond-Yesterday/beyond-yesterday-app/utils/geminiPool.ts), [app/actions/ingest.ts](file:///c:/Users/nithi/Downloads/Beyond-Yesterday/beyond-yesterday-app/app/actions/ingest.ts), [app/api/telegram/route.ts](file:///c:/Users/nithi/Downloads/Beyond-Yesterday/beyond-yesterday-app/app/api/telegram/route.ts), [lib/ai/prompts.ts](file:///c:/Users/nithi/Downloads/Beyond-Yesterday/beyond-yesterday-app/lib/ai/prompts.ts)
+> **Ingestion Channels**: Web UI (NL + Manual), WhatsApp Bot
+> **Source of Truth**: [utils/geminiPool.ts](../utils/geminiPool.ts), [app/actions/ingest.ts](../app/actions/ingest.ts), [lib/ai/prompts.ts](../lib/ai/prompts.ts)
+
+### Revision Log
+| Date | Commit | Sections Touched | Summary |
+|---|---|---|---|
+| 2026-07-18 | (feature cleanup) | header, §2.2 (removed) | Telegram ingestion channel removed entirely (`app/api/telegram/route.ts`, `buildTelegramExtractionSystem()`, `TELEGRAM_WEBHOOK_SECRET`) — it was a parallel, WhatsApp-independent input path that wasn't in active use. Web UI and WhatsApp remain the two ingestion channels. |
+| 2026-07-18 | fa4c8bb | §3.2, §3.3 | Correct §3.3 slang table to match actual `utils/slangRouter.ts` and `vocab_banks` seed rows (previous table was invented — wrong words per cell). Clarify §3.2 that lore + slang injection happens in `adminTriggerPoke` (`app/actions/admin.ts`), NOT in `buildGroupAssistantPrompt`. |
+| 2026-07-18 | (post-fa4c8bb) | §3.2, §3.3 | Persona rules neutralized in code (migration `0021`, `lib/ai/prompts.ts`, `app/actions/admin.ts`, `utils/slangRouter.ts`): no language / dialect / movie references shipped. Interruption phrase now empty by default. `SLANG_MAP` cells all empty; `vocab_banks` seed removed. Doc updated to match. |
+
+---
 
 ---
 
@@ -40,7 +50,7 @@ If all iterations exhaust:
   Throw error "All configured Gemini API keys exhausted"
 ```
 
-(source: [utils/geminiPool.ts L25-91](file:///c:/Users/nithi/Downloads/Beyond-Yesterday/beyond-yesterday-app/utils/geminiPool.ts#L25-L91))
+(source: [utils/geminiPool.ts L25-91](../utils/geminiPool.ts#L25-L91))
 
 ---
 
@@ -71,29 +81,7 @@ If all iterations exhaust:
   - Sets `status = 'verified'` for all other slugs.
   - Triggers Next.js `revalidatePath('/', 'layout')`.
 
-(source: [app/actions/ingest.ts L44-183](file:///c:/Users/nithi/Downloads/Beyond-Yesterday/beyond-yesterday-app/app/actions/ingest.ts#L44-L183))
-
-### 2.2 Telegram Webhook Ingestion (`POST /api/telegram`)
-
-- **Payload Schema (`ExtractionSchema`)**:
-  ```typescript
-  const ExtractionSchema = z.object({
-    metric_slug: z.string().min(1).max(64).regex(/^[a-z_]+$/),
-    value: z.number().positive(),
-    unit: z.string().min(1).max(32)
-  });
-  ```
-- **Verification**: Evaluates header `X-Telegram-Bot-Api-Secret-Token` against `TELEGRAM_WEBHOOK_SECRET`.
-- **Flow**:
-  1. Resolves `telegram_user_id` to database profile row.
-  2. Resolves profile's group membership.
-  3. Formats extraction prompt with strict rules.
-  4. Runs Gemini `generateObject()` mapping input to `ExtractionSchema`.
-  5. Performs case-insensitive mapping validation.
-  6. Inserts log into `metric_logs` with status set based on slug.
-  7. Returns HTTP `200 OK` (silently acknowledges unknown users or failed extractions to halt retries).
-
-(source: [api/telegram/route.ts L85-218](file:///c:/Users/nithi/Downloads/Beyond-Yesterday/beyond-yesterday-app/app/api/telegram/route.ts#L85-L218))
+(source: [app/actions/ingest.ts L44-183](../app/actions/ingest.ts#L44-L183))
 
 ### 2.3 Web UI Manual Log Ingestion (`logActivityManual`)
 
@@ -105,7 +93,7 @@ If all iterations exhaust:
   - If table schema is missing columns (throwing "column does not exist" error), catches exception.
   - Retries INSERT omitting `caption` and `duration_seconds` to allow successful ingestion.
 
-(source: [app/actions/logDirect.ts L67-145](file:///c:/Users/nithi/Downloads/Beyond-Yesterday/beyond-yesterday-app/app/actions/logDirect.ts#L67-L145))
+(source: [app/actions/logDirect.ts L67-145](../app/actions/logDirect.ts#L67-L145))
 
 ---
 
@@ -122,28 +110,33 @@ If all iterations exhaust:
 
 ### 3.2 Dynamic System Prompt Assembly (`buildGroupAssistantPrompt`)
 
-Source: [lib/ai/prompts.ts L19-78](file:///c:/Users/nithi/Downloads/Beyond-Yesterday/beyond-yesterday-app/lib/ai/prompts.ts#L19-L78)
+Source: [lib/ai/prompts.ts L19-78](../lib/ai/prompts.ts#L19-L78)
 
 Builds the prompt by combining:
-1. **Linguistic rules**: Romanized "Urban Hyderabadi Telugu" written in Latin alphabet, natural address terms, local sentence tags, and urban fusion slang.
+1. **Linguistic rules** (`CUSTOM_SYSTEM_RULES`, 11 items): casual conversational English suitable for a friend-group chat; DRAMA & CLASH rule; anti-repetition guard on `[Name] darling` openings; question-answering priority rule; no-stats/no-markdown guardrails; explicit ban on relying on any specific movie, franchise, actor, or celebrity. No language, dialect, or region-specific tags shipped in code — all such content is left to per-deployment configuration.
 2. **Flirting Rizz Matrix**:
-   - MALE sender: Implements possessive Tollywood female persona. Flirts aggressively, uses cheesy pickup lines, and acts dramatic.
+   - MALE sender: Implements a possessive, dramatic female persona. Flirts aggressively, uses cheesy pickup lines, acts dramatic.
    - FEMALE sender: Implements detached "sigma male" persona. Flirts smoothly, with playful arrogance and sharp rizz.
    - UNKNOWN sender: Defaults to heavy sarcasm and friend-group teasing.
-3. **Interruption phrases**: 10% chance to force the exact string: `"Nenu me fitness coach la undham anukunte... meru nannu group lo petti football aadukuntunnaru ga!"`
-4. **Lore injection**: Integrates `member_lore` (stunts, habits, ego triggers, catchphrases, nemesis) and custom `vocab_banks`.
-5. **Output limits**: Calculates word limit via `max(15, incomingWordCount * 3)`. Instructs LLM to return output on a single line. Replacement filters strip out all newline characters (`\n`).
+3. **Interruption phrase (opt-in)**: `COACH_INTERRUPTION_PHRASE` at the top of `lib/ai/prompts.ts` ships EMPTY — the interruption feature is disabled by default. When the constant is non-empty AND the caller passes `triggerInterruption = true` (10 % chance via `Math.random() < 0.10` in `webhooks/whatsapp/route.ts` L378), the phrase is injected verbatim into the prompt.
+4. **Persistent mood + slacker directives**: `persistentMoodDirective` (from `bot_persistent_state`) and `slackerDirective` (7-day-zero-activity list) are injected verbatim if provided by the webhook handler.
+5. **Output limits**: Calculates word limit via `max(15, incomingWordCount * 3)`. Instructs LLM to return output on a single line and forbid `\n`; the WhatsApp handler additionally strips residual newlines before dispatch.
 
+> Note: `buildGroupAssistantPrompt` itself does NOT read `member_lore` or `vocab_banks`. Lore + routed-slang injection is done by `adminTriggerPoke` in [`app/actions/admin.ts`](../app/actions/admin.ts) L127-260, which builds its own single-shot prompt (no chat history, no `CUSTOM_SYSTEM_RULES`) for the manual God Mode broadcast.
 ### 3.3 Dynamic Slang Vocabulary Router (`getSlangFor`)
 
-Source: [utils/slangRouter.ts](file:///c:/Users/nithi/Downloads/Beyond-Yesterday/beyond-yesterday-app/utils/slangRouter.ts)
+Source: [utils/slangRouter.ts](../utils/slangRouter.ts)
 
-Resolves word arrays based on chosen tone and gender mappings:
+In-memory map keyed by `(tone, gender)`. Only consumed by `adminTriggerPoke`.
 
-| Vibe / Tone | Target Gender | Routed Slang Arrays |
+**All cells intentionally ship empty.** No slang vocabulary is bundled in code and the seed rows previously inserted by migration `0013_lore_and_vocab.sql` were removed by migration `0021_remove_deprecated_moods_and_vocab.sql`. When the resolved array is empty, the prompt builder (`adminTriggerPoke` L232-234) omits the slang instruction entirely and the LLM receives no vocabulary hint.
+
+The scaffolding key set that `getSlangFor` recognises:
+
+| Tone (normalized) | Aliases from UI | Recognised target genders |
 |---|---|---|
-| **Ragebait** | Male | `"lafoot"`, `"sollu"`, `"babu"`, `"pedha hero"`, `"scene ledu"` |
-| **Ragebait** | Female | `"overaction"`, `"comedy"`, `"nakralu"`, `"too much"` |
-| **Flirt/Tease** | Male | `"bangaram"`, `"darling"`, `"hero"`, `"pilla"`, `"dhamaka"` |
-| **Flirt/Tease** | Female | `"smart"`, `"attitude"`, `"arrogant"`, `"smooth"`, `"rizz"` |
-| **Motivate** | All | `"thope"`, `"keka"`, `"raja"`, `"lepi kottu"`, `"super"` |
+| `ragebait` | `ragebait`, `sarcastic`, `fun-roast` (default) | `Male`, `Female`, `Gay`, `Neutral` |
+| `flirt_tease` | `flirt`, `flirt_tease` | `Male`, `Female`, `Gay`, `Neutral` |
+| `motivate` | `motivate`, `praise` | `Male`, `Female`, `Gay`, `Neutral` |
+
+To activate slang for a deployment, either (a) fill in the arrays in `utils/slangRouter.ts` directly, or (b) upsert rows via the admin Settings panel (which writes to `vocab_banks`). Note that `getSlangFor` currently reads only from the in-memory `SLANG_MAP` — wiring it to `vocab_banks` remains proposal `AGENT-02` / `DATA-03` in `Findings_and_Recommendations.md`.

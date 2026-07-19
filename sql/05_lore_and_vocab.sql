@@ -34,11 +34,6 @@ DROP POLICY IF EXISTS "Allow read/write for authenticated users" ON public.vocab
 CREATE POLICY "Allow read/write for authenticated users" ON public.vocab_banks FOR ALL USING (true);
 
 -- 3. Seed Initial Vocab Data
-INSERT INTO public.vocab_banks (tone, target_gender, words) VALUES
-('ragebait', 'Male', ARRAY['kothi-badcow', 'adavi manishi', 'waste fellow', 'pichi-fellow']),
-('ragebait', 'Female', ARRAY['over-action', 'drama queen', 'gossip-monger']),
-('flirt_tease', 'Male', ARRAY['hero', 'manmadhudu', 'heavy personality']),
-('flirt_tease', 'Female', ARRAY['bangaram', 'heroine', 'angel', 'attitude queen']),
-('motivate', 'Male', ARRAY['tiger', 'machine', 'boss', 'champion']),
-('motivate', 'Female', ARRAY['queen', 'boss-lady', 'superstar'])
-ON CONFLICT (tone, target_gender) DO NOTHING;
+-- Intentionally empty. `vocab_banks` starts unseeded; populate via the admin
+-- Settings panel (`adminUpsertVocabBank`) per deployment. No vocabulary ships
+-- in code.

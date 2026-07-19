@@ -1,16 +1,19 @@
 'use client';
 
 import React from 'react';
+import { useRouter } from 'next/navigation';
 import { Users } from 'lucide-react';
 import useSWR from 'swr';
 import { fetchGangRoster, GangProfile } from '@/app/actions/gang';
 import UserAvatar from '@/components/UserAvatar';
+import StreakBadge from '@/components/StreakBadge';
 
 interface GangClientProps {
   initialData: Awaited<ReturnType<typeof fetchGangRoster>>;
 }
 
 export default function GangClient({ initialData }: GangClientProps) {
+  const router = useRouter();
   const { data, error } = useSWR('gang-roster', () => fetchGangRoster(), {
     fallbackData: initialData,
     revalidateOnFocus: false,
@@ -54,18 +57,24 @@ export default function GangClient({ initialData }: GangClientProps) {
                 className="bg-white border border-slate-200 rounded-2xl shadow-sm flex flex-col items-center text-center p-6 transition-[transform,box-shadow] duration-200 ease-out hover:shadow-md hover:-translate-y-1 animate-in fade-in zoom-in-95 duration-300"
                 style={{ animationDelay: `${index * 30}ms` }}
               >
-                {/* Large Centered Reusable UserAvatar */}
-                <div className="mb-2 relative">
+                {/* Large Centered Reusable UserAvatar — tap to view profile */}
+                <button
+                  type="button"
+                  onClick={() => router.push(`/profile/${profile.id}`)}
+                  className="mb-2 relative cursor-pointer"
+                  aria-label={`View ${profile.nickname || profile.full_name}'s profile`}
+                >
                   <UserAvatar
                     user={profile}
                     size="3xl"
                     className="shadow-inner"
                     priority={index < 4}
                   />
-                  <div className="absolute -bottom-1.5 -right-1.5 bg-[#111827] border-2 border-white text-[10px] font-black text-[#CEFF00] rounded-full w-6 h-6 flex items-center justify-center shadow tabular-nums">
+                  <div className="absolute -bottom-1.5 -left-1.5 bg-[#111827] border-2 border-white text-[10px] font-black text-[#CEFF00] rounded-full w-6 h-6 flex items-center justify-center shadow tabular-nums">
                     {profile.current_level}
                   </div>
-                </div>
+                  <StreakBadge count={profile.streak_count} />
+                </button>
 
                 {/* Name Details */}
                 <div className="flex flex-col items-center text-center w-full min-w-0">
@@ -91,7 +100,7 @@ export default function GangClient({ initialData }: GangClientProps) {
           })}
         </div>
       ) : (
-        <div className="bg-white border border-slate-200 rounded-[24px] shadow-sm p-12 text-center flex flex-col items-center justify-center gap-2">
+        <div className="bg-white border border-slate-200 rounded-card shadow-raised p-12 text-center flex flex-col items-center justify-center gap-2">
           <Users size={32} className="text-slate-400" />
           <p className="text-sm font-bold text-slate-900">Your gang has no athletes yet.</p>
           <p className="text-xs text-slate-500">Use your group invite code during signup to add members!</p>

@@ -38,7 +38,7 @@ export default function PeerReviewModal({ count, children }: PeerReviewModalProp
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-md p-6 bg-white border border-slate-200 shadow-2xl rounded-3xl overflow-hidden focus:outline-none">
+        <DialogContent className="max-w-md p-6 bg-white border border-slate-200 shadow-2xl rounded-overlay overflow-hidden focus:outline-none">
           <DialogHeader className="sr-only">
             <DialogTitle>Verify Activities</DialogTitle>
           </DialogHeader>

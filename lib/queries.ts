@@ -225,6 +225,8 @@ export type FeedRow = {
   id: string;
   user_id: string;
   metric_slug: string;
+  metric_definition_id: string | null;
+  metric_definitions: { name: string; unit: string } | null;
   value: number;
   unit: string;
   status: 'pending' | 'verified' | 'rejected';
@@ -249,6 +251,8 @@ export async function getFeedItems(
       id,
       user_id,
       metric_slug,
+      metric_definition_id,
+      metric_definitions ( name, unit ),
       value,
       unit,
       status,

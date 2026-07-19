@@ -141,7 +141,9 @@ export async function processVerificationVote({
       }
     }
 
-    revalidatePath('/', 'layout');
+    // PERF-06: votes only affect the dashboard feed/chart and leaderboard.
+    revalidatePath('/dashboard');
+    revalidatePath('/dashboard/leaderboard');
     return { success: true };
   } catch (err: any) {
     console.error('processVerificationVote exception:', err);
@@ -256,7 +258,10 @@ export async function deleteActivityAction(
       return { success: false, error: `Failed to delete activity: ${logError.message}` };
     }
 
-    revalidatePath('/', 'layout');
+    // PERF-06: deleting an activity only affects the dashboard feed/chart and
+    // leaderboard.
+    revalidatePath('/dashboard');
+    revalidatePath('/dashboard/leaderboard');
     return { success: true };
   } catch (err: any) {
     console.error('[deleteActivityAction] Exception:', err);

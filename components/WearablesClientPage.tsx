@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Watch, Heart, Moon, Zap, RefreshCw, Smartphone, Award, Flame } from 'lucide-react';
 import UserAvatar from '@/components/UserAvatar';
 import CheerButton from '@/components/CheerButton';
-import { disconnectWearableAction, connectWearableAction } from '@/app/actions/wearables';
+import { disconnectWearableAction } from '@/app/actions/wearables';
 
 interface GroupMember {
   id: string;
@@ -173,7 +173,7 @@ export default function WearablesClientPage({
       </header>
 
       {/* ── Connection Status Indicator Card ──────────────────────── */}
-      <div className="bg-white rounded-[24px] border border-white/5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] p-5 flex items-center justify-between">
+      <div className="bg-white rounded-card border border-white/5 shadow-raised p-5 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${connection ? 'bg-[#34C759]/10 text-gray-900' : 'bg-slate-100 text-slate-400'}`}>
             <Smartphone size={20} className={connection ? 'text-[#34C759] animate-pulse' : ''} />
@@ -213,25 +213,12 @@ export default function WearablesClientPage({
             >
               Connect Fitbit
             </a>
-            <button
-              onClick={async () => {
-                setIsPending(true);
-                try {
-                  const res = await connectWearableAction(userId);
-                  if (res && !res.success) {
-                    console.error(res.error);
-                  }
-                } catch (err) {
-                  console.error(err);
-                } finally {
-                  setIsPending(false);
-                }
-              }}
-              disabled={isPending}
+            <a
+              href="/api/wearables/connect/whoop"
               className="px-4 py-2.5 text-xs font-black uppercase tracking-wider bg-[#34C759] text-white rounded-xl hover:bg-[#2ea84b] active:scale-95 transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
             >
               Connect Whoop
-            </button>
+            </a>
           </div>
         )}
       </div>
@@ -239,7 +226,7 @@ export default function WearablesClientPage({
       {/* ── Overview Summary Cards Grid (Pillar 1) ─────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Card 1: Sleep */}
-        <div className="bg-white rounded-[24px] border border-white/5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] p-5 flex flex-col justify-between min-h-[110px]">
+        <div className="bg-white rounded-card border border-white/5 shadow-raised p-5 flex flex-col justify-between min-h-[110px]">
           <div className="flex items-center justify-between text-slate-400">
             <span className="text-xs font-black uppercase tracking-wider text-[#6B7280]">Sleep Duration</span>
             <Moon size={18} className="text-[#3b82f6]" />
@@ -253,7 +240,7 @@ export default function WearablesClientPage({
         </div>
 
         {/* Card 2: Steps */}
-        <div className="bg-white rounded-[24px] border border-white/5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] p-5 flex flex-col justify-between min-h-[110px]">
+        <div className="bg-white rounded-card border border-white/5 shadow-raised p-5 flex flex-col justify-between min-h-[110px]">
           <div className="flex items-center justify-between text-slate-400">
             <span className="text-xs font-black uppercase tracking-wider text-[#6B7280]">Daily Steps</span>
             <Zap size={18} className="text-[#f97316]" />
@@ -267,7 +254,7 @@ export default function WearablesClientPage({
         </div>
 
         {/* Card 3: Resting HR */}
-        <div className="bg-white rounded-[24px] border border-white/5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] p-5 flex flex-col justify-between min-h-[110px]">
+        <div className="bg-white rounded-card border border-white/5 shadow-raised p-5 flex flex-col justify-between min-h-[110px]">
           <div className="flex items-center justify-between text-slate-400">
             <span className="text-xs font-black uppercase tracking-wider text-[#6B7280]">Resting Heart Rate</span>
             <Heart size={18} className="text-[#ef4444]" />
@@ -282,7 +269,7 @@ export default function WearablesClientPage({
       </div>
 
       {/* ── Scoreboard Container (Pillar 2) ───────────────────────── */}
-      <div className="bg-white rounded-[24px] border border-white/5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] p-5 flex flex-col gap-5">
+      <div className="bg-white rounded-card border border-white/5 shadow-raised p-5 flex flex-col gap-5">
         
         {/* Timeframe Toggle Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">

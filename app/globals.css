@@ -46,7 +46,19 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
-  
+
+  /* ── UI-05: semantic depth scale ──────────────────────────────────────
+     One radius + one shadow per surface tier, so cards render at a
+     consistent depth instead of drifting across ~6 arbitrary radii and
+     4 shadow strings. Coexists with the existing Tailwind radius/shadow
+     scale above — call sites migrate over time, no rewrite required. */
+  --radius-surface: 0.75rem;                      /* 12px — chips, inputs, small inline surfaces */
+  --radius-card: 1.5rem;                          /* 24px — primary content cards */
+  --radius-overlay: 1.75rem;                      /* 28px — modals/dialogs sitting above cards */
+  --shadow-flat: 0 2px 10px rgba(0, 0, 0, 0.04);   /* subtle depth for lighter cards */
+  --shadow-raised: 0 8px 30px rgba(0, 0, 0, 0.06); /* standard elevated content card */
+  --shadow-overlay: 0 8px 40px rgba(0, 0, 0, 0.6); /* modals/dialogs, dark-surface emphasis */
+
   /* Cyber-athletic god colors theme */
   --color-god-canvas: #FBFBFB;
   --color-god-black: #091819;

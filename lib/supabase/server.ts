@@ -48,23 +48,18 @@ export async function createClient() {
 export function createAdminClient(groupId?: string) {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  
+
   const headersObj: Record<string, string> = {};
   if (groupId) {
     headersObj['x-group-id'] = groupId;
   }
 
+  // SEC-05 fix: previously fell back to the anon (RLS-restricted) client when
+  // the service role key was missing, which could silently degrade or leak
+  // cross-group data instead of failing loudly. Admin operations must have
+  // the real service role key or not run at all.
   if (!serviceKey || serviceKey.trim() === '') {
-    console.warn('[Supabase Server] WARNING: SUPABASE_SERVICE_ROLE_KEY is not defined. Falling back to anon client.');
-    return createBaseClient(url, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
-      global: {
-        headers: headersObj,
-      },
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-      },
-    });
+    throw new Error('[Supabase Server] SUPABASE_SERVICE_ROLE_KEY is not configured. Admin operations cannot proceed without it.');
   }
 
   return createBaseClient(url, serviceKey, {

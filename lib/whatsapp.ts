@@ -5,11 +5,14 @@
  */
 export async function sendWhatsAppGroupMessage(
   message: string,
-  quotedMessageId?: string
+  quotedMessageId?: string,
+  overrides?: { instanceId?: string | null; token?: string | null; chatId?: string | null }
 ): Promise<boolean> {
-  const instanceId = process.env.GREEN_API_INSTANCE_ID;
-  const token = process.env.GREEN_API_TOKEN;
-  const chatId = process.env.WHATSAPP_GROUP_ID;
+  // Per-group Green API credentials (see ISO-05) take priority; the
+  // process.env values remain only as a single-tenant fallback default.
+  const instanceId = overrides?.instanceId || process.env.GREEN_API_INSTANCE_ID;
+  const token = overrides?.token || process.env.GREEN_API_TOKEN;
+  const chatId = overrides?.chatId || process.env.WHATSAPP_GROUP_ID;
 
   if (!instanceId || !token || !chatId) {
     const errMsg = 'Missing Green API credentials in environment variables';

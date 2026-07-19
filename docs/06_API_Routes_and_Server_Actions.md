@@ -1,8 +1,17 @@
 # 06 — API Routes & Server Actions
 
+> **Last updated:** 2026-07-19
 > **Pattern**: Next.js App Router Server Actions (`'use server'`) + Route Handlers (`/api/*`)
 > **Authentication Check**: Re-verified inside each Server Action independently using cookie validation
 > **Client Execution**: Server actions are called directly from client views as asynchronous functions
+
+### Revision Log
+| Date | Commit | Sections Touched | Summary |
+|---|---|---|---|
+| 2026-07-18 | fa4c8bb | §1.6, §2 (new) | Add explicit signature/logic for `adminUpdatePersistentMood` (previously only bullet-listed). Add §2 index of Route Handlers (webhooks + cron + wearables OAuth) with method, auth, `maxDuration`. |
+| 2026-07-18 | (post-fa4c8bb) | §1.6 | `persistent_mood` allowed set reduced to `'Normal', 'Angry', 'Sad', 'Arrogant', 'Sarcastic'` per new migration `0021_remove_deprecated_moods_and_vocab.sql` (`'Horny', 'Happy', 'Flirting', 'Romantic'` removed). |
+| 2026-07-18 | (security audit) | §1.1, §1.6 | SEC-01: document new server-side admin role check in `requireAdminSession()` and auth guard added to `adminToggleBotMute`/`getBotMuteStatus`. SEC-04: document PIN hashing (bcrypt) replacing plaintext compare in `loginWithPersonalPinAction` and `adminResetPin`. See Findings_and_Recommendations.md SEC-01/SEC-04. |
+| 2026-07-19 | (Documentation audit) | §2 | Corrected stale "daily-whistle is the only cron scheduled" claim (three more crons — `reset-monthly-streaks`, `monthly-summary`, plus `sync-wearables` — are also active). Added `/api/cron/reset-monthly-streaks`, `/api/cron/monthly-summary`, `/api/push/subscribe`, `/api/push/send` route entries. |
 
 ---
 
@@ -10,7 +19,7 @@
 
 ### 1.1 Authentication & Group Management Actions
 
-Source: [app/actions/auth.ts](file:///c:/Users/nithi/Downloads/Beyond-Yesterday/beyond-yesterday-app/app/actions/auth.ts)
+Source: [app/actions/auth.ts](../app/actions/auth.ts)
 
 - **`getGroupsAction`**
   - **Signature**: `(): Promise<{ groups: Group[]; error?: string }>`
@@ -20,8 +29,8 @@ Source: [app/actions/auth.ts](file:///c:/Users/nithi/Downloads/Beyond-Yesterday/
 - **`loginWithPersonalPinAction`**
   - **Signature**: `(groupId: string, pin: string): Promise<LoginResult>`
   - **Client**: Admin client (service role to read PINs)
-  - **Logic**: Matches profiles linked to group via `group_members` where `pin = inputPin`.
-  - **Security**: Verifies PIN using `safeCompare()` in application code. Introduces 1000ms delay on failure. Sets JWT session cookie `app_session`.
+  - **Logic**: Fetches the group's `group_members` + `profiles` roster and verifies the PIN in application code (SEC-04: PINs are bcrypt-hashed, so exact-match filtering can no longer happen in the query itself).
+  - **Security**: Verifies PIN via `verifyPin()` (`lib/security.ts`) — `bcrypt.compare()` against the stored hash, with a one-time fallback to `safeCompare()` for any legacy plaintext PIN, which is transparently re-hashed on successful login. Introduces 1000ms delay + `lib/rateLimit.ts` ip/group lockout on failure. Sets JWT session cookie `app_session`.
 
 - **`signUpAction`**
   - **Signature**: `(inviteCode, fullName, nickname, email, pin, gender, phoneNumber): Promise<SignUpResult>`
@@ -44,7 +53,7 @@ Source: [app/actions/auth.ts](file:///c:/Users/nithi/Downloads/Beyond-Yesterday/
 
 ### 1.2 Ingestion & Logging Actions
 
-Source: [app/actions/ingest.ts](file:///c:/Users/nithi/Downloads/Beyond-Yesterday/beyond-yesterday-app/app/actions/ingest.ts), [app/actions/logDirect.ts](file:///c:/Users/nithi/Downloads/Beyond-Yesterday/beyond-yesterday-app/app/actions/logDirect.ts)
+Source: [app/actions/ingest.ts](../app/actions/ingest.ts), [app/actions/logDirect.ts](../app/actions/logDirect.ts)
 
 - **`ingestActivity`**
   - **Signature**: `(rawText: string, userId: string, groupId: string): Promise<IngestResult>`
@@ -69,7 +78,7 @@ Source: [app/actions/ingest.ts](file:///c:/Users/nithi/Downloads/Beyond-Yesterda
 
 ### 1.3 Voting & Verification Actions
 
-Source: [app/actions/vote.ts](file:///c:/Users/nithi/Downloads/Beyond-Yesterday/beyond-yesterday-app/app/actions/vote.ts)
+Source: [app/actions/vote.ts](../app/actions/vote.ts)
 
 - **`processVerificationVote`**
   - **Signature**: `({ logId, vote }: { logId: string; vote: 'approve' | 'reject' }): Promise<VoteResult>`
@@ -95,7 +104,7 @@ Source: [app/actions/vote.ts](file:///c:/Users/nithi/Downloads/Beyond-Yesterday/
 
 ### 1.4 Dynamic Custom Metrics CRUD
 
-Source: [app/actions/metrics.ts](file:///c:/Users/nithi/Downloads/Beyond-Yesterday/beyond-yesterday-app/app/actions/metrics.ts)
+Source: [app/actions/metrics.ts](../app/actions/metrics.ts)
 
 - **`createMetricDefinition`**
   - **Signature**: `(name, unit, sortDirection): Promise<{ success: boolean; definition?: any; error?: string }>`
@@ -123,7 +132,7 @@ Source: [app/actions/metrics.ts](file:///c:/Users/nithi/Downloads/Beyond-Yesterd
 
 ### 1.5 Shared Memories Actions
 
-Source: [app/actions/memories.ts](file:///c:/Users/nithi/Downloads/Beyond-Yesterday/beyond-yesterday-app/app/actions/memories.ts)
+Source: [app/actions/memories.ts](../app/actions/memories.ts)
 
 - **`uploadAndCreateMemoryAction`**
   - **Signature**: `(base64Image, fileName, groupId, userId, caption?): Promise<{ success: boolean; memory?: any; error?: string }>`
@@ -151,10 +160,11 @@ Source: [app/actions/memories.ts](file:///c:/Users/nithi/Downloads/Beyond-Yester
 
 ### 1.6 Admin Panel Console Actions
 
-Source: [app/actions/admin.ts](file:///c:/Users/nithi/Downloads/Beyond-Yesterday/beyond-yesterday-app/app/actions/admin.ts)
+Source: [app/actions/admin.ts](../app/actions/admin.ts)
 
+- **Authorization (SEC-01)**: every action in this file calls `requireAdminSession()`, which verifies the session cookie, that any passed `groupId` matches the session's own `groupId`, AND that the caller holds `role = 'admin'` in that group's `group_members` row (queried directly, not trusted from the client). Previously this helper only checked session validity + group match — any authenticated member could invoke these actions directly. `adminToggleBotMute`/`getBotMuteStatus` previously had no auth check at all and now also call `requireAdminSession()`.
 - **`adminToggleBotMute`**: Updates `value` in `system_settings` where `key = 'bot_muted'`.
-- **`adminResetPin`**: Updates `pin` in `profiles` where user ID matches.
+- **`adminResetPin`**: Hashes the new PIN with `hashPin()` (bcrypt) before updating `pin` in `profiles` where user ID matches (SEC-04).
 - **`adminUpdateMemberRole`**: Updates `role` in `group_members` where user and group IDs match.
 - **`adminRemoveMember`**: Deletes association row from `group_members`.
 - **`adminTriggerPoke`**: Builds Fisky prompt based on target lore, routed slang vocabulary, custom situation context, and gender. Generates roast text via Gemini. Dispatches reply to group via Green API `sendMessage`.
@@ -166,5 +176,26 @@ Source: [app/actions/admin.ts](file:///c:/Users/nithi/Downloads/Beyond-Yesterday
 - **`adminUpsertMemberLore`**: Upserts traits to `member_lore`.
 - **`adminUpsertVocabBank`**: Upserts word arrays to `vocab_banks`.
 - **`adminDeleteVocabBank`**: Deletes row from `vocab_banks`.
-- **`adminUpdatePersistentMood`**: Upserts `persistent_mood` and `target_user_id` inside `bot_persistent_state`.
+- **`adminUpdatePersistentMood`**
+  - **Signature**: `(groupId: string, mood: string, targetUserId: string | null): Promise<{ success: boolean; error?: string }>`
+  - **Client**: Admin client
+  - **Logic**: Upserts row into `bot_persistent_state` `{group_id, persistent_mood, target_user_id, updated_at}` with `onConflict: 'group_id'`. Revalidates `/settings/metrics`. `persistent_mood` must satisfy the DB CHECK constraint (see migrations 0017 + 0021): one of `'Normal', 'Angry', 'Sad', 'Arrogant', 'Sarcastic'`. (source: `app/actions/admin.ts` L572-603)
 - **`adminUploadAvatarAction`**: Decodes base64, uploads buffer to `avatars` bucket, updates profile `avatar_url`, and revalidates path.
+
+---
+
+## 2. Route Handlers Index
+
+| Route | Method(s) | maxDuration | Auth | Purpose | Source |
+|---|---|---|---|---|---|
+| `/api/webhooks/whatsapp` | POST | 60 s | `safeCompare(body.instanceData.idInstance, GREEN_API_INSTANCE_ID)` + `chatId === WHATSAPP_GROUP_ID` | Fisky inbound message handler; forks background work via `after()` | `app/api/webhooks/whatsapp/route.ts` |
+| `/api/cron/daily-whistle` | GET, POST | 60 s | `Authorization: Bearer CRON_SECRET` via `safeCompare` | Morning briefing per group — one of four crons currently scheduled in `vercel.json` (see docs/09 §0 for the full, current list) | `app/api/cron/daily-whistle/route.ts` |
+| `/api/cron/reset-monthly-streaks` | GET, POST | (framework default) | `Authorization: Bearer CRON_SECRET` | Monthly `profiles.streak_count` reset, 1st of month | `app/api/cron/reset-monthly-streaks/route.ts` |
+| `/api/cron/monthly-summary` | GET, POST | (framework default) | `Authorization: Bearer CRON_SECRET` | Monthly WhatsApp recap broadcast per group, 1st of month | `app/api/cron/monthly-summary/route.ts` |
+| `/api/cron/ai-bookie` | GET, POST | 60 s | `Authorization: Bearer CRON_SECRET` | Weekly Monday prop-bet broadcast — route still exists but its `vercel.json` cron entry was removed (no longer auto-triggered); callable directly with a valid bearer token if reactivated | `app/api/cron/ai-bookie/route.ts` |
+| `/api/cron/sync-wearables` | GET | (framework default) | `Authorization: Bearer CRON_SECRET` | Daily wearable sync (Google Health v4 for Fitbit + real WHOOP API v2) | `app/api/cron/sync-wearables/route.ts` |
+| `/api/cron/whatsapp-digest` | GET, POST | 60 s | `Authorization: Bearer CRON_SECRET` | Midday leaderboard/summary broadcast — route still exists but its `vercel.json` cron entry was removed (no longer auto-triggered) | `app/api/cron/whatsapp-digest/route.ts` |
+| `/api/push/subscribe` | POST, DELETE | (framework default) | Cookie `app_session` → `decodeSession()` | Registers/removes a member's own web-push subscription | `app/api/push/subscribe/route.ts` |
+| `/api/push/send` | POST | (framework default) | Cookie `app_session` + `group_members.role === 'admin'` | Admin-only test/utility push send to a target member's subscriptions | `app/api/push/send/route.ts` |
+| `/api/wearables/connect/google` | GET | (framework default) | Cookie `app_session` → `decodeSession()` returns session | Initiates OAuth 2.0 authorization redirect | `app/api/wearables/connect/google/route.ts` |
+| `/api/wearables/callback/google` | GET | (framework default) | State parameter carries `userId`; no cookie check | Exchanges auth code for tokens; upserts into `wearable_connections` under provider `'fitbit'` [VERIFY — label discrepancy: connect route builds Google auth URL and callback stores `provider: 'fitbit'`, yet sync route routes `fitbit` and `google_fit` cases to `syncGoogleHealthV4`. Intentional aliasing or historical name?] | `app/api/wearables/callback/google/route.ts` |

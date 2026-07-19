@@ -349,7 +349,7 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
 
       {/* ── Olympic Podium (Top 3) ───────────────────────────────────── */}
       <div 
-        className="flex items-end justify-center gap-3 md:gap-6 bg-white rounded-[24px] border border-white/5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] p-6 max-w-full overflow-hidden"
+        className="flex items-end justify-center gap-3 md:gap-6 bg-white rounded-card border border-white/5 shadow-raised p-6 max-w-full overflow-hidden"
         style={{ minHeight: '280px' }}
       >
         {/* 2nd Place (Left Pedestal) */}
@@ -514,7 +514,7 @@ export default async function LeaderboardPage({ searchParams }: LeaderboardPageP
       </div>
 
       {/* ── Rankings List (4th Place & Below) ───────────────────────── */}
-      <div className="bg-white rounded-[24px] border border-white/5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] p-6">
+      <div className="bg-white rounded-card border border-white/5 shadow-raised p-6">
         <h2 className="text-base font-bold text-[#111827] mb-4">Rankings</h2>
 
         {tableAthletes.length > 0 ? (

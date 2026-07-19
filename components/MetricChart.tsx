@@ -6,7 +6,7 @@ import type { ChartSeries } from '@/lib/queries';
 
 export type { ChartSeries };
 
-interface MetricChartProps {
+export interface MetricChartProps {
   dateLabels:   string[];   // chronological x-axis: ["Jul 4", "Jul 5", …]
   series:       ChartSeries[];
   title:        string;     // e.g. "Long Run — Last 30 Days"
@@ -99,9 +99,6 @@ function MetricChart({
 }: MetricChartProps) {
   const [isolatedUserId, setIsolatedUserId] = useState<string | null>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-
-  console.log('[MetricChart debug] dateLabels:', JSON.stringify(dateLabels));
-  console.log('[MetricChart debug] series:', JSON.stringify(series, null, 2));
 
   const hasData = series.length > 0 && dateLabels.length > 0;
 
@@ -311,7 +308,7 @@ function MetricChart({
   };
 
   return (
-    <div className="rounded-[24px] bg-white shadow-[0_8px_30px_rgba(0,0,0,0.06)] p-6 flex flex-col gap-4">
+    <div className="rounded-card bg-white shadow-raised p-6 flex flex-col gap-4">
       {/* Card header */}
       <div>
         <div className="flex items-start justify-between mb-2">

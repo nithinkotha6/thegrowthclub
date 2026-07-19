@@ -79,7 +79,7 @@ function MetricPillSelector({ activeMetric, customPills }: MetricPillSelectorPro
               'text-sm font-semibold whitespace-nowrap flex-shrink-0',
               'transition-[transform,background-color] duration-150 ease-out',
               isActive
-                ? 'bg-[#CEFF00] text-[#111827] ring-1 ring-black/5 scale-[1.03] shadow-sm font-bold'
+                ? 'bg-[#CEFF00]/15 text-[#4D5B00] border border-[#CEFF00] scale-[1.03] shadow-sm font-bold'
                 : 'bg-slate-100 text-slate-500 hover:bg-slate-200/80',
             ].join(' ')}
           >

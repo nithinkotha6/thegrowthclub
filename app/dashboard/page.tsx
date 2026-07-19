@@ -3,11 +3,11 @@ import { cookies }   from 'next/headers';
 import { redirect }  from 'next/navigation';
 import { createAdminClient }  from '@/lib/supabase/server';
 import { decodeSession, SESSION_COOKIE } from '@/lib/session';
-import { METRIC_PILLS, RANGE_OPTIONS, type RangeValue } from '@/lib/metrics';
+import { METRIC_PILLS, RANGE_OPTIONS, PROGRESSION_CHALLENGE_TYPES, type RangeValue } from '@/lib/metrics';
 import { getChartData, getFeedItems } from '@/lib/queries';
 import type { FeedRow } from '@/lib/queries';
 import AddActivityModal        from '@/components/AddActivityModal';
-import MetricChart             from '@/components/MetricChart';
+import MetricChart             from '@/components/MetricChartDynamic';
 import BreakingNewsFeed, { type FeedItem } from '@/components/BreakingNewsFeed';
 import MetricPillSelector      from '@/components/MetricPillSelector';
 import DateRangeSelector       from '@/components/DateRangeSelector';
@@ -15,6 +15,10 @@ import VotingPanel             from '@/components/VotingPanel';
 import LiveAchievementTicker   from '@/components/LiveAchievementTicker';
 import PeerReviewModal         from '@/components/PeerReviewModal';
 import SwitchUserButton         from '@/components/SwitchUserButton';
+import ChallengesModule        from '@/components/ChallengesModule';
+import { getDailyGoals, getDailyGoalCompletions } from '@/app/actions/dailyGoals';
+import { getMyChallengeProgression, getChallengeHistory } from '@/app/actions/progression';
+import { getLeagueAssignments, getLeagueChallenges, getLeagueMatches } from '@/app/actions/leagues';
 
 /**
  * Dashboard page — async Server Component.
@@ -63,7 +67,11 @@ function formatActivityMessage(log: FeedRow): string {
     case 'national_parks':
       return `${name} visited a national park — living the life! 🏔️`;
     default: {
-      const display = slug.replace(/_/g, ' ');
+      // DATA-01 fix: custom metrics are identified by a metric_definitions
+      // UUID stored in metric_slug — resolve the real name via the joined
+      // metric_definitions row instead of formatting the raw UUID text.
+      const customName = log.metric_definitions?.name;
+      const display = customName || slug.replace(/_/g, ' ');
       return `${name} logged ${val} ${unit} of ${display} 🏆`;
     }
   }
@@ -151,58 +159,51 @@ export default async function DashboardPage({
   const activePill  = allPills.find((p) => p.id === activeMetric)!;
   const activeRangeLabel = RANGE_OPTIONS.find((r) => r.value === activeRange)?.label ?? 'Last 7 Days';
 
-  // ── Database Auto-Migration: transition long_run -> top_golf ──────────────────
-  try {
-    const supabaseAdmin = supabase;
-
-    const { data: hasTopGolf } = await supabaseAdmin
-      .from('metrics_config')
-      .select('slug')
-      .eq('slug', 'top_golf')
-      .maybeSingle();
-
-    if (!hasTopGolf) {
-      console.log('[dashboard] migrating metrics_config long_run -> top_golf');
-      // Insert top_golf config first
-      await supabaseAdmin.from('metrics_config').insert({
-        slug: 'top_golf',
-        display_name: 'Top Golf Shot',
-        unit: 'Yards',
-        sort_order: 'desc',
-        xp_reward: 50
-      });
-      // Migrate all metric_logs slugs and units
-      await supabaseAdmin
-        .from('metric_logs')
-        .update({ metric_slug: 'top_golf', unit: 'Yards' })
-        .eq('metric_slug', 'long_run');
-      // Delete old long_run config
-      await supabaseAdmin
-        .from('metrics_config')
-        .delete()
-        .eq('slug', 'long_run');
-    }
-  } catch (migErr) {
-    console.error('[dashboard] auto-migration error:', migErr);
-  }
-
-  // ── Diagnostic logging — visible in Next.js terminal ────────────────────
-  console.log('[dashboard] session groupId :', groupId);
-  console.log('[dashboard] session userId  :', userId);
-  console.log('[dashboard] activeMetric    :', activeMetric);
-  console.log('[dashboard] activeRange     :', activeRange);
-
-  // ── Parallel data fetch ──────────────────────────────────────────────────
+  // ── Parallel data fetch (PERF-03: independent queries fire concurrently) ─
   const sortDirection = ('sort_direction' in activePill ? activePill.sort_direction : 'desc') as 'asc' | 'desc';
   const isAscending = sortDirection === 'asc';
-  const { data: recordData } = await supabase
-    .from('metric_logs')
-    .select('value, user_id, profiles(nickname, full_name)')
-    .eq('group_id', groupId)
-    .eq('metric_slug', activeMetric)
-    .eq('status', 'verified')
-    .order('value', { ascending: isAscending })
-    .limit(1);
+
+  const resolveChartData = async () => {
+    if (!params.range) {
+      const testData = await getChartData(supabase, groupId, activeMetric, '7d', activePill.isCumulative);
+      if (testData.dateLabels.length < 2) {
+        return getChartData(supabase, groupId, activeMetric, 'all', activePill.isCumulative);
+      }
+      return testData;
+    }
+    return getChartData(supabase, groupId, activeMetric, activeRange, activePill.isCumulative);
+  };
+
+  const [
+    { data: recordData },
+    chartData,
+    feedRows,
+    dailyGoalsRes,
+    dailyGoalCompletionsRes,
+    progressionRes,
+    challengeHistoryRes,
+    leagueAssignmentsRes,
+    leagueChallengesRes,
+    leagueMatchesRes,
+  ] = await Promise.all([
+    supabase
+      .from('metric_logs')
+      .select('value, user_id, profiles(nickname, full_name)')
+      .eq('group_id', groupId)
+      .eq('metric_slug', activeMetric)
+      .eq('status', 'verified')
+      .order('value', { ascending: isAscending })
+      .limit(1),
+    resolveChartData(),
+    getFeedItems(supabase, groupId, 12),
+    getDailyGoals(),
+    getDailyGoalCompletions(),
+    getMyChallengeProgression(),
+    getChallengeHistory(),
+    getLeagueAssignments(),
+    getLeagueChallenges(),
+    getLeagueMatches(),
+  ]);
 
   const recordHolder = recordData && recordData.length > 0 ? recordData[0] : null;
   const recordValue = recordHolder ? Number(recordHolder.value) : null;
@@ -211,24 +212,8 @@ export default async function DashboardPage({
     ? (recordProfile.nickname || recordProfile.full_name || 'Athlete')
     : 'Athlete';
 
-  let chartData;
-  if (!params.range) {
-    const testData = await getChartData(supabase, groupId, activeMetric, '7d', activePill.isCumulative);
-    if (testData.dateLabels.length < 2) {
-      chartData = await getChartData(supabase, groupId, activeMetric, 'all', activePill.isCumulative);
-    } else {
-      chartData = testData;
-    }
-  } else {
-    chartData = await getChartData(supabase, groupId, activeMetric, activeRange, activePill.isCumulative);
-  }
-
   const { dateLabels, series, bucketSize } = chartData;
-  const feedRows = await getFeedItems(supabase, groupId, 12);
 
-  // ── Post-fetch diagnostic logging ────────────────────────────────────────
-  console.log('[dashboard] chart series count:', series.length, '| dateLabels:', dateLabels.length);
-  console.log('[dashboard] feed rows         :', feedRows.length);
 
   // ── Feed items with NL messages ─────────────────────────────────────────
   const feedItems: FeedItem[] = feedRows.map((log) => ({
@@ -323,6 +308,19 @@ export default async function DashboardPage({
           />
           <BreakingNewsFeed items={feedItems} currentUserId={userId} />
         </div>
+
+        {/* ── Challenges Module: Daily Goals | Challenges | Leagues ── */}
+        <ChallengesModule
+          userId={userId}
+          dailyGoals={dailyGoalsRes.success ? dailyGoalsRes.goals : []}
+          dailyGoalCompletions={dailyGoalCompletionsRes.success ? dailyGoalCompletionsRes.completions : []}
+          progression={progressionRes.success ? progressionRes.progression : []}
+          challengeHistory={challengeHistoryRes.success ? challengeHistoryRes.history : []}
+          progressionChallengeTypes={PROGRESSION_CHALLENGE_TYPES}
+          leagueAssignments={leagueAssignmentsRes.success ? leagueAssignmentsRes.assignments : []}
+          leagueChallenges={leagueChallengesRes.success ? leagueChallengesRes.challenges : []}
+          leagueMatches={leagueMatchesRes.success ? leagueMatchesRes.matches : []}
+        />
 
         {/* Center-aligned Switch User button at the bottom */}
         <div className="flex justify-center mt-6">

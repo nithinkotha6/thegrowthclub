@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 export const maxDuration = 60; // Allow up to 60 seconds for LLM processing
 import { generateText } from 'ai';
 import { executeWithKeyRotation } from '@/utils/geminiPool';
+import { buildDailyWhistlePrompt } from '@/lib/ai/prompts';
 import { createAdminClient } from '@/lib/supabase/server';
 import { safeCompare } from '@/lib/security';
 
@@ -95,6 +96,28 @@ async function handleRequest(req: Request) {
       }
 
       const logs = (logsRaw || []) as unknown as LogRow[];
+
+      // ── 4b. Query Yesterday's Daily Goal Completions (DASH-17) ─────────
+      // Single query, filtered to deleted_at IS NULL so a completion deleted
+      // before this runs is correctly excluded (DASH-30) — no separate
+      // read-then-recheck step that could half-count a mid-run deletion.
+      const { data: goalCompletionsRaw } = await supabaseAdmin
+        .from('daily_goal_completions')
+        .select('daily_goal_id, completed_at, daily_goals ( title ), profiles ( nickname, full_name )')
+        .eq('group_id', group.id)
+        .is('deleted_at', null)
+        .gte('completed_at', yesterday);
+
+      const dailyGoalsText = ((goalCompletionsRaw || []) as unknown as {
+        daily_goals: { title: string } | null;
+        profiles: { nickname: string | null; full_name: string | null } | null;
+      }[])
+        .map((c) => {
+          const name = c.profiles?.nickname || c.profiles?.full_name || 'Someone';
+          const goalTitle = c.daily_goals?.title || 'a daily goal';
+          return `- ${name} completed "${goalTitle}"`;
+        })
+        .join('\n');
 
       // ── 5. Calculate yesterday's MVP and zero-loggers (slackers) ──────────
       // MVP is the member with the single highest value log logged yesterday
@@ -193,23 +216,14 @@ async function handleRequest(req: Request) {
       const streakEntries = Object.entries(userStreakMap).map(([name, days]) => `- ${name}: ${days} days streak 🔥`);
       const streakListText = streakEntries.join('\n');
 
-      // ── 7. Generate daily whistle message using Gemini 3.5 Flash ─────────
-      const promptText = `
-You are @fisky, the Gen-Z AI Referee for The Growth Club. Write today's morning daily whistle briefing for the group "${group.name}".
-
-Yesterday's Group Stats:
-- MVP: ${mvpName ? `${mvpName} (Logged: ${mvpValue} ${mvpUnit} for ${mvpSlug})` : 'No MVP yesterday (no verified logs completed)'}
-- Slackers (Logged 0 activities yesterday): ${slackers.length > 0 ? slackers.join(', ') : 'None! Everyone logged workouts!'}
-
-Active Group Streaks:
-${streakListText || 'No active streaks of 2+ days.'}
-
-System Directive:
-Write a high-energy, 3-bullet morning briefing for the WhatsApp group chat.
-1. Acknowledge yesterday's MVP.
-2. Playfully but brutally call out anyone who logged zero workouts yesterday (the slackers).
-3. Set the daily target challenge to motivate the group.
-Keep it under 100 words. Use natural Gen-Z slang, abbreviations, and emojis. Do not use hashtags or markdown formatting (no bolding, no italics, no asterisks for formatting). Return only the final text message.`;
+      // ── 7. Generate daily whistle message using Gemini ───────────────────
+      const promptText = buildDailyWhistlePrompt({
+        groupName: group.name,
+        mvpText: mvpName ? `${mvpName} (Logged: ${mvpValue} ${mvpUnit} for ${mvpSlug})` : 'No MVP yesterday (no verified logs completed)',
+        slackersText: slackers.length > 0 ? slackers.join(', ') : 'None! Everyone logged workouts!',
+        streakListText,
+        dailyGoalsText,
+      });
 
       let broadcastText = '';
       try {
@@ -229,8 +243,11 @@ Keep it under 100 words. Use natural Gen-Z slang, abbreviations, and emojis. Do 
         continue;
       }
 
-      // Append the dashboard link exception at the very bottom
-      const finalMessage = `${broadcastText}\n\n👉 Check the updated scoreboard: https://beyond-yesterday-app.vercel.app`;
+      // Append the dashboard link, if configured (no hardcoded URL — NEXT_PUBLIC_APP_URL)
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+      const finalMessage = appUrl
+        ? `${broadcastText}\n\n👉 Check the updated scoreboard: ${appUrl}`
+        : broadcastText;
 
       // ── 8. Dispatch to WhatsApp ───────────────────────────────────────────
       const url = `https://api.green-api.com/waInstance${instanceId}/sendMessage/${token}`;

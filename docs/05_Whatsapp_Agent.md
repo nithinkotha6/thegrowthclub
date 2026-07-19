@@ -1,9 +1,17 @@
 # 05 — WhatsApp Agent & Fisky Banter Engine
 
+> **Last updated:** 2026-07-19
 > **Service**: Conversational AI Banter Engine ("Fisky")
 > **Integration Gateway**: Green API (JID-based message routing)
 > **Asynchronous Process**: Executed via Next.js `after()` or `waitUntil()` background execution
-> **Source of Truth**: [app/api/webhooks/whatsapp/route.ts](file:///c:/Users/nithi/Downloads/Beyond-Yesterday/beyond-yesterday-app/app/api/webhooks/whatsapp/route.ts), [lib/ai/prompts.ts](file:///c:/Users/nithi/Downloads/Beyond-Yesterday/beyond-yesterday-app/lib/ai/prompts.ts), [lib/whatsapp.ts](file:///c:/Users/nithi/Downloads/Beyond-Yesterday/beyond-yesterday-app/lib/whatsapp.ts), [utils/slangRouter.ts](file:///c:/Users/nithi/Downloads/Beyond-Yesterday/beyond-yesterday-app/utils/slangRouter.ts)
+> **Source of Truth**: [app/api/webhooks/whatsapp/route.ts](../app/api/webhooks/whatsapp/route.ts), [lib/ai/prompts.ts](../lib/ai/prompts.ts), [lib/whatsapp.ts](../lib/whatsapp.ts), [utils/slangRouter.ts](../utils/slangRouter.ts)
+
+### Revision Log
+| Date | Commit | Sections Touched | Summary |
+|---|---|---|---|
+| 2026-07-18 | fa4c8bb | §4.1 | Split rule 5: `CUSTOM_SYSTEM_RULES` (`lib/ai/prompts.ts` L6-16) tells the LLM to *use* comedy dialogues; the explicit "STRICTLY FORBIDDEN from Pushpa/RRR/Baahubali" clamp lives only in `adminTriggerPoke` (`app/actions/admin.ts` L246), which is the God-Mode broadcast prompt — NOT the normal Fisky reply prompt. |
+| 2026-07-18 | (post-fa4c8bb) | §4.1, §4.2, §4.3, §4.4, §1 diagrams | Persona neutralized. `CUSTOM_SYSTEM_RULES` rewritten to remove Telugu-language / Hyderabadi-dialect / address-term / sentence-tag / movie-reference clauses. `adminTriggerPoke` prompt likewise neutralized. Interruption phrase moved to `COACH_INTERRUPTION_PHRASE` constant (ships empty). Docs updated to describe the new neutral surface. |
+| 2026-07-18 | (sender-name consistency fix) | §3.1 | The phone-number-resolved `nickname` was already used in the system prompt, but the per-turn message content and `chat_history.sender_name` still used the raw WhatsApp push name — fixed to use the resolved nickname consistently in both places (falls back to the WhatsApp name only when no phone match exists). |
 
 ---
 
@@ -94,7 +102,7 @@ graph TD
         ForkWorker --> FetchProfile[("Query Sender Profile")]
         FetchProfile --> ResolveGender{"Resolve Gender Style"}
         
-        ResolveGender -- "Male" --> SetFemale["Set Tollywood Female Persona"]
+        ResolveGender -- "Male" --> SetFemale["Set Dramatic Female Persona"]
         ResolveGender -- "Female" --> SetSigma["Set Sigma Male Persona"]
         ResolveGender -- "Unknown/Neutral" --> SetSassy["Set Sassy Instigator Persona"]
         
@@ -103,7 +111,7 @@ graph TD
         SetSassy --> FetchContext
         
         FetchContext --> Interruption{"10% Coach Interruption Chance?"}
-        Interruption -- "Yes" --> InjectCoach["Inject Coach Telugu Phrase"]
+        Interruption -- "Yes" --> InjectCoach["Inject Coach Phrase (if configured)"]
         Interruption -- "No" --> BuildPrompt["Build LLM System Instructions"]
         InjectCoach --> BuildPrompt
         
@@ -134,7 +142,7 @@ graph TD
     classDef prompt fill:#ECFDF5,stroke:#059669,stroke-width:1.5px,color:#0F172A;
     classDef details fill:#F8FAFC,stroke:#64748B,stroke-width:1.5px,color:#0F172A;
 
-    InputMsg["📱 Inbound Webhook Payload Details:<br/>• typeWebhook: 'incomingMessageReceived'<br/>• idMessage: 'XYZ1234567890ABCDEF'<br/>• senderData.sender: '919995551234@c.us'<br/>• senderData.chatId: '12036304381920@g.us'<br/>• messageData.extendedTextMessageData.text:<br/>  'Orey, where should I come for the run today?'"] --> CheckMute{"Filter 1: Mute check"}
+    InputMsg["📱 Inbound Webhook Payload Details:<br/>• typeWebhook: 'incomingMessageReceived'<br/>• idMessage: 'XYZ1234567890ABCDEF'<br/>• senderData.sender: '919995551234@c.us'<br/>• senderData.chatId: '12036304381920@g.us'<br/>• messageData.extendedTextMessageData.text:<br/>  'Yo, where should I come for the run today?'"] --> CheckMute{"Filter 1: Mute check"}
     
     CheckMute --> F1Details["🔍 Filter 1 Logic & DB Queries:<br/>• Query table: 'system_settings' where key = 'bot_muted'<br/>• Check value: If value == 'true' -> returns status 'muted'<br/>• Output: Returns 200 OK immediately to halt GreenAPI retries"]
     
@@ -144,14 +152,14 @@ graph TD
     CheckInst -- "Valid" --> CheckChat{"Filter 3: Group & Message Type check"}
     CheckChat --> F3Details["🔍 Filter 3 Scope & Structure Check:<br/>• Checks if body.senderData.chatId matches target process.env.WHATSAPP_GROUP_ID<br/>• Checks if body.typeWebhook is strictly 'incomingMessageReceived'<br/>• Checks if body.messageData.typeMessage is 'textMessage' or 'extendedTextMessage'<br/>• Output: If mismatch -> Returns status 200 and ignores payload"]
     
-    CheckChat -- "Valid" --> CleanMsg["4. Message Cleaning & Command Processing:<br/>• Parses incoming text defensively from available structure properties<br/>• Checks if message equals command '/clear' -> Wipes DB chat_history, sends WA confirmation, exits<br/>• Result Text: 'Orey, where should I come for the run today?'"]
+    CheckChat -- "Valid" --> CleanMsg["4. Message Cleaning & Command Processing:<br/>• Parses incoming text defensively from available structure properties<br/>• Checks if message equals command '/clear' -> Wipes DB chat_history, sends WA confirmation, exits<br/>• Result Text: 'Yo, where should I come for the run today?'"]
     
     CleanMsg --> DbLookup[("5. User Profile DB Query:<br/>Query profiles table in Supabase<br/>where phone_number = '919995551234'")]
     DbLookup --> DbResult["Profile Data Resolved:<br/>• nickname: 'Nithin'<br/>• full_name: 'Nithin Reddy'<br/>• gender: 'MALE'"]
     
     DbResult --> GenderCheck{"6. Flirting Persona Selector"}
     
-    GenderCheck -- "Sender is MALE" --> SetFemale["Adopt Telugu Female Persona:<br/>• Exaggerated, dramatic heroine persona<br/>• Flirt aggressively with cheesy/cute Telugu/English pickup lines<br/>• Show extreme/possessive teasing dynamics"]
+    GenderCheck -- "Sender is MALE" --> SetFemale["Adopt Dramatic Female Persona:<br/>• Exaggerated, dramatic heroine persona<br/>• Flirt aggressively with cheesy/cute pickup lines<br/>• Show extreme/possessive teasing dynamics"]
     GenderCheck -- "Sender is FEMALE" --> SetSigma["Adopt Sigma Male Persona:<br/>• Nonchalant, smooth, slightly arrogant persona<br/>• Flirt with sharp, witty pickup lines<br/>• Play hard to get"]
     
     SetFemale --> QueryBlock["7. Context Data Loading Step"]
@@ -161,7 +169,7 @@ graph TD
         direction LR
         DbContext[("DB Context Queries:<br/>• Chat History: Retreives last 3 rows from chat_history table<br/>• Recent Activities: Retreives last 5 verified metric_logs logs<br/>• Standings: Queries top_golf scores<br/>• Mood & Slackers: Queries persistent mood and 7d inactive slackers")]
         
-        SystemPromptText["Generated System Prompt Template:<br/>• Custom Rules: Urban Romanized Telugu, natural tags/comedy dialogues<br/>• DRAMA & CLASH: Pit members against each other<br/>• QUESTION ANSWERING PRIORITY: Answer location/time directly (No evading)<br/>• ANTI-REPETITION: Do NOT start replies with '[Name] darling' or loop 'darling'<br/>• Dynamic Flirting Prompt Override: Act as dramatic Telugu heroine"]
+        SystemPromptText["Generated System Prompt Template:<br/>• Custom Rules: Casual conversational English, natural friend-group tone<br/>• DRAMA & CLASH: Pit members against each other<br/>• QUESTION ANSWERING PRIORITY: Answer location/time directly (No evading)<br/>• ANTI-REPETITION: Do NOT start replies with '[Name] darling' or loop 'darling'<br/>• Dynamic Flirting Prompt Override: Act as dramatic character"]
     end
     
     QueryBlock --> DbContext
@@ -169,11 +177,11 @@ graph TD
     
     SystemPromptText --> RunGemini[["8. Gemini LLM Generation:<br/>• Calls executeWithKeyRotation pool<br/>• Passes: System Prompt instructions, Chat History array, and User message<br/>• Word Limit: Max 15 or 3x incoming word count"]]
     
-    RunGemini --> GeminiOutput["Gemini Output Text:<br/>'Inka ekkadiki vasthav, Jubilee Hills main road daggarki vachey.<br/>Kaushik gadu already reach aipoyadu. Fast ga ra!'"]
+    RunGemini --> GeminiOutput["Gemini Output Text:<br/>'Come to the main road, everyone else is already there. Move fast!'"]
     
     GeminiOutput --> QuotedReply[["9. Outbound Message Dispatch via GreenAPI:<br/>• Method: POST /sendMessage/WA_TOKEN<br/>• Payload properties: chatId: WHATSAPP_GROUP_ID,<br/>  message: Gemini output text,<br/>  quotedMessageId: 'XYZ1234567890ABCDEF'"]]
     
-    QuotedReply --> SaveHistory[("10. Commit Logs to Database:<br/>Inserts two records in public.chat_history:<br/>1. role: 'user', content: 'Message from Nithin: Orey, where should I come...'<br/>2. role: 'assistant', content: 'Inka ekkadiki vasthav...'")]
+    QuotedReply --> SaveHistory[("10. Commit Logs to Database:<br/>Inserts two records in public.chat_history:<br/>1. role: 'user', content: 'Message from Nithin: Yo, where should I come...'<br/>2. role: 'assistant', content: 'Come to the main road...'")]
     
     class InputMsg,CleanMsg,GeminiOutput payload;
     class DbLookup,DbContext,SaveHistory db;
@@ -208,7 +216,7 @@ The endpoint `POST /api/webhooks/whatsapp` processes incoming events from the Gr
    - Checks if message matches `/clear` (case-insensitive).
    - If matched, executes a hard DELETE on the `chat_history` table for the group, sends a confirmation message `🧹 Memory Cleared!` to the WhatsApp group, and terminates with HTTP `200 OK`.
 
-(source: [webhooks/whatsapp/route.ts L60-136](file:///c:/Users/nithi/Downloads/Beyond-Yesterday/beyond-yesterday-app/app/api/webhooks/whatsapp/route.ts#L60-L136))
+(source: [webhooks/whatsapp/route.ts L60-136](../app/api/webhooks/whatsapp/route.ts#L60-L136))
 
 ---
 
@@ -226,6 +234,7 @@ SELECT nickname, gender
     OR phone_number LIKE '%' || cleanPhone || '%'
  LIMIT 1;
 ```
+The resolved `nickname` (falling back to the raw WhatsApp push name, `senderData.senderName`, only if no phone match is found) is used consistently everywhere the sender's name surfaces to the AI: the system prompt ("You're replying to {name}"), the per-turn user message content (`Message from {name}: ...`), and the `sender_name` column persisted to `chat_history` (source: [webhooks/whatsapp/route.ts](../app/api/webhooks/whatsapp/route.ts) `resolvedSenderName`). This ensures the bot always refers to a signed-up member by the name they registered with, not whatever display name their phone/WhatsApp contact happens to show — those two can differ and previously did for the message-content and chat-history paths.
 
 ### 3.2 Inactivity Context & Token Clamping
 To prevent chat-history context drift and token bloat, the database lookup constraints history:
@@ -239,37 +248,37 @@ To prevent chat-history context drift and token bloat, the database lookup const
 Dynamic prompt assembly compiles linguistic, mood, slacker, and rizz directives.
 
 ### 4.1 System Rules Configuration (`CUSTOM_SYSTEM_RULES`)
-The system prompt in [prompts.ts](file:///c:/Users/nithi/Downloads/Beyond-Yesterday/beyond-yesterday-app/lib/ai/prompts.ts) enforces the following guardrails:
-1. **Linguistic Constraints:** Speaks strictly in **conversational "Urban Hyderabadi Telugu"** (a stylish mix of English/Hindi and Telugu written ONLY in the Latin/English alphabet). Telugu characters (తెలుగు) are strictly forbidden.
-2. **Identity Vibe:** "Fisky" is a sarcastic, Gen Z, witty close friend hanging out in Jubilee Hills / Gachibowli. He is NOT a life coach or referee.
-3. **Slang Address:** Uses natural address terms: *Orey, Mama, Macha, Guru, Chief, Bhai, Kaka*.
-4. **Sentence Endings:** Uses local sentence tags: *...anta kadha, ...em chestham cheppu, ...lite le ra, ...scene ledu, ...chills kottochu ga, ...atla untadi manatho*.
-5. **No Cinematic Cliches:** Banned from repeating references to *Baahubali, RRR, Pushpa, or "Thaggedhele"*. Instead, the engine dynamically rotates through modern pop-culture meme context (e.g. *DJ Tillu, Ee Nagaraniki Emaindi, Brahmanandam/Sunil comedy quotes, Balayya punch dialogues, Biryani obsessions, IT job fatigue*).
+The system prompt in [prompts.ts](../lib/ai/prompts.ts) enforces the following guardrails:
+1. **Linguistic Constraints:** Speaks in casual, conversational English suitable for a friend-group chat. No language, dialect, region, or script is prescribed in code — all such tuning is left to per-deployment configuration.
+2. **Identity Vibe:** "Fisky" is a sarcastic, Gen Z, witty close friend. He is NOT a life coach or referee.
+3. **Slang Address:** Uses natural, informal address terms appropriate for a close-knit friend group. Specific terms are not hard-coded.
+4. **Sentence Endings:** Uses natural, conversational sentence endings and colloquialisms that feel like real friend-group speech.
+5. **No Cinematic Cliches:** Explicitly forbidden from relying on any specific movie, franchise, actor, or celebrity. Pop-culture / meme humor must be drawn from a broad, generic pool.
 6. **Data Guardrail:** Do not mention stats, metrics, or leaderboards unless explicitly asked. Casually joke and roast instead. No website URLs or fake stats.
 7. **Direct Answer Priority:** If the user asks a question about times or locations (e.g., `"Where should I come?"`), the bot must answer the question directly and accurately. It is forbidden from evading or ignoring user inquiries.
 8. **No Markdown:** Prohibited from using markdown indicators (`*`, `_`, `~`) to ensure clean, readable text bubbles on mobile screens.
 
-(source: [lib/ai/prompts.ts L19-78](file:///c:/Users/nithi/Downloads/Beyond-Yesterday/beyond-yesterday-app/lib/ai/prompts.ts#L19-L78))
+(source: [lib/ai/prompts.ts L19-78](../lib/ai/prompts.ts#L19-L78))
 
 ### 4.2 Dynamic Flirting Rizz Matrix
 The sender's gender dynamically overrides prompt characteristics to determine the flirting style:
 
 | Sender Gender | Bot Persona Style | Tone/Behavior |
 | :--- | :--- | :--- |
-| **Male** | Tollywood Dramatic Female | Flirts aggressively, acts possessive, dramatic, and jealous, using cheesy/cute Telugu pickup lines. |
-| **Female** | Sigma Male | adopts nonchalant, smooth, slightly arrogant, and ultra-confident rizz, playing hard to get. |
+| **Male** | Dramatic Female | Flirts aggressively, acts possessive, dramatic, and jealous, using cheesy pickup lines. |
+| **Female** | Sigma Male | Adopts nonchalant, smooth, slightly arrogant, and ultra-confident rizz, playing hard to get. |
 | **Gay / Unknown** | Sassy Instigator | Employs heavy sass, roasts, and dramatic friend-group teasing. |
 
 ### 4.3 Lore, Mood, and Slacker Context Assembly
-1. **Vocabulary Injections**: Resolves Romanized slang arrays dynamically by mapping the chosen tone and sender gender through `getSlangFor(tone, gender)`.
+1. **Vocabulary Injections**: Resolves slang arrays dynamically by mapping the chosen tone and sender gender through `getSlangFor(tone, gender)`. All cells ship empty in code; when the resolved array is empty the prompt builder skips the slang instruction entirely.
 2. **Lore Context**: Compilation of stunts, habits, ego triggers, and nemesis list from `member_lore` for targeted roasts.
-3. **Persistent Mood Directive**: If `bot_persistent_state` is set for the group, injects the mood (e.g. `Angry`, `Sad`, `Flirting`, `Romantic`) as a directive. If a `target_user_id` is specified, it targets this member specifically; otherwise, the mood applies globally.
-4. **Inactivity Slacker Shaming**: Resolves group members who logged 0 verified activities in the past 7 days. If slackers exist, the prompt passes their names and instructs Gemini to actively mock, shame, and call them out (e.g. *adavi manishi, waste fellow*).
+3. **Persistent Mood Directive**: If `bot_persistent_state` is set for the group, injects the mood (one of `Normal`, `Angry`, `Sad`, `Arrogant`, `Sarcastic` per migration `0021`) as a directive. If a `target_user_id` is specified, it targets this member specifically; otherwise, the mood applies globally.
+4. **Inactivity Slacker Shaming**: Resolves group members who logged 0 verified activities in the past 7 days. If slackers exist, the prompt passes their names and instructs Gemini to actively mock, shame, and call them out using funny, playful shaming terms.
 
 ### 4.4 Parameters & Safety Configurations
 - **Word Limit**: Budgeted dynamically based on incoming message length:
   $$\text{Target Word Limit} = \max(15, \text{Incoming Word Count} \times 3)$$
-- **Coach Phrase Frequency**: Spontaneous interruptions via `"Nenu me fitness coach la undham anukunte... meru nannu group lo petti football aadukuntunnaru ga!"` are capped at exactly **10%** probability.
+- **Coach Phrase Frequency**: Optional interruption feature governed by the `COACH_INTERRUPTION_PHRASE` constant at the top of `lib/ai/prompts.ts`. The constant **ships empty**, so the interruption feature is disabled by default. When non-empty AND the caller passes `triggerInterruption = true` (10 % dice roll in `webhooks/whatsapp/route.ts` L378), the phrase is injected verbatim into the prompt.
 - **Single-Line Clamp**: Gemini is instructed to return the text on a single line. The response replaces newlines to maintain message formatting within a single bubble:
   ```typescript
   const cleanReply = generatedText.trim().replace(/\n/g, ' ');
@@ -289,7 +298,7 @@ When replying in a group chat, the bot quotes the trigger message by passing the
   ```json
   {
     "chatId": "1203632971203@g.us",
-    "message": "Atluntadi manatho! Nuvvu log chesinadhi scale level daatipoindi ra mama!",
+    "message": "Nah bro, you cooked — that log run just made everyone else look mid.",
     "quotedMessageId": "XYZ1234567890ABCDEF"
   }
   ```
@@ -307,7 +316,7 @@ Used when photos are uploaded to the Memories gallery:
   }
   ```
 
-(source: [app/actions/memories.ts L163-174](file:///c:/Users/nithi/Downloads/Beyond-Yesterday/beyond-yesterday-app/app/actions/memories.ts#L163-L174))
+(source: [app/actions/memories.ts L163-174](../app/actions/memories.ts#L163-L174))
 
 ---
 

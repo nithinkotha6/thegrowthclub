@@ -27,7 +27,11 @@ export type AppSession = {
 export function getSecret(): Uint8Array | null {
   let raw = process.env.SESSION_SECRET;
   if (!raw || raw.length < 32) {
-    if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV !== 'production') {
+    // SEC-03 fix: only fall back to the known dev secret in explicit local
+    // development. Any other NODE_ENV (unset, 'test', 'staging', 'preview',
+    // etc.) now fails closed instead of silently signing JWTs with a
+    // publicly-known key.
+    if (process.env.NODE_ENV === 'development') {
       console.warn('[session] Warning: SESSION_SECRET is missing or too short. Falling back to development-only secret.');
       raw = 'default-dev-secret-do-not-use-in-prod-12345';
     } else {

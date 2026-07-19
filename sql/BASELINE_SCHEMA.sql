@@ -947,14 +947,9 @@ DROP POLICY IF EXISTS "Allow read/write for authenticated users" ON public.vocab
 CREATE POLICY "Allow read/write for authenticated users" ON public.vocab_banks FOR ALL USING (true);
 
 -- Seed Initial Vocab Data
-INSERT INTO public.vocab_banks (tone, target_gender, words) VALUES
-('ragebait', 'Male', ARRAY['kothi-badcow', 'adavi manishi', 'waste fellow', 'pichi-fellow']),
-('ragebait', 'Female', ARRAY['over-action', 'drama queen', 'gossip-monger']),
-('flirt_tease', 'Male', ARRAY['hero', 'manmadhudu', 'heavy personality']),
-('flirt_tease', 'Female', ARRAY['bangaram', 'heroine', 'angel', 'attitude queen']),
-('motivate', 'Male', ARRAY['tiger', 'machine', 'boss', 'champion']),
-('motivate', 'Female', ARRAY['queen', 'boss-lady', 'superstar'])
-ON CONFLICT (tone, target_gender) DO NOTHING;
+-- Intentionally empty. `vocab_banks` starts unseeded; populate via the admin
+-- Settings panel (`adminUpsertVocabBank`) per deployment. No vocabulary ships
+-- in this baseline.
 
 -- ---------------------------------------------------------------------------
 -- MIGRATION: 0014_soft_delete_and_editor.sql
@@ -1028,7 +1023,7 @@ END $$;
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.bot_persistent_state (
   group_id UUID PRIMARY KEY REFERENCES public.groups(id) ON DELETE CASCADE,
-  persistent_mood TEXT NOT NULL DEFAULT 'Normal' CHECK (persistent_mood IN ('Normal', 'Angry', 'Sad', 'Horny', 'Happy', 'Flirting', 'Romantic', 'Arrogant', 'Sarcastic')),
+  persistent_mood TEXT NOT NULL DEFAULT 'Normal' CHECK (persistent_mood IN ('Normal', 'Angry', 'Sad', 'Arrogant', 'Sarcastic')),
   target_user_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

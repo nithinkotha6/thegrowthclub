@@ -20,6 +20,7 @@ import {
   type GroupProfile,
 } from '@/app/actions/auth';
 import Confetti from '@/components/Confetti';
+import UserAvatar from '@/components/UserAvatar';
 import { playAudio, preloadAllSounds } from '@/lib/audio';
 
 type Tab = 'login' | 'signup';
@@ -69,6 +70,9 @@ export default function LandingPage() {
 
     // Eagerly preload all audio assets to resolve latency issues
     preloadAllSounds();
+
+    // Prefetch the dashboard route so post-login navigation is instant.
+    router.prefetch('/dashboard');
 
     // Check if user session token exists in local storage for auto-login
     const cachedToken = localStorage.getItem('kiosk_session');
@@ -148,9 +152,7 @@ export default function LandingPage() {
             localStorage.setItem('kiosk_session', result.token);
           }
           setLoggedInUser({ name: result.userName, avatarUrl: result.avatarUrl });
-          setTimeout(() => {
-            router.push('/dashboard');
-          }, 2500);
+          router.push('/dashboard');
         } else {
           playAudio('error.mp3');
           setLoginError('Incorrect PIN. Try again.');
@@ -214,9 +216,7 @@ export default function LandingPage() {
             localStorage.setItem('kiosk_session', result.token);
           }
           setLoggedInUser({ name: result.userName, avatarUrl: result.avatarUrl });
-          setTimeout(() => {
-            router.push('/dashboard');
-          }, 2500);
+          router.push('/dashboard');
         } else {
           playAudio('who-are-you.mp3');
           setSignUpError(result.error);
@@ -229,26 +229,35 @@ export default function LandingPage() {
 
   /* ── Success Render ─────────────────────────────────────────────────── */
   if (loggedInUser) {
-    let firstName = loggedInUser.name.trim().split(/\s+/)[0].toLowerCase();
-    if (firstName === 'pixie') {
-      firstName = 'nithin';
-    }
-    const userImgSrc = loggedInUser.avatarUrl || loggedInUser.avatar_url || `/avatars/${firstName}.jpg`;
+    const userImgSrc = loggedInUser.avatarUrl || loggedInUser.avatar_url || null;
+    const isUserImgRemote = !!userImgSrc && userImgSrc.startsWith('http');
+    const userInitials = loggedInUser.name
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((n) => n[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase() || '?';
 
     return (
       <div className="min-h-screen bg-[#0A0A0A] flex flex-col items-center justify-center p-4">
         <Confetti />
         
         <div className="text-center flex flex-col items-center gap-4 animate-in fade-in zoom-in duration-500">
-          <div className="relative w-[115px] h-[115px] rounded-full border-4 border-[#CEFF00] bg-zinc-900 shadow-2xl overflow-hidden p-0.5 animate-bounce">
-            <Image
-              src={userImgSrc}
-              alt={loggedInUser.name}
-              width={115}
-              height={115}
-              className="w-full h-full object-cover rounded-full"
-              unoptimized
-            />
+          <div className="relative w-[115px] h-[115px] rounded-full border-4 border-[#CEFF00] bg-zinc-900 shadow-2xl overflow-hidden p-0.5 animate-bounce flex items-center justify-center">
+            {userImgSrc ? (
+              <Image
+                src={userImgSrc}
+                alt={loggedInUser.name}
+                width={115}
+                height={115}
+                sizes="115px"
+                className="w-full h-full object-cover rounded-full"
+                unoptimized={!isUserImgRemote}
+              />
+            ) : (
+              <span className="text-[#CEFF00] font-black text-4xl">{userInitials}</span>
+            )}
           </div>
           <h1 className="text-3xl md:text-4xl font-black text-white uppercase tracking-tight">
             Welcome, {loggedInUser.name}!
@@ -286,7 +295,7 @@ export default function LandingPage() {
         </div>
 
         {/* Card Body */}
-        <div className="bg-[#111111] rounded-[28px] p-7 flex flex-col gap-5 border border-white/5 shadow-[0_8px_40px_rgba(0,0,0,0.6)] animate-in fade-in duration-300">
+        <div className="bg-[#111111] rounded-overlay p-7 flex flex-col gap-5 border border-white/5 shadow-overlay animate-in fade-in duration-300">
           
           {/* Tabs Navigation */}
           <div className="flex border border-white/10 rounded-xl overflow-hidden p-1 bg-white/5">
@@ -343,23 +352,14 @@ export default function LandingPage() {
                   <div className="flex flex-col items-center gap-1.5 my-1">
                     <p className="text-[10px] font-bold text-[#6B7280] uppercase tracking-widest">Room Members</p>
                     <div className="flex -space-x-3 overflow-hidden justify-center">
-                      {groupCollages.map((m) => {
-                        const mName = m.nickname || m.full_name || 'Athlete';
-                        const mFirst = mName.trim().split(/\s+/)[0].toLowerCase();
-                        const mSrc = m.avatar_url || `/avatars/${mFirst}.jpg`;
-                        return (
-                          <div key={m.id} className="relative z-10 w-9 h-9 rounded-full border-2 border-[#0A0A0A] bg-zinc-800 overflow-hidden shadow">
-                            <Image
-                              src={mSrc}
-                              alt={mName}
-                              width={36}
-                              height={36}
-                              className="object-cover w-full h-full"
-                              unoptimized
-                            />
-                          </div>
-                        );
-                      })}
+                      {groupCollages.map((m) => (
+                        <UserAvatar
+                          key={m.id}
+                          user={{ avatar_url: m.avatar_url, full_name: m.full_name, nickname: m.nickname }}
+                          size="md"
+                          className="relative z-10 border-2 border-[#0A0A0A] shadow"
+                        />
+                      ))}
                     </div>
                   </div>
                 )}
@@ -433,14 +433,9 @@ export default function LandingPage() {
                     <Loader2 size={14} className="animate-spin" /> Entering Room…
                   </div>
                 ) : (
-                  <button
-                    id="login-btn"
-                    type="submit"
-                    disabled={true}
-                    className="mt-1 flex items-center justify-center gap-2 bg-zinc-800 text-zinc-500 font-bold rounded-xl px-4 py-3 text-xs tracking-wider uppercase border border-zinc-700/50 min-h-[44px] cursor-not-allowed opacity-50 transition"
-                  >
-                    Auto-submits on 4 digits
-                  </button>
+                  <p className="mt-1 text-center text-[11px] font-medium tracking-wide text-[#6B7280]">
+                    Auto-submits when you enter 4 digits
+                  </p>
                 )}
               </form>
             </div>

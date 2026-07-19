@@ -93,14 +93,14 @@ export default function Sidebar({ userName, groupName, totalXp, currentLevel }: 
         {/* Avatar + name + level */}
         <div className="flex items-center gap-3 mb-3">
           <div
-            className="w-10 h-10 rounded-full bg-[#CEFF00] flex-shrink-0 flex items-center justify-center animate-pulse"
+            className="w-10 h-10 rounded-full bg-[#CEFF00] flex-shrink-0 flex items-center justify-center"
             aria-hidden="true"
           >
             <span className="text-[#0A0A0A] text-sm font-black">{initials}</span>
           </div>
           <div className="flex flex-col leading-tight min-w-0">
             <span className="text-white text-sm font-semibold truncate">{userName}</span>
-            <span className="text-[#6B7280] text-xs">The Growth Club</span>
+            <span className="text-[#6B7280] text-xs">{groupName}</span>
           </div>
         </div>
 

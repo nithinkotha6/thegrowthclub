@@ -3,6 +3,102 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { safeCompare } from '@/lib/security';
 
 /**
+ * Env-var fallback wearable connections.
+ *
+ * The self-service "Connect Fitbit"/"Connect Whoop" OAuth flow (see
+ * app/api/wearables/connect/**) is the primary, default way a member links
+ * a device — it needs no code change or redeploy per person. This adds a
+ * SECONDARY override for members who instead hand you a refresh token they
+ * obtained manually (e.g. via Postman) from that provider's own OAuth flow:
+ * set a Vercel env var named `WEARABLE_KEY_<PROVIDER>_<NICKNAME>` (provider
+ * is `WHOOP` or `FITBIT`; nickname is upper-cased with non A-Z0-9
+ * characters stripped, e.g. `WEARABLE_KEY_WHOOP_NITHIN`).
+ *
+ * Only a refresh token works here — WHOOP/Google access tokens expire in
+ * ~1 hour, so a raw access token would silently stop syncing within an hour.
+ * The value must be a refresh token; this cron uses the existing shared
+ * WHOOP_CLIENT_ID/WHOOP_CLIENT_SECRET or GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET
+ * app credentials (the same ones the OAuth flow already uses) to mint fresh
+ * access tokens from it on every run, exactly like a normal DB-backed
+ * connection — this fallback only auto-provisions the initial
+ * `wearable_connections` row the first time; every run after that just
+ * looks like an ordinary connection and self-heals through the same
+ * refresh/sync functions.
+ *
+ * This never overrides an existing row — if the member has already
+ * connected via the real OAuth flow, that row wins and the env var is
+ * ignored for them.
+ */
+function sanitizeEnvKeySegment(name: string): string {
+  return name.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+async function provisionEnvFallbackConnections(
+  supabaseAdmin: ReturnType<typeof createAdminClient>,
+  groupId: string,
+  existingConnections: any[],
+): Promise<any[]> {
+  const { data: members, error: membersErr } = await supabaseAdmin
+    .from('group_members')
+    .select('user_id, profiles!inner ( id, nickname, full_name )')
+    .eq('group_id', groupId);
+
+  if (membersErr || !members) {
+    if (membersErr) console.error('[Wearables Cron] Env-fallback member lookup failed:', membersErr);
+    return [];
+  }
+
+  const hasConnection = (userId: string, provider: string) =>
+    existingConnections.some((c) => c.user_id === userId && (c.provider === provider || (provider === 'fitbit' && c.provider === 'google_fit')));
+
+  const provisioned: any[] = [];
+
+  for (const m of members) {
+    const profile = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
+    if (!profile) continue;
+    const nameSegment = sanitizeEnvKeySegment(profile.nickname || profile.full_name || '');
+    if (!nameSegment) continue;
+
+    for (const provider of ['whoop', 'fitbit'] as const) {
+      if (hasConnection(profile.id, provider)) continue;
+
+      const envKey = `WEARABLE_KEY_${provider.toUpperCase()}_${nameSegment}`;
+      const refreshToken = process.env[envKey];
+      if (!refreshToken) continue;
+
+      console.log(`[Wearables Cron] Provisioning env-fallback ${provider} connection for user ${profile.id} from ${envKey}`);
+
+      const { data: inserted, error: insertErr } = await supabaseAdmin
+        .from('wearable_connections')
+        .insert({
+          user_id: profile.id,
+          group_id: groupId,
+          provider,
+          refresh_token: refreshToken,
+          access_token: '',
+          // Already-expired so the first sync immediately exchanges the
+          // refresh token for a real access token via the normal refresh path.
+          expires_at: new Date(0).toISOString(),
+          status: 'active',
+          backfill_completed: false,
+          last_synced_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+        })
+        .select('*')
+        .single();
+
+      if (insertErr) {
+        console.error(`[Wearables Cron] Failed to provision env-fallback connection (${envKey}):`, insertErr);
+        continue;
+      }
+
+      provisioned.push(inserted);
+    }
+  }
+
+  return provisioned;
+}
+
+/**
  * Proactively refreshes the Google Fit/Health Access Token if expired or expiring within 5 minutes.
  */
 async function refreshGoogleAccessToken(connection: any): Promise<string | null> {
@@ -395,85 +491,182 @@ async function syncGoogleHealthV4(connection: any): Promise<number> {
 }
 
 /**
- * Sync process for Whoop (mock generation)
+ * Proactively refreshes the WHOOP access token if expired or expiring within
+ * 5 minutes. Docs: https://developer.whoop.com/docs/developing/oauth
+ * WHOOP invalidates the previous refresh token on every refresh — the new
+ * one from the response MUST be persisted or the next refresh will fail.
+ */
+async function refreshWhoopAccessToken(connection: any): Promise<string | null> {
+  const expiresAt = new Date(connection.expires_at);
+  const now = new Date();
+  const isExpiring = expiresAt.getTime() - now.getTime() < 300000;
+
+  if (!isExpiring) {
+    return connection.access_token;
+  }
+
+  console.log(`[Wearables Sync] Refreshing WHOOP access token for user ${connection.user_id}...`);
+
+  const clientId = process.env.WHOOP_CLIENT_ID;
+  const clientSecret = process.env.WHOOP_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret) {
+    console.error(`[Wearables Sync] ERROR refreshing WHOOP token for user ${connection.user_id}: WHOOP OAuth credentials not configured.`);
+    return null;
+  }
+  if (!connection.refresh_token) {
+    console.error(`[Wearables Sync] ERROR refreshing WHOOP token for user ${connection.user_id}: No refresh token available in database.`);
+    return null;
+  }
+
+  try {
+    const response = await fetch('https://api.prod.whoop.com/oauth/oauth2/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: connection.refresh_token,
+        client_id: clientId,
+        client_secret: clientSecret,
+        scope: 'offline',
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error(`[Wearables Sync] ERROR refreshing WHOOP token for user ${connection.user_id}:`, errText);
+      return null;
+    }
+
+    const data = await response.json();
+    const newAccessToken = data.access_token;
+    const newExpiresAt = new Date(Date.now() + data.expires_in * 1000).toISOString();
+
+    const supabaseAdmin = createAdminClient();
+    // WHOOP invalidates the old refresh_token on every use — persist the new one too.
+    const { error: updateErr } = await supabaseAdmin
+      .from('wearable_connections')
+      .update({
+        access_token: newAccessToken,
+        refresh_token: data.refresh_token || connection.refresh_token,
+        expires_at: newExpiresAt,
+      })
+      .eq('id', connection.id);
+
+    if (updateErr) {
+      console.error(`[Wearables Sync] Failed to save refreshed WHOOP credentials:`, updateErr);
+      return null;
+    }
+
+    console.log(`[Wearables Sync] Successfully refreshed WHOOP token for user ${connection.user_id}. New expiry: ${newExpiresAt}`);
+    return newAccessToken;
+  } catch (err: any) {
+    console.error(`[Wearables Sync] ERROR refreshing WHOOP token for user ${connection.user_id}:`, err?.message || err);
+    return null;
+  }
+}
+
+/**
+ * Sync process for WHOOP via the real WHOOP API v2
+ * (https://developer.whoop.com/api). Fetches `GET /v2/recovery` (resting
+ * heart rate) and `GET /v2/activity/sleep` (sleep stage durations),
+ * paginating via `next_token` until the requested date range is covered.
+ *
+ * Accuracy note: WHOOP hardware (3.0/4.0/5.0/MG) all share this same API —
+ * no per-model branching is needed. WHOOP does NOT measure step count (no
+ * accelerometer step metric exists in its data model), so this function
+ * intentionally never writes to `wearable_steps` for Whoop connections
+ * rather than fabricating a number the device doesn't actually produce.
  */
 async function syncWhoop(connection: any): Promise<number> {
   const supabaseAdmin = createAdminClient();
   const userId = connection.user_id;
-
   const now = new Date();
 
+  const accessToken = await refreshWhoopAccessToken(connection);
+  if (!accessToken) {
+    console.warn(`[Wearables Sync] Skipping user ${userId} due to WHOOP OAuth token refresh failure.`);
+    return 0;
+  }
+
   const isBackfill = connection.backfill_completed !== true;
-  const start = isBackfill ? new Date(2026, 0, 1) : new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const start = isBackfill ? new Date(2026, 0, 1) : new Date(now.getFullYear(), now.getMonth(), now.getDate() - 2);
 
   if (isBackfill) {
-    console.log('[Wearables Tier 1] Initiating 2026 Historical Backfill for Whoop user:', userId);
+    console.log('[Wearables Tier 1] Initiating historical backfill for WHOOP user:', userId);
   } else {
-    console.log('[Wearables Tier 2] Executing routine daily cumulative sync for Whoop user:', userId);
+    console.log('[Wearables Tier 2] Executing routine daily sync for WHOOP user:', userId);
   }
 
-  const stepsPayloads: any[] = [];
-  const sleepPayloads: any[] = [];
-  const hrPayloads: any[] = [];
-  const curr = new Date(start.getTime());
+  const authHeaders = { Authorization: `Bearer ${accessToken}` };
 
-  // Generate 1 record per day up to today
-  while (curr <= now) {
-    const loggedDateStr = curr.toISOString().split('T')[0];
-    const stepsVal = Math.round(1500 + Math.random() * 4000);
-    const sleepVal = Math.round((6.0 + Math.random() * 3.0) * 10) / 10;
-    const hrVal = Math.round(48 + Math.random() * 15);
+  /** Paginates a WHOOP v2 collection endpoint across the [start, now] window. */
+  async function fetchAllRecords(path: string): Promise<any[]> {
+    const records: any[] = [];
+    let nextToken: string | undefined;
+    do {
+      const url = new URL(`https://api.prod.whoop.com${path}`);
+      url.searchParams.set('start', start.toISOString());
+      url.searchParams.set('end', now.toISOString());
+      url.searchParams.set('limit', '25');
+      if (nextToken) url.searchParams.set('nextToken', nextToken);
 
-    stepsPayloads.push({
-      user_id: userId,
-      connection_id: connection.id,
-      logged_date: loggedDateStr,
-      value: stepsVal,
-      source: 'wearable_sync',
-    });
-
-    sleepPayloads.push({
-      user_id: userId,
-      connection_id: connection.id,
-      logged_date: loggedDateStr,
-      value: sleepVal,
-      source: 'wearable_sync',
-    });
-
-    hrPayloads.push({
-      user_id: userId,
-      connection_id: connection.id,
-      logged_date: loggedDateStr,
-      value: hrVal,
-      source: 'wearable_sync',
-    });
-
-    // Advance by 1 day
-    curr.setDate(curr.getDate() + 1);
+      const res = await fetch(url.toString(), { headers: authHeaders });
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error(`[Wearables Sync] WHOOP ${path} fetch failed for user ${userId}:`, res.status, errText);
+        break;
+      }
+      const data = await res.json();
+      records.push(...(data.records || []));
+      nextToken = data.next_token;
+    } while (nextToken);
+    return records;
   }
+
+  const [recoveries, sleeps] = await Promise.all([
+    fetchAllRecords('/v2/recovery'),
+    fetchAllRecords('/v2/activity/sleep'),
+  ]);
+
+  // Resting heart rate: one row per day, keyed off the recovery's sleep date.
+  const hrPayloads = recoveries
+    .filter((r) => r.score_state === 'SCORED' && typeof r.score?.resting_heart_rate === 'number')
+    .map((r) => ({
+      user_id: userId,
+      connection_id: connection.id,
+      logged_date: new Date(r.created_at).toISOString().split('T')[0],
+      value: r.score.resting_heart_rate,
+      source: 'wearable_sync',
+    }));
+
+  // Sleep duration: sum of light + slow-wave + REM stage time (excludes
+  // awake time), converted from milliseconds to hours. `stage_summary`
+  // fields per https://developer.whoop.com/api (Sleep schema).
+  const sleepPayloads = sleeps
+    .filter((s) => s.score_state === 'SCORED' && s.score?.stage_summary && !s.nap)
+    .map((s) => {
+      const stages = s.score.stage_summary;
+      const totalMs =
+        (stages.total_light_sleep_time_milli || 0) +
+        (stages.total_slow_wave_sleep_time_milli || 0) +
+        (stages.total_rem_sleep_time_milli || 0);
+      return {
+        user_id: userId,
+        connection_id: connection.id,
+        logged_date: new Date(s.start).toISOString().split('T')[0],
+        value: Math.round((totalMs / 3600000) * 10) / 10,
+        source: 'wearable_sync',
+      };
+    });
 
   let hasDbError = false;
-  const totalExtracted = stepsPayloads.length + sleepPayloads.length + hrPayloads.length;
+  const totalExtracted = hrPayloads.length + sleepPayloads.length;
   const isEmptyData = totalExtracted === 0;
 
   if (isEmptyData) {
-    console.warn(`[Wearables Sync] Whoop Empty-Data Gate triggered.`);
-  }
-
-  if (!isEmptyData) {
-    // 1. Ingest Steps
-    if (stepsPayloads.length > 0) {
-      console.log(`[Wearables Audit] Committing to wearable_steps: ${stepsPayloads.length} rows`);
-      const { error: stepsError } = await supabaseAdmin
-        .from('wearable_steps')
-        .upsert(stepsPayloads, { onConflict: 'user_id,logged_date' });
-      if (stepsError) {
-        console.error('[Wearables Audit] Steps Upsert Error:', JSON.stringify(stepsError));
-        hasDbError = true;
-      }
-    }
-
-    // 2. Ingest Sleep
+    console.warn(`[Wearables Sync] WHOOP Empty-Data Gate triggered for user ${userId}.`);
+  } else {
     if (sleepPayloads.length > 0) {
       console.log(`[Wearables Audit] Committing to wearable_sleep: ${sleepPayloads.length} rows`);
       const { error: sleepError } = await supabaseAdmin
@@ -485,7 +678,6 @@ async function syncWhoop(connection: any): Promise<number> {
       }
     }
 
-    // 3. Ingest Heart Rate
     if (hrPayloads.length > 0) {
       console.log(`[Wearables Audit] Committing to wearable_resting_hr: ${hrPayloads.length} rows`);
       const { error: hrError } = await supabaseAdmin
@@ -498,7 +690,6 @@ async function syncWhoop(connection: any): Promise<number> {
     }
   }
 
-  // Update connection state
   const updateData: any = { last_synced_at: now.toISOString() };
   if (isBackfill && !hasDbError && !isEmptyData) {
     updateData.backfill_completed = true;
@@ -514,7 +705,8 @@ async function syncWhoop(connection: any): Promise<number> {
 
 /**
  * GET route handler for cron sync triggers.
- * Verifies CRON_SECRET token and queries all connection points.
+ * Verifies CRON_SECRET token and queries all connection points, group by
+ * group (see ISO-06) so no single job execution spans tenant boundaries.
  */
 export async function GET(req: Request) {
   try {
@@ -528,56 +720,83 @@ export async function GET(req: Request) {
 
     const supabaseAdmin = createAdminClient();
 
-    // Query all active connections
-    const { data: connections, error: connErr } = await supabaseAdmin
-      .from('wearable_connections')
-      .select('*');
+    const { data: groups, error: groupsErr } = await supabaseAdmin
+      .from('groups')
+      .select('id, name')
+      .order('created_at', { ascending: true });
 
-    if (connErr) {
-      console.error('[Wearables Cron] Query connections error:', connErr);
-      return NextResponse.json({ error: connErr.message }, { status: 500 });
+    if (groupsErr) {
+      console.error('[Wearables Cron] Query groups error:', groupsErr);
+      return NextResponse.json({ error: groupsErr.message }, { status: 500 });
     }
 
-    const list = connections || [];
     let usersProcessed = 0;
     let successfulInserts = 0;
     const errorsList: string[] = [];
+    const processedGroups: { group: string; usersProcessed: number; inserts: number }[] = [];
 
-    // The Provider Switch Statement
-    for (const connection of list) {
-      try {
-        usersProcessed++;
-        let inserts = 0;
-        switch (connection.provider) {
-          case 'fitbit':
-            console.log(`[Wearables Debug] Routing user ${connection.user_id} (Provider: fitbit) to native syncGoogleHealthV4`);
-            inserts = await syncGoogleHealthV4(connection);
-            break;
-          case 'google_fit':
-            console.log(`[Wearables Debug] Routing user ${connection.user_id} (Provider: google_fit) to native syncGoogleHealthV4`);
-            inserts = await syncGoogleHealthV4(connection);
-            break;
-          case 'whoop':
-            console.log(`[Wearables Debug] Routing user ${connection.user_id} to syncWhoop`);
-            inserts = await syncWhoop(connection);
-            break;
-          default:
-            console.error(`[Wearables Debug] Unsupported provider: ${connection.provider}`);
-        }
-        successfulInserts += inserts;
-      } catch (error: any) {
-        console.error(
-          `[Wearables] Failed to sync ${connection.provider} for user ${connection.user_id}:`,
-          error
-        );
-        errorsList.push(`User ${connection.user_id} (${connection.provider}): ${error?.message || error}`);
+    for (const group of groups || []) {
+      const { data: connections, error: connErr } = await supabaseAdmin
+        .from('wearable_connections')
+        .select('*')
+        .eq('group_id', group.id);
+
+      if (connErr) {
+        console.error(`[Wearables Cron] Query connections error for group ${group.name}:`, connErr);
+        errorsList.push(`Group ${group.name}: ${connErr.message}`);
+        continue;
       }
+
+      // Auto-provision any WEARABLE_KEY_<PROVIDER>_<NICKNAME> env-var fallback
+      // connections for members who don't already have a real OAuth-linked row.
+      const allConnections = [...(connections || [])];
+      const envFallbackConnections = await provisionEnvFallbackConnections(supabaseAdmin, group.id, allConnections);
+      allConnections.push(...envFallbackConnections);
+
+      let groupUsersProcessed = 0;
+      let groupInserts = 0;
+
+      // The Provider Switch Statement
+      for (const connection of allConnections) {
+        try {
+          groupUsersProcessed++;
+          let inserts = 0;
+          switch (connection.provider) {
+            case 'fitbit':
+              console.log(`[Wearables Debug] Routing user ${connection.user_id} (Provider: fitbit, Group: ${group.name}) to native syncGoogleHealthV4`);
+              inserts = await syncGoogleHealthV4(connection);
+              break;
+            case 'google_fit':
+              console.log(`[Wearables Debug] Routing user ${connection.user_id} (Provider: google_fit, Group: ${group.name}) to native syncGoogleHealthV4`);
+              inserts = await syncGoogleHealthV4(connection);
+              break;
+            case 'whoop':
+              console.log(`[Wearables Debug] Routing user ${connection.user_id} (Group: ${group.name}) to syncWhoop`);
+              inserts = await syncWhoop(connection);
+              break;
+            default:
+              console.error(`[Wearables Debug] Unsupported provider: ${connection.provider}`);
+          }
+          groupInserts += inserts;
+        } catch (error: any) {
+          console.error(
+            `[Wearables] Failed to sync ${connection.provider} for user ${connection.user_id} (Group: ${group.name}):`,
+            error
+          );
+          errorsList.push(`Group ${group.name} / User ${connection.user_id} (${connection.provider}): ${error?.message || error}`);
+        }
+      }
+
+      usersProcessed += groupUsersProcessed;
+      successfulInserts += groupInserts;
+      processedGroups.push({ group: group.name, usersProcessed: groupUsersProcessed, inserts: groupInserts });
     }
 
     return NextResponse.json({
       success: errorsList.length === 0,
       usersProcessed,
       successfulInserts,
+      processedGroups,
       errors: errorsList,
     });
   } catch (err: any) {

@@ -118,3 +118,13 @@ export type RangeValue = typeof RANGE_OPTIONS[number]['value'];
 export function rangeToDays(range: string | undefined): number {
   return RANGE_OPTIONS.find((r) => r.value === range)?.days ?? 7;
 }
+
+/**
+ * Progression Challenges catalog (Dashboard & Challenges module, DASH-18).
+ * `challenge_type` on `challenge_progression`/`challenge_history` is a free
+ * text column — this is just the default UI menu of types to log against,
+ * matching the "Clash of Clans style" examples in the spec (20/50/100/150
+ * push-ups). Not DB-backed; a future task could move this to a per-group
+ * catalog table if groups need to customize it.
+ */
+export const PROGRESSION_CHALLENGE_TYPES = ['Push-ups', 'Pull-ups', 'Squats', 'Plank (seconds)'];

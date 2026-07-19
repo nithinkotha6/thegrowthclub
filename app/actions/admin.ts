@@ -1,10 +1,14 @@
 'use server';
 
 import { createAdminClient } from '@/lib/supabase/server';
+import { hashPin, isPinTakenInGroup } from '@/lib/security';
 import { revalidatePath } from 'next/cache';
+import { cookies } from 'next/headers';
 import { generateText } from 'ai';
 import { executeWithKeyRotation } from '@/utils/geminiPool';
+import { buildGodModePokePrompt } from '@/lib/ai/prompts';
 import { getSlangFor } from '@/utils/slangRouter';
+import { SESSION_COOKIE, decodeSession, type AppSession } from '@/lib/session';
 function getErrorMessage(err: unknown): string {
   if (!err) return 'An unknown error occurred';
   if (typeof err === 'string') return err;
@@ -22,10 +26,70 @@ function getErrorMessage(err: unknown): string {
   return String(err);
 }
 
+type AdminSessionResult =
+  | { session: AppSession; error: null }
+  | { session: null; error: string };
+
+/**
+ * Verifies the caller's session cookie, ensures a supplied groupId matches
+ * the session's own groupId (the session is the only trusted source of
+ * tenant scope, never the parameter), AND confirms the caller holds the
+ * `admin` role in that group's `group_members` row. Every admin Server
+ * Action must call this before touching the database.
+ *
+ * SEC-01 fix: previously this only checked session validity + group match,
+ * never the caller's role — any authenticated member could invoke these
+ * Server Actions directly (privilege escalation). Mirrors the role check
+ * already used by `requireGroupAdminSession()` in app/actions/groups.ts.
+ */
+async function requireAdminSession(passedGroupId?: string): Promise<AdminSessionResult> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+  const session = token ? await decodeSession(token) : null;
+
+  if (!session) {
+    return { session: null, error: 'Unauthorized: Session credentials mismatch.' };
+  }
+  if (passedGroupId && passedGroupId !== session.groupId) {
+    return { session: null, error: 'Unauthorized: group mismatch.' };
+  }
+
+  const supabase = createAdminClient(session.groupId);
+  const { data: membership } = await supabase
+    .from('group_members')
+    .select('role')
+    .eq('user_id', session.userId)
+    .eq('group_id', session.groupId)
+    .maybeSingle();
+
+  if (!membership || membership.role !== 'admin') {
+    return { session: null, error: 'Unauthorized: admin role required for this group.' };
+  }
+  return { session, error: null };
+}
+
+/** Confirms a target user is a member of the given group before an admin action mutates them. */
+async function verifyUserInGroup(
+  supabase: ReturnType<typeof createAdminClient>,
+  userId: string,
+  groupId: string
+): Promise<boolean> {
+  const { data } = await supabase
+    .from('group_members')
+    .select('user_id')
+    .eq('user_id', userId)
+    .eq('group_id', groupId)
+    .maybeSingle();
+  return !!data;
+}
+
 // A. Check Bot Mute Status
 export async function getBotMuteStatus(): Promise<boolean> {
   try {
-    const supabase = createAdminClient();
+    const { session } = await requireAdminSession();
+    if (!session) return false;
+
+    const supabase = createAdminClient(session.groupId);
     const { data } = await supabase
       .from('system_settings')
       .select('value')
@@ -41,7 +105,10 @@ export async function getBotMuteStatus(): Promise<boolean> {
 // B. Toggle Bot Mute Status
 export async function adminToggleBotMute(isMuted: boolean) {
   try {
-    const supabase = createAdminClient();
+    const { session, error: sessionError } = await requireAdminSession();
+    if (!session) return { success: false, error: sessionError };
+
+    const supabase = createAdminClient(session.groupId);
     const val = isMuted ? 'true' : 'false';
     const { error } = await supabase
       .from('system_settings')
@@ -59,15 +126,30 @@ export async function adminToggleBotMute(isMuted: boolean) {
 // C. Reset User PIN
 export async function adminResetPin(userId: string, newPin: string, groupId?: string) {
   try {
+    const { session, error: sessionError } = await requireAdminSession(groupId);
+    if (!session) return { success: false, error: sessionError };
+
     const sanitizedPin = newPin.replace(/\s/g, '').trim();
     if (sanitizedPin.length !== 4 || isNaN(Number(sanitizedPin))) {
       return { success: false, error: 'PIN must be exactly 4 digits.' };
     }
 
-    const supabase = createAdminClient(groupId);
+    const supabase = createAdminClient(session.groupId);
+    if (!(await verifyUserInGroup(supabase, userId, session.groupId))) {
+      return { success: false, error: 'Unauthorized: user not in your group.' };
+    }
+
+    // QA-01: check PIN collision within the group before persisting (see
+    // signUpAction's identical check for why this can't rely on the DB
+    // constraint anymore now that PINs are bcrypt-hashed).
+    if (await isPinTakenInGroup(supabase, session.groupId, sanitizedPin, userId)) {
+      return { success: false, error: 'That PIN is already in use by another member of this group.' };
+    }
+
+    // SEC-04: hash the new PIN before persisting, never store it as plaintext.
     const { error } = await supabase
       .from('profiles')
-      .update({ pin: sanitizedPin })
+      .update({ pin: await hashPin(sanitizedPin) })
       .eq('id', userId);
 
     if (error) throw error;
@@ -82,16 +164,23 @@ export async function adminResetPin(userId: string, newPin: string, groupId?: st
 // D. Promote/Demote Member Role
 export async function adminUpdateMemberRole(userId: string, groupId: string, newRole: string) {
   try {
+    const { session, error: sessionError } = await requireAdminSession(groupId);
+    if (!session) return { success: false, error: sessionError };
+
     if (newRole !== 'admin' && newRole !== 'co-admin' && newRole !== 'member') {
       return { success: false, error: 'Invalid role.' };
     }
 
-    const supabase = createAdminClient();
+    const supabase = createAdminClient(session.groupId);
+    if (!(await verifyUserInGroup(supabase, userId, session.groupId))) {
+      return { success: false, error: 'Unauthorized: user not in your group.' };
+    }
+
     const { error } = await supabase
       .from('group_members')
       .update({ role: newRole })
       .eq('user_id', userId)
-      .eq('group_id', groupId);
+      .eq('group_id', session.groupId);
 
     if (error) throw error;
     return { success: true };
@@ -105,12 +194,19 @@ export async function adminUpdateMemberRole(userId: string, groupId: string, new
 // E. Remove Member from Group Room
 export async function adminRemoveMember(userId: string, groupId: string) {
   try {
-    const supabase = createAdminClient();
+    const { session, error: sessionError } = await requireAdminSession(groupId);
+    if (!session) return { success: false, error: sessionError };
+
+    const supabase = createAdminClient(session.groupId);
+    if (!(await verifyUserInGroup(supabase, userId, session.groupId))) {
+      return { success: false, error: 'Unauthorized: user not in your group.' };
+    }
+
     const { error } = await supabase
       .from('group_members')
       .delete()
       .eq('user_id', userId)
-      .eq('group_id', groupId);
+      .eq('group_id', session.groupId);
 
     if (error) throw error;
     return { success: true };
@@ -124,7 +220,13 @@ export async function adminRemoveMember(userId: string, groupId: string) {
 // F. Trigger Poke/Roast Motivation
 export async function adminTriggerPoke(userId: string, groupId: string, tone: string, genderStyle: string = 'auto', customContext?: string) {
   try {
-    const supabase = createAdminClient(groupId);
+    const { session, error: sessionError } = await requireAdminSession(groupId);
+    if (!session) return { success: false, error: sessionError };
+
+    const supabase = createAdminClient(session.groupId);
+    if (!(await verifyUserInGroup(supabase, userId, session.groupId))) {
+      return { success: false, error: 'Unauthorized: user not in your group.' };
+    }
 
     // Resolve profile details defensively to handle cases where the database is missing the gender column
     let profile: any = null;
@@ -176,6 +278,7 @@ export async function adminTriggerPoke(userId: string, groupId: string, tone: st
         .from('member_lore')
         .select('*')
         .eq('user_id', userId)
+        .eq('group_id', session.groupId)
         .maybeSingle();
 
       if (loreData) {
@@ -195,14 +298,14 @@ export async function adminTriggerPoke(userId: string, groupId: string, tone: st
       console.warn('[adminTriggerPoke] Failed to fetch member lore defensively:', err);
     }
 
-    // Fetch routed slang words
-    const slangWords = getSlangFor(tone, resolvedGender);
+    // Fetch routed slang words (vocab_banks is per-group, see ISO-04)
+    const slangWords = await getSlangFor(session.groupId, tone, resolvedGender);
 
     // Resolve group info for Green API details
     const { data: group } = await supabase
       .from('groups')
       .select('name, whatsapp_instance_id, whatsapp_token, whatsapp_group_id')
-      .eq('id', groupId)
+      .eq('id', session.groupId)
       .single();
 
     const instanceId = group?.whatsapp_instance_id || process.env.GREEN_API_INSTANCE_ID;
@@ -238,24 +341,14 @@ export async function adminTriggerPoke(userId: string, groupId: string, tone: st
       : '';
 
     // Call Gemini
-    const promptText = `Act as 'Fisky', the ultimate instigator, flirt, and witty Gen-Z banter-engine for a Telugu friends group. You are NOT a referee.
-Write a short, punchy WhatsApp message to "${userName}" in a strictly "${tone}" vibe.
-The target user's gender is "${resolvedGender}".
-
-=== DYNAMIC PERSONA & RIZZ MATRIX (CRITICAL) ===
-You must proactively flirt based on the target's gender using epic rizz and witty pickup lines (English or Telugu):
-- If the target gender is "male", you MUST adopt a dramatic, highly possessive Telugu female persona. Flirt aggressively, use cheesy/cute pickup lines, act overly dramatic, and tease him relentlessly.
-- If the target gender is "female", you MUST adopt an ultra-confident, nonchalant "sigma male" persona. Flirt smoothly with sharp, witty rizz and playful arrogance.
-- If the target gender is "gay" or "unknown", use heavy sass, dramatic compliments, and playful friend-group teasing.
-
-=== STRICT RULES ===
-1. Language: Conversational Romanized Telugu (Telugu words spelled in English alphabet, e.g., "enti bro", "em chestunnav") mixed with Gen-Z English slang. NEVER use Telugu script.
-2. Vibe: Be extremely proactive, rage-baiting, and instigating. Pit friends against each other. Roast them while flirting.
-3. Pop Culture: Use currently trending Telugu Instagram meme humor and generic viral comedy expressions. You are STRICTLY FORBIDDEN from repetitively using Pushpa, RRR, or Baahubali. Do not rely on one specific movie.
-${loreInstruction ? '\n' + loreInstruction : ''}${slangInstruction ? '\n' + slangInstruction : ''}${contextInstruction ? '\n' + contextInstruction : ''}
-4. If a gang nemesis is listed in their lore, mockingly compare the target to them to start a clash.
-5. Format: Keep the message under 60 words. Use emojis natively.
-6. NO MARKDOWN: Do NOT use asterisks, bolding, or italics. Return raw plain text only.`;
+    const promptText = buildGodModePokePrompt({
+      userName,
+      tone,
+      resolvedGender,
+      loreInstruction,
+      slangInstruction,
+      contextInstruction,
+    });
 
     const result = await executeWithKeyRotation(async (modelInstance) => {
       return generateText({
@@ -297,16 +390,35 @@ ${loreInstruction ? '\n' + loreInstruction : ''}${slangInstruction ? '\n' + slan
 
 /* ── God Mode Log Editor Actions ────────────────────────────────────────── */
 
+async function verifyLogInGroup(supabase: ReturnType<typeof createAdminClient>, logId: string, groupId: string): Promise<boolean> {
+  const { data } = await supabase
+    .from('metric_logs')
+    .select('group_id')
+    .eq('id', logId)
+    .maybeSingle();
+  return !!data && String(data.group_id) === String(groupId);
+}
+
 export async function adminEditLog(logId: string, newValue: number, groupId?: string) {
   try {
-    const supabase = createAdminClient(groupId);
+    const { session, error: sessionError } = await requireAdminSession(groupId);
+    if (!session) return { success: false, error: sessionError };
+
+    const supabase = createAdminClient(session.groupId);
+    if (!(await verifyLogInGroup(supabase, logId, session.groupId))) {
+      return { success: false, error: 'Unauthorized: activity not found in your group.' };
+    }
+
     const { error } = await supabase
       .from('metric_logs')
       .update({ value: newValue })
       .eq('id', logId);
 
     if (error) throw error;
-    revalidatePath('/', 'layout');
+    // PERF-06: log edits only affect the dashboard chart/feed and leaderboard,
+    // not the whole layout (sidebar/nav don't depend on log values).
+    revalidatePath('/dashboard');
+    revalidatePath('/dashboard/leaderboard');
     return { success: true };
   } catch (err) {
     console.error('[adminEditLog] Error editing log:', err);
@@ -316,14 +428,23 @@ export async function adminEditLog(logId: string, newValue: number, groupId?: st
 
 export async function adminVerifyLog(logId: string, groupId?: string) {
   try {
-    const supabase = createAdminClient(groupId);
+    const { session, error: sessionError } = await requireAdminSession(groupId);
+    if (!session) return { success: false, error: sessionError };
+
+    const supabase = createAdminClient(session.groupId);
+    if (!(await verifyLogInGroup(supabase, logId, session.groupId))) {
+      return { success: false, error: 'Unauthorized: activity not found in your group.' };
+    }
+
     const { error } = await supabase
       .from('metric_logs')
       .update({ status: 'verified' })
       .eq('id', logId);
 
     if (error) throw error;
-    revalidatePath('/', 'layout');
+    // PERF-06: scoped to the routes that actually render log status.
+    revalidatePath('/dashboard');
+    revalidatePath('/dashboard/leaderboard');
     return { success: true };
   } catch (err) {
     console.error('[adminVerifyLog] Error verifying log:', err);
@@ -333,14 +454,23 @@ export async function adminVerifyLog(logId: string, groupId?: string) {
 
 export async function adminDeleteLog(logId: string, groupId?: string) {
   try {
-    const supabase = createAdminClient(groupId);
+    const { session, error: sessionError } = await requireAdminSession(groupId);
+    if (!session) return { success: false, error: sessionError };
+
+    const supabase = createAdminClient(session.groupId);
+    if (!(await verifyLogInGroup(supabase, logId, session.groupId))) {
+      return { success: false, error: 'Unauthorized: activity not found in your group.' };
+    }
+
     const { error } = await supabase
       .from('metric_logs')
       .delete()
       .eq('id', logId);
 
     if (error) throw error;
-    revalidatePath('/', 'layout');
+    // PERF-06: scoped to the routes that actually render log status.
+    revalidatePath('/dashboard');
+    revalidatePath('/dashboard/leaderboard');
     return { success: true };
   } catch (err) {
     console.error('[adminDeleteLog] Error deleting log:', err);
@@ -352,7 +482,14 @@ export async function adminDeleteLog(logId: string, groupId?: string) {
 
 export async function adminToggleUserActive(targetUserId: string, isActive: boolean, groupId?: string) {
   try {
-    const supabase = createAdminClient(groupId);
+    const { session, error: sessionError } = await requireAdminSession(groupId);
+    if (!session) return { success: false, error: sessionError };
+
+    const supabase = createAdminClient(session.groupId);
+    if (!(await verifyUserInGroup(supabase, targetUserId, session.groupId))) {
+      return { success: false, error: 'Unauthorized: user not in your group.' };
+    }
+
     const { error } = await supabase
       .from('profiles')
       .update({ is_active: isActive })
@@ -368,7 +505,14 @@ export async function adminToggleUserActive(targetUserId: string, isActive: bool
 
 export async function adminHardDeleteUser(targetUserId: string, groupId?: string) {
   try {
-    const supabase = createAdminClient(groupId);
+    const { session, error: sessionError } = await requireAdminSession(groupId);
+    if (!session) return { success: false, error: sessionError };
+
+    const supabase = createAdminClient(session.groupId);
+    if (!(await verifyUserInGroup(supabase, targetUserId, session.groupId))) {
+      return { success: false, error: 'Unauthorized: user not in your group.' };
+    }
+
     const { error } = await supabase
       .from('profiles')
       .delete()
@@ -386,10 +530,17 @@ export async function adminHardDeleteUser(targetUserId: string, groupId?: string
 
 export async function adminFetchAllLore(groupId?: string) {
   try {
-    const supabase = createAdminClient(groupId);
+    const { session, error: sessionError } = await requireAdminSession(groupId);
+    if (!session) return { success: false, error: sessionError, data: [] };
+
+    const supabase = createAdminClient(session.groupId);
+
+    // member_lore now carries its own group_id column (see ISO-04) — filter
+    // directly on it instead of joining through group_members (ISO-03).
     const { data, error } = await supabase
       .from('member_lore')
-      .select('*');
+      .select('*')
+      .eq('group_id', session.groupId);
 
     if (error) throw error;
     return { success: true, data: data || [] };
@@ -412,11 +563,19 @@ export async function adminUpsertMemberLore(
   groupId?: string
 ) {
   try {
-    const supabase = createAdminClient(groupId);
+    const { session, error: sessionError } = await requireAdminSession(groupId);
+    if (!session) return { success: false, error: sessionError };
+
+    const supabase = createAdminClient(session.groupId);
+    if (!(await verifyUserInGroup(supabase, userId, session.groupId))) {
+      return { success: false, error: 'Unauthorized: user not in your group.' };
+    }
+
     const { error } = await supabase
       .from('member_lore')
       .upsert({
         user_id: userId,
+        group_id: session.groupId,
         stunts: data.stunts || [],
         good_habits: data.good_habits || [],
         bad_habits: data.bad_habits || [],
@@ -435,10 +594,14 @@ export async function adminUpsertMemberLore(
 
 export async function adminFetchVocabBanks(groupId?: string) {
   try {
-    const supabase = createAdminClient(groupId);
+    const { session, error: sessionError } = await requireAdminSession(groupId);
+    if (!session) return { success: false, error: sessionError, data: [] };
+
+    const supabase = createAdminClient(session.groupId);
     const { data, error } = await supabase
       .from('vocab_banks')
-      .select('*');
+      .select('*')
+      .eq('group_id', session.groupId);
 
     if (error) throw error;
     return { success: true, data: data || [] };
@@ -456,8 +619,12 @@ export async function adminUpsertVocabBank(
   groupId?: string
 ) {
   try {
-    const supabase = createAdminClient(groupId);
+    const { session, error: sessionError } = await requireAdminSession(groupId);
+    if (!session) return { success: false, error: sessionError };
+
+    const supabase = createAdminClient(session.groupId);
     const payload: any = {
+      group_id: session.groupId,
       tone,
       target_gender: gender,
       words,
@@ -479,11 +646,15 @@ export async function adminUpsertVocabBank(
 
 export async function adminDeleteVocabBank(id: string, groupId?: string) {
   try {
-    const supabase = createAdminClient(groupId);
+    const { session, error: sessionError } = await requireAdminSession(groupId);
+    if (!session) return { success: false, error: sessionError };
+
+    const supabase = createAdminClient(session.groupId);
     const { error } = await supabase
       .from('vocab_banks')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .eq('group_id', session.groupId);
 
     if (error) throw error;
     return { success: true };
@@ -504,19 +675,25 @@ export async function adminUploadAvatarAction(
   }
 
   try {
-    const supabase = createAdminClient(groupId);
+    const { session, error: sessionError } = await requireAdminSession(groupId);
+    if (!session) return { success: false, error: sessionError };
+
+    const supabase = createAdminClient(session.groupId);
+    if (!(await verifyUserInGroup(supabase, userId, session.groupId))) {
+      return { success: false, error: 'Unauthorized: user not in your group.' };
+    }
 
     // 1. Decode base64 to binary Buffer
     const buffer = Buffer.from(base64Image, 'base64');
 
-    // 2. Generate unique filename
-    const fileExt = fileName.split('.').pop() || 'jpg';
-    const cleanFileName = `${userId}_${Date.now()}.${fileExt}`;
-    const filePath = `avatars/${cleanFileName}`;
+    // 2. Deterministic filename per user — exactly one master picture per
+    // person lives in Supabase Storage, no timestamped duplicates.
+    const fileExt = fileName.split('.').pop()?.toLowerCase() || 'jpg';
+    const filePath = `${userId}.${fileExt}`;
 
-    // 3. Ensure avatars bucket exists and is public
+    // 3. Ensure the 'profiles' bucket exists and is public
     try {
-      await supabase.storage.createBucket('avatars', {
+      await supabase.storage.createBucket('profiles', {
         public: true,
         fileSizeLimit: 1048576, // 1MB limit
       });
@@ -524,9 +701,19 @@ export async function adminUploadAvatarAction(
       console.log('Bucket check/creation warning:', bucketErr);
     }
 
-    // 4. Upload buffer to avatars storage bucket
+    // 4. Remove any stale file for this user under a different extension, so
+    // exactly one master picture ever exists per person.
+    const { data: existingFiles } = await supabase.storage.from('profiles').list('', { search: userId });
+    const staleFiles = (existingFiles || [])
+      .map((f) => f.name)
+      .filter((name) => name.startsWith(`${userId}.`) && name !== filePath);
+    if (staleFiles.length > 0) {
+      await supabase.storage.from('profiles').remove(staleFiles);
+    }
+
+    // 5. Upload buffer to the profiles storage bucket (upsert = overwrite the master file)
     const { error: uploadErr } = await supabase.storage
-      .from('avatars')
+      .from('profiles')
       .upload(filePath, buffer, {
         contentType: `image/${fileExt === 'png' ? 'png' : 'jpeg'}`,
         upsert: true,
@@ -537,17 +724,17 @@ export async function adminUploadAvatarAction(
       return { success: false, error: `Storage upload failed: ${uploadErr.message}` };
     }
 
-    // 5. Get Public URL
+    // 6. Get Public URL (cache-busted so overwriting the master file is reflected immediately)
     const { data: publicUrlData } = supabase.storage
-      .from('avatars')
+      .from('profiles')
       .getPublicUrl(filePath);
 
-    const publicUrl = publicUrlData?.publicUrl;
+    const publicUrl = publicUrlData?.publicUrl ? `${publicUrlData.publicUrl}?v=${Date.now()}` : null;
     if (!publicUrl) {
       return { success: false, error: 'Failed to retrieve public URL for uploaded avatar.' };
     }
 
-    // 6. Update user's profiles table record
+    // 7. Update user's profiles table record
     const { error: dbErr } = await supabase
       .from('profiles')
       .update({ avatar_url: publicUrl })
@@ -558,13 +745,34 @@ export async function adminUploadAvatarAction(
       return { success: false, error: `Profile update failed: ${dbErr.message}` };
     }
 
-    // 7. Force Next.js cache revalidation
+    // 8. Force Next.js cache revalidation
     revalidatePath('/', 'layout');
 
     return { success: true, avatarUrl: publicUrl };
   } catch (err) {
     console.error('[adminUploadAvatarAction] Crash:', err);
     return { success: false, error: getErrorMessage(err) };
+  }
+}
+
+// G0. Fetch active bot moods (lookup table backing the mood picker)
+export async function adminFetchBotMoods(groupId?: string) {
+  try {
+    const { session, error: sessionError } = await requireAdminSession(groupId);
+    if (!session) return { success: false, error: sessionError, data: [] };
+
+    const supabase = createAdminClient(session.groupId);
+    const { data, error } = await supabase
+      .from('bot_moods')
+      .select('slug, label')
+      .eq('is_active', true)
+      .order('label', { ascending: true });
+
+    if (error) throw error;
+    return { success: true, data: data || [] };
+  } catch (err) {
+    console.error('[adminFetchBotMoods] Error:', err);
+    return { success: false, error: getErrorMessage(err), data: [] };
   }
 }
 
@@ -575,13 +783,19 @@ export async function adminUpdatePersistentMood(
   targetUserId: string | null
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const supabase = createAdminClient();
+    const { session, error: sessionError } = await requireAdminSession(groupId);
+    if (!session) return { success: false, error: sessionError ?? undefined };
+
+    const supabase = createAdminClient(session.groupId);
+    if (targetUserId && !(await verifyUserInGroup(supabase, targetUserId, session.groupId))) {
+      return { success: false, error: 'Unauthorized: user not in your group.' };
+    }
 
     const { error } = await supabase
       .from('bot_persistent_state')
       .upsert(
         {
-          group_id: groupId,
+          group_id: session.groupId,
           persistent_mood: mood,
           target_user_id: targetUserId || null,
           updated_at: new Date().toISOString(),

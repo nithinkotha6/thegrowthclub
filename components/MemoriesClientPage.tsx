@@ -354,7 +354,7 @@ export default function MemoriesClientPage({
         <div className="flex flex-col gap-4">
           
           {/* Main Cinematic Image Card */}
-          <div className="relative w-full h-[380px] md:h-[480px] bg-white rounded-[24px] overflow-hidden shadow-[0_8px_30px_rgba(0,0,0,0.06)] border border-slate-200/50 flex items-center justify-center group select-none">
+          <div className="relative w-full h-[380px] md:h-[480px] bg-white rounded-card overflow-hidden shadow-raised border border-slate-200/50 flex items-center justify-center group select-none">
             {activeImageUrl && (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -426,7 +426,7 @@ export default function MemoriesClientPage({
           </div>
 
           {/* ── Instagram-Style Comments Card ────────────────────────── */}
-          <div className="bg-white rounded-[24px] border border-white/5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] p-5 flex flex-col gap-4">
+          <div className="bg-white rounded-card border border-white/5 shadow-raised p-5 flex flex-col gap-4">
             <h2 className="text-base font-black text-[#111827] flex items-center gap-2">
               <MessageSquare className="w-5 h-5 text-gray-500" />
               Comments ({activeComments.length})
@@ -482,7 +482,7 @@ export default function MemoriesClientPage({
         </div>
       ) : (
         /* ── Empty State Showcase ───────────────────────────────────── */
-        <div className="bg-white rounded-[24px] border border-white/5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] p-16 text-center flex flex-col items-center justify-center gap-3">
+        <div className="bg-white rounded-card border border-white/5 shadow-raised p-16 text-center flex flex-col items-center justify-center gap-3">
           <Camera size={44} className="text-gray-300 stroke-[1.5]" />
           <h2 className="text-base font-black text-gray-800">No memories uploaded for this group yet!</h2>
           <p className="text-xs font-bold text-gray-500 max-w-[280px] leading-relaxed">
@@ -525,7 +525,7 @@ export default function MemoriesClientPage({
           setUploadPreview('');
         }
       }}>
-        <DialogContent className="sm:max-w-md rounded-[24px] p-7">
+        <DialogContent className="sm:max-w-md rounded-overlay p-7">
           <DialogHeader>
             <DialogTitle className="text-xl font-black tracking-tight text-[#111827]">
               Post a Memory

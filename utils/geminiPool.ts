@@ -45,7 +45,22 @@ export async function executeWithKeyRotation<T>(
       const modelInstance = provider(modelName);
 
       try {
-        return await fn(modelInstance, provider);
+        const startedAt = Date.now();
+        const result = await fn(modelInstance, provider);
+        const latencyMs = Date.now() - startedAt;
+        const usage = (result as { usage?: { promptTokens?: number; completionTokens?: number } } | undefined)?.usage;
+
+        // AGENT-04: success-path observability. Never log the raw API key —
+        // only its position in the rotation pool (keyIndex).
+        console.log('[geminiPool] success', {
+          model: modelName,
+          keyIndex: i,
+          latencyMs,
+          promptTokens: usage?.promptTokens,
+          completionTokens: usage?.completionTokens,
+        });
+
+        return result;
       } catch (err: unknown) {
         const errStr = String(err);
         const isRateLimit =
@@ -55,14 +70,25 @@ export async function executeWithKeyRotation<T>(
           (err && typeof err === 'object' && ('status' in err && (err as { status?: number }).status === 429));
 
         if (isRateLimit) {
-          console.warn(`[geminiPool] Key index ${i} with model ${modelName} rate-limited. Trying next fallback model...`);
+          const nextModel = MODEL_CASCADE[j + 1];
+          console.warn('[geminiPool] cascade', {
+            keyIndex: i,
+            fromModel: modelName,
+            toModel: nextModel ?? '(next key)',
+            reason: 'rate-limit',
+          });
           continue;
         }
 
         // Skip to the next API key immediately if it is a key auth error or bad argument
         const isAuthError = errStr.includes('API key') || errStr.includes('INVALID_ARGUMENT') || errStr.includes('400');
         if (isAuthError) {
-          console.warn(`[geminiPool] Key index ${i} failed credentials validation. Skipping key...`);
+          console.warn('[geminiPool] cascade', {
+            keyIndex: i,
+            fromModel: modelName,
+            toModel: '(next key)',
+            reason: 'auth-error',
+          });
           break;
         }
 

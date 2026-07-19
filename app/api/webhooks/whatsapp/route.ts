@@ -4,7 +4,7 @@ export const maxDuration = 60; // Allow up to 60 seconds for LLM processing
 
 import { generateText } from 'ai';
 import { sendWhatsAppGroupMessage } from '@/lib/whatsapp';
-import { buildGroupAssistantPrompt } from '@/lib/ai/prompts';
+import { buildWebhookReplyPrompt, PROMPT_VERSION } from '@/lib/ai/prompts';
 import { createAdminClient } from '@/lib/supabase/server';
 import { safeCompare } from '@/lib/security';
 import { executeWithKeyRotation } from '@/utils/geminiPool';
@@ -60,7 +60,6 @@ export async function POST(req: Request) {
       'GEMINI_API_KEY',
       'GREEN_API_INSTANCE_ID',
       'GREEN_API_TOKEN',
-      'WHATSAPP_GROUP_ID',
       'SUPABASE_SERVICE_ROLE_KEY',
     ];
     const missingKeys = requiredKeys.filter((key) => !process.env[key]);
@@ -95,10 +94,31 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, ignored: 'not an incoming text message' });
     }
 
-    // Verify chat group ID matches our target group
-    if (chatId !== process.env.WHATSAPP_GROUP_ID) {
-      return NextResponse.json({ ok: true, ignored: 'non-target chat ID' });
+    // Resolve which group this message belongs to by matching chatId against
+    // groups.whatsapp_group_id (see ISO-05) — no longer a single hardcoded
+    // WHATSAPP_GROUP_ID env var comparison. Reject inbound webhooks whose
+    // chatId doesn't match any configured group, or whose matched group has
+    // no whatsapp_instance_id configured (defense against replayed webhooks
+    // from a decommissioned group).
+    const { data: groups, error: groupsLookupError } = await supabaseAdmin
+      .from('groups')
+      .select('*')
+      .order('created_at', { ascending: true });
+
+    if (groupsLookupError) {
+      console.error('[webhook/whatsapp] groups lookup error:', groupsLookupError);
     }
+
+    const targetGroup = groups?.find(g => g.whatsapp_group_id === chatId);
+    if (!targetGroup || !targetGroup.whatsapp_instance_id) {
+      return NextResponse.json({ ok: true, ignored: 'no group configured for this chat ID' });
+    }
+
+    const groupWaCredentials = {
+      instanceId: targetGroup.whatsapp_instance_id,
+      token: targetGroup.whatsapp_token,
+      chatId: targetGroup.whatsapp_group_id,
+    };
 
     // Extract text message using robust parser
     const incomingMessage = extractMessageText(body);
@@ -109,23 +129,13 @@ export async function POST(req: Request) {
 
     // Task 2.3: Implement /clear Memory Wipe Command
     if (incomingMessage.trim().toLowerCase() === '/clear') {
-      const supabaseAdmin = createAdminClient();
-      
-      const { data: groups } = await supabaseAdmin
-        .from('groups')
-        .select('*')
-        .order('created_at', { ascending: true });
-        
-      const targetGroup = groups?.find(g => g.name === 'Texas Buds' || g.invite_code === 'TEXASBUDS') || groups?.[0];
-      if (targetGroup) {
-        await supabaseAdmin
-          .from('chat_history')
-          .delete()
-          .eq('group_id', targetGroup.id);
-      }
+      await supabaseAdmin
+        .from('chat_history')
+        .delete()
+        .eq('group_id', targetGroup.id);
 
       const clearReply = `🧹 *Memory Cleared!*\n\nShort-term chat context has been wiped. I'm ready for a fresh topic! (System rules and game XP remain intact).`;
-      await sendWhatsAppGroupMessage(clearReply);
+      await sendWhatsAppGroupMessage(clearReply, undefined, groupWaCredentials);
       return NextResponse.json({ ok: true, message: 'memory cleared' });
     }
 
@@ -139,76 +149,79 @@ export async function POST(req: Request) {
       try {
         console.log('[webhook/whatsapp] Background processing started...');
         const supabaseAdmin = createAdminClient();
-
-        // Look for group in DB (default to Texas Buds or fallback to first group)
-        const { data: groups, error: groupsError } = await supabaseAdmin
-          .from('groups')
-          .select('*')
-          .order('created_at', { ascending: true });
-
-        if (groupsError) {
-          console.error('[webhook/whatsapp] groups query error:', groupsError);
-        }
-
-        const targetGroup = groups?.find(g => g.name === 'Texas Buds' || g.invite_code === 'TEXASBUDS') || groups?.[0];
-        if (!targetGroup) {
-          console.error('[webhook/whatsapp] No groups resolved in database');
-          return;
-        }
-
         const groupId = targetGroup.id;
 
-        // Fetch sender's profile for nickname and gender to support flirting logic
-        let senderNickname: string | null = null;
-        let senderGender: string | null = null;
+        // PERF-07: the queries below are all independent of each other — each
+        // keys off `groupId` (or `rawSender`, known upfront) with no
+        // cross-dependency — so fire them concurrently via Promise.all
+        // instead of sequential awaits. The one truly dependent query
+        // (targetProfile, which needs persistentState's target_user_id)
+        // stays sequential, after this batch resolves.
+        const [
+          senderInfo,
+          formattedHistory,
+          recentLogsResult,
+          membersResult,
+          topGolfLogsResult,
+          persistentStateResult,
+          groupMembersResult,
+          recentLogs7dResult,
+        ] = await Promise.all([
+          // Fetch sender's profile for nickname
+          (async () => {
+            let senderNickname: string | null = null;
 
-        if (rawSender) {
-          const cleanPhone = rawSender.split('@')[0];
-          const { data: profileData } = await supabaseAdmin
-            .from('profiles')
-            .select('nickname, gender')
-            .or(`phone_number.eq.+${cleanPhone},phone_number.eq.${cleanPhone},phone_number.like.%${cleanPhone}%`)
-            .limit(1)
-            .maybeSingle();
+            if (rawSender) {
+              const cleanPhone = rawSender.split('@')[0];
+              const { data: profileData } = await supabaseAdmin
+                .from('profiles')
+                .select('nickname')
+                .or(`phone_number.eq.+${cleanPhone},phone_number.eq.${cleanPhone},phone_number.like.%${cleanPhone}%`)
+                .limit(1)
+                .maybeSingle();
 
-          if (profileData) {
-            senderNickname = profileData.nickname;
-            senderGender = profileData.gender;
-          }
-        }
-
-        // Task 2.2: Conversational Memory Optimization (The Token Clamp)
-        let formattedHistory: { role: 'user' | 'assistant'; content: string }[] = [];
-        try {
-          const { data: dbHistory, error: dbHistError } = await supabaseAdmin
-            .from('chat_history')
-            .select('role, content, created_at')
-            .eq('group_id', groupId)
-            .order('created_at', { ascending: false })
-            .limit(3); // Strictly retrieve only the last 3 messages of context
-
-          if (!dbHistError && dbHistory && dbHistory.length > 0) {
-            const lastMsgTime = new Date(dbHistory[0].created_at).getTime();
-            if (Date.now() - lastMsgTime > 30 * 60 * 1000) {
-              console.log('[webhook/whatsapp] Session inactivity: clearing old conversation memory context');
-              formattedHistory = [];
-            } else {
-              // Chronological order
-              const chronoHistory = dbHistory.slice().reverse();
-              formattedHistory = chronoHistory.map((h) => ({
-                role: h.role as 'user' | 'assistant',
-                content: h.content,
-              }));
+              if (profileData) {
+                senderNickname = profileData.nickname;
+              }
             }
-          }
-        } catch (dbHistErr) {
-          console.warn('[webhook/whatsapp] Failed to fetch chat history from DB:', dbHistErr);
-        }
+            return { senderNickname };
+          })(),
 
-        // B. Query latest 5 verified activities for the group
-        const { data: recentLogs, error: recentLogsError } = await supabaseAdmin
-          .from('metric_logs')
-          .select(`
+          // Task 2.2: Conversational Memory Optimization (The Token Clamp)
+          (async () => {
+            let formattedHistory: { role: 'user' | 'assistant'; content: string }[] = [];
+            try {
+              const { data: dbHistory, error: dbHistError } = await supabaseAdmin
+                .from('chat_history')
+                .select('role, content, created_at')
+                .eq('group_id', groupId)
+                .order('created_at', { ascending: false })
+                .limit(5); // Retrieve the last 3-5 messages of context (RULE_CONTEXT_WINDOW)
+
+              if (!dbHistError && dbHistory && dbHistory.length > 0) {
+                const lastMsgTime = new Date(dbHistory[0].created_at).getTime();
+                if (Date.now() - lastMsgTime > 30 * 60 * 1000) {
+                  console.log('[webhook/whatsapp] Session inactivity: clearing old conversation memory context');
+                  formattedHistory = [];
+                } else {
+                  // Chronological order
+                  const chronoHistory = dbHistory.slice().reverse();
+                  formattedHistory = chronoHistory.map((h) => ({
+                    role: h.role as 'user' | 'assistant',
+                    content: h.content,
+                  }));
+                }
+              }
+            } catch (dbHistErr) {
+              console.warn('[webhook/whatsapp] Failed to fetch chat history from DB:', dbHistErr);
+            }
+            return formattedHistory;
+          })(),
+
+          // B. Query latest 5 verified activities for the group
+          supabaseAdmin
+            .from('metric_logs')
+            .select(`
             id,
             value,
             unit,
@@ -216,38 +229,69 @@ export async function POST(req: Request) {
             logged_at,
             profiles!inner ( nickname, full_name )
           `)
-          .eq('group_id', groupId)
-          .eq('status', 'verified')
-          .order('logged_at', { ascending: false })
-          .limit(5);
+            .eq('group_id', groupId)
+            .eq('status', 'verified')
+            .order('logged_at', { ascending: false })
+            .limit(5),
 
+          // C. Query group members and verified top_golf logs for leaderboard calculation
+          supabaseAdmin
+            .from('group_members')
+            .select(`
+            user_id,
+            profiles!inner ( id, full_name, nickname )
+          `)
+            .eq('group_id', groupId),
+
+          supabaseAdmin
+            .from('metric_logs')
+            .select('user_id, value')
+            .eq('group_id', groupId)
+            .eq('status', 'verified')
+            .eq('metric_slug', 'top_golf'),
+
+          // D. Bot persistent state
+          supabaseAdmin
+            .from('bot_persistent_state')
+            .select('persistent_mood, target_user_id')
+            .eq('group_id', groupId)
+            .maybeSingle(),
+
+          // Active group members
+          supabaseAdmin
+            .from('group_members')
+            .select('user_id, profiles(id, nickname, full_name, is_active)')
+            .eq('group_id', groupId),
+
+          // 7-day activity
+          supabaseAdmin
+            .from('metric_logs')
+            .select('user_id')
+            .eq('group_id', groupId)
+            .eq('status', 'verified')
+            .gte('logged_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
+        ]);
+
+        const { senderNickname } = senderInfo;
+
+        const { data: recentLogs, error: recentLogsError } = recentLogsResult;
         if (recentLogsError) {
           console.error('[webhook/whatsapp] recentLogs query error:', recentLogsError);
         }
 
-        // C. Query group members and verified top_golf logs for leaderboard calculation
-        const { data: membersRaw, error: membersError } = await supabaseAdmin
-          .from('group_members')
-          .select(`
-            user_id,
-            profiles!inner ( id, full_name, nickname )
-          `)
-          .eq('group_id', groupId);
-
+        const { data: membersRaw, error: membersError } = membersResult;
         if (membersError) {
           console.error('[webhook/whatsapp] group_members query error:', membersError);
         }
 
-        const { data: topGolfLogs, error: topGolfLogsError } = await supabaseAdmin
-          .from('metric_logs')
-          .select('user_id, value')
-          .eq('group_id', groupId)
-          .eq('status', 'verified')
-          .eq('metric_slug', 'top_golf');
-
+        const { data: topGolfLogs, error: topGolfLogsError } = topGolfLogsResult;
         if (topGolfLogsError) {
           console.error('[webhook/whatsapp] top_golf logs query error:', topGolfLogsError);
         }
+
+        const { data: persistentState } = persistentStateResult;
+        const { data: groupMembers } = groupMembersResult;
+        const { data: recentLogs7d } = recentLogs7dResult;
 
         interface LeaderboardEntry {
           nickname: string;
@@ -294,13 +338,7 @@ export async function POST(req: Request) {
           });
 
         // D. Format contexts into text block (Pillar 1 Empty/Null Safeties)
-        // ── Query bot persistent state ───────────────────────────────────────
-        const { data: persistentState } = await supabaseAdmin
-          .from('bot_persistent_state')
-          .select('persistent_mood, target_user_id')
-          .eq('group_id', groupId)
-          .maybeSingle();
-
+        // (persistentState was fetched concurrently in the Promise.all batch above)
         let persistentMoodDirective = null;
         if (persistentState && persistentState.persistent_mood !== 'Normal') {
           const mood = persistentState.persistent_mood;
@@ -324,22 +362,11 @@ export async function POST(req: Request) {
         }
 
         // ── Find active group members & 7-day inactivity slackers ──────────
-        const { data: groupMembers } = await supabaseAdmin
-          .from('group_members')
-          .select('user_id, profiles(id, nickname, full_name, is_active)')
-          .eq('group_id', groupId);
-
+        // (groupMembers and recentLogs7d were fetched concurrently in the
+        // Promise.all batch above)
         const activeMembers = (groupMembers || [])
           .map((m) => m.profiles as any)
           .filter((p) => p && p.is_active !== false);
-
-        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-        const { data: recentLogs7d } = await supabaseAdmin
-          .from('metric_logs')
-          .select('user_id')
-          .eq('group_id', groupId)
-          .eq('status', 'verified')
-          .gte('logged_at', sevenDaysAgo);
 
         const activeUserIdsWithLogs = new Set((recentLogs7d || []).map((l) => l.user_id));
         const slackers = activeMembers.filter((m) => !activeUserIdsWithLogs.has(m.id));
@@ -347,7 +374,7 @@ export async function POST(req: Request) {
         let slackerDirective = null;
         if (slackers.length > 0) {
           const slackerNames = slackers.map((s) => s.nickname || s.full_name).join(', ');
-          slackerDirective = `CRITICAL SLACKER LIST: The following group members have logged ZERO activities in the last 7 days: [${slackerNames}]. Actively mock, shame, and make fun of their laziness (specifically targeting their names if relevant)! Call them "slackers" or use funny Romanized Telugu shaming terms (e.g. adavi manishi, waste fellow).`;
+          slackerDirective = `CRITICAL SLACKER LIST: The following group members have logged ZERO activities in the last 7 days: [${slackerNames}]. Actively mock, shame, and make fun of their laziness (specifically targeting their names if relevant). Call them "slackers" or use funny, playful shaming terms.`;
         }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const recentActivitiesText = (recentLogs || []).map((log: any) => {
@@ -371,27 +398,30 @@ export async function POST(req: Request) {
         const incomingWordCount = incomingMessage ? incomingMessage.split(' ').length : 10;
         const targetWordLimit = Math.max(15, incomingWordCount * 3);
 
+        // Prefer the name resolved from the sender's signed-up phone number
+        // (profiles.phone_number) over the raw WhatsApp push name — the two
+        // can differ (WhatsApp display name vs. app nickname), and using the
+        // resolved one consistently here keeps this turn's content aligned
+        // with what the system prompt already tells the AI ("You're replying
+        // to {senderNickname}") instead of contradicting it.
+        const resolvedSenderName = senderNickname || senderName;
+
         let text = '';
-        const promptText = `Message from ${senderName}: ${incomingMessage}`;
+        const promptText = `Message from ${resolvedSenderName}: ${incomingMessage}`;
 
         const finalMessages = [
           ...formattedHistory,
           { role: 'user' as const, content: promptText }
         ];
 
-        // 10% chance to organically trigger fitness coach interruption phrase (truly rare and random)
-        const triggerInterruption = Math.random() < 0.10;
-
         try {
           const result = await executeWithKeyRotation(async (modelInstance) => {
             return generateText({
               model: modelInstance,
-              system: buildGroupAssistantPrompt(
+              system: buildWebhookReplyPrompt(
                 dbContext,
                 targetWordLimit,
-                senderGender,
                 senderNickname || senderName,
-                triggerInterruption,
                 persistentMoodDirective,
                 slackerDirective
               ),
@@ -400,19 +430,28 @@ export async function POST(req: Request) {
           });
           text = result.text;
         } catch (llmError) {
-          console.error("AI execution failed or keys exhausted. Silently dropping reply to prevent spam.", llmError);
+          console.error("AI execution failed or keys exhausted. Sending fallback reply instead of dropping silently.", llmError);
+          try {
+            await sendWhatsAppGroupMessage(
+              "Brain's overheating right now 🥵 give me a sec and try that again.",
+              messageId,
+              groupWaCredentials
+            );
+          } catch (fallbackSendErr) {
+            console.error('[webhook/whatsapp] Failed to send fallback reply:', fallbackSendErr);
+          }
           return;
         }
 
         // Send LLM response back to the group quoting the trigger message JID
-        await sendWhatsAppGroupMessage(text, messageId);
+        await sendWhatsAppGroupMessage(text, messageId, groupWaCredentials);
         console.log('[webhook/whatsapp] Background processing completed successfully.');
 
         // F. Save messages to database chat_history
         try {
           await supabaseAdmin.from('chat_history').insert([
-            { group_id: groupId, role: 'user', sender_name: senderName, content: promptText },
-            { group_id: groupId, role: 'assistant', sender_name: 'Fisky', content: text },
+            { group_id: groupId, role: 'user', sender_name: resolvedSenderName, content: promptText },
+            { group_id: groupId, role: 'assistant', sender_name: 'Fisky', content: text, prompt_version: PROMPT_VERSION },
           ]);
         } catch (dbSaveErr) {
           console.error('[webhook/whatsapp] Failed to save conversation logs:', dbSaveErr);

@@ -35,21 +35,9 @@ const SIZE_NUMBERS = {
   '3xl': 96,
 };
 
-function getStaticAvatarPath(user: UserAvatarProps['user']): string | null {
-  const rawName = user.full_name || user.nickname || '';
-  if (!rawName) return null;
-
-  let firstName = rawName.trim().split(/\s+/)[0].toLowerCase();
-  if (!firstName) return null;
-
-  if (firstName === 'pixie') {
-    firstName = 'nithin';
-  }
-
-  return `/avatars/${firstName}.jpg`;
+function isValidAvatarUrl(url: string | null | undefined): url is string {
+  return !!url && url.startsWith('http') && !url.includes('dummy.jpg') && !url.includes('placeholder');
 }
-
-const LOADED_IMAGE_CACHE = new Set<string>();
 
 export default function UserAvatar({ user, size = 'md', className = '', borderColor, priority = false }: UserAvatarProps) {
   const [imgError, setImgError] = useState(false);
@@ -65,34 +53,20 @@ export default function UserAvatar({ user, size = 'md', className = '', borderCo
     .slice(0, 2)
     .toUpperCase() || '?';
 
-  // ── Tier 1: explicit DB URL ────────────────────────────────────────────
-  const dbUrl = user.avatar_url;
-  const isDbUrlValid = dbUrl &&
-                       dbUrl.startsWith('http') &&
-                       !dbUrl.includes('dummy.jpg') &&
-                       !dbUrl.includes('placeholder');
+  // Every profile picture lives in Supabase Storage as the single master
+  // picture for that person (profiles.avatar_url). No local/static fallback —
+  // if it's missing, we show initials.
+  const imgSrc = isValidAvatarUrl(user.avatar_url) ? user.avatar_url : null;
 
-  // ── Tier 2: static local photo ────────────────────────────────────────
-  const staticPath = !isDbUrlValid ? getStaticAvatarPath(user) : null;
+  const isRemoteSrc = !!imgSrc;
 
-  // Resolved image src: db url → static path → null (show initials)
-  const imgSrc = isDbUrlValid ? dbUrl : staticPath;
-
-  const [loaded, setLoaded] = useState(() => {
-    if (typeof window !== 'undefined' && imgSrc && LOADED_IMAGE_CACHE.has(imgSrc)) {
-      return true;
-    }
-    return false;
-  });
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     setImgError(false);
-    if (imgSrc && LOADED_IMAGE_CACHE.has(imgSrc)) {
-      setLoaded(true);
-    } else {
-      setLoaded(false);
-    }
+    setLoaded(false);
   }, [imgSrc]);
+
 
   const showImage = !!imgSrc && !imgError;
 
@@ -115,14 +89,12 @@ export default function UserAvatar({ user, size = 'md', className = '', borderCo
           alt={displayName}
           width={SIZE_NUMBERS[size]}
           height={SIZE_NUMBERS[size]}
+          sizes={`${SIZE_NUMBERS[size]}px`}
           priority={priority}
           className={`w-full h-full object-cover absolute inset-0 transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`}
-          onLoad={() => {
-            setLoaded(true);
-            if (imgSrc) LOADED_IMAGE_CACHE.add(imgSrc);
-          }}
+          onLoad={() => setLoaded(true)}
           onError={() => setImgError(true)}
-          unoptimized
+          unoptimized={!isRemoteSrc}
         />
       )}
       {(!loaded || !showImage) && (

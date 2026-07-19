@@ -95,7 +95,7 @@ export default async function VotingPanel({
   }
 
   return (
-    <div className="rounded-[24px] bg-white shadow-[0_2px_10px_rgba(0,0,0,0.04)] p-6">
+    <div className="rounded-card bg-white shadow-raised p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-2">

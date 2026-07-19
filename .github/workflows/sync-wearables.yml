@@ -13,4 +13,4 @@ jobs:
         run: |
           curl -f -X GET \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            "https://beyond-yesterday-app.vercel.app/api/cron/sync-wearables"
+            "${{ secrets.APP_BASE_URL }}/api/cron/sync-wearables"

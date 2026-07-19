@@ -12,7 +12,7 @@ function ensureNameHasEmoji(name: string): string {
   return name;
 }
 
-export async function createMetricDefinition(name: string, unit: string, sortDirection: 'asc' | 'desc') {
+export async function createMetricDefinition(name: string, unit: string, sortDirection: 'asc' | 'desc', requiresVerification: boolean = false) {
   if (!name.trim() || !unit.trim() || !sortDirection) {
     return { success: false, error: 'All fields are required.' };
   }
@@ -34,6 +34,7 @@ export async function createMetricDefinition(name: string, unit: string, sortDir
       unit: unit.trim(),
       sort_direction: sortDirection,
       group_id: session.groupId,
+      requires_verification: requiresVerification,
     })
     .select()
     .single();
@@ -133,6 +134,30 @@ export async function adminToggleMetricHidden(id: string, isHidden: boolean) {
     return { success: true };
   } catch (err) {
     console.error('[adminToggleMetricHidden] Error:', err);
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export async function adminToggleMetricRequiresVerification(id: string, requiresVerification: boolean) {
+  try {
+    const supabase = createAdminClient();
+    const { error } = await supabase
+      .from('metric_definitions')
+      .update({ requires_verification: requiresVerification })
+      .eq('id', id);
+
+    if (error) {
+      if (error.message.toLowerCase().includes('requires_verification')) {
+        return { success: false, error: 'Database column requires_verification is missing. Please run migration 0035_add_requires_verification_to_metric_definitions.sql first.' };
+      }
+      throw error;
+    }
+    revalidatePath('/settings/metrics');
+    revalidatePath('/dashboard');
+    revalidatePath('/dashboard/leaderboard');
+    return { success: true };
+  } catch (err) {
+    console.error('[adminToggleMetricRequiresVerification] Error:', err);
     return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
 }

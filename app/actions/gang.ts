@@ -11,6 +11,7 @@ export interface GangProfile {
   avatar_url: string | null;
   total_xp: number;
   current_level: number;
+  streak_count: number;
 }
 
 export async function fetchGangRoster() {
@@ -43,7 +44,7 @@ export async function fetchGangRoster() {
       .from('group_members')
       .select(`
         user_id,
-        profiles!inner ( id, full_name, nickname, avatar_url, total_xp, current_level, is_active )
+        profiles!inner ( id, full_name, nickname, avatar_url, total_xp, current_level, streak_count, is_active )
       `)
       .eq('group_id', groupId)
       .neq('profiles.is_active', false);

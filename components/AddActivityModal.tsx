@@ -180,7 +180,7 @@ export default function AddActivityModal({ userId, groupId, customPills }: AddAc
 
       {/* ── Dialog Overlay ── */}
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="sm:max-w-md rounded-[24px] p-7">
+        <DialogContent className="sm:max-w-md rounded-overlay p-7">
           <DialogHeader>
             <DialogTitle className="text-xl font-black tracking-tight text-[#111827]">
               Log an Activity

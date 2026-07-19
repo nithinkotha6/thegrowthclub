@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 import { SESSION_COOKIE, decodeSession } from '@/lib/session';
 import { executeWithKeyRotation } from '@/utils/geminiPool';
+import { buildMemoryCaptionPrompt } from '@/lib/ai/prompts';
 
 /**
  * Helper to build an admin/service-role client bypassing RLS, or fallback to anon client.
@@ -126,13 +127,7 @@ export async function uploadAndCreateMemoryAction(
         // Eagerly generate AI Caption based on image + user provided context
         let aiCaption = `"${uploaderName} shared a memory!"`;
         try {
-          const promptText = `You are a group chat assistant for a group of friends training together.
-The athlete "${uploaderName}" has uploaded a new picture to their shared digital memories archive.
-User-provided caption/context: ${caption || 'No caption provided'}.
-
-Analyze the context and write a fun, engaging, and motivating caption/banter for this memory.
-Keep it concise (1-2 sentences), formatted for a casual group chat.
-Do not use hashtags or markdown formatting (like bold, italics). Just plain text.`;
+          const promptText = buildMemoryCaptionPrompt({ uploaderName, caption });
 
           const { generateText } = await import('ai');
           const result = await executeWithKeyRotation(async (modelInstance) => {
@@ -186,7 +181,8 @@ Do not use hashtags or markdown formatting (like bold, italics). Just plain text
       console.error('[WhatsApp Broadcast] Unexpected exception:', broadcastErr);
     }
 
-    revalidatePath('/', 'layout');
+    // PERF-06: memories only render on the memories page, not the whole layout.
+    revalidatePath('/dashboard/memories');
     return { success: true, memory: dbData };
   } catch (err) {
     const error = err as Error;
@@ -239,7 +235,7 @@ export async function addMemoryComment(memoryId: string, content: string, userId
       return { success: false, error: error.message };
     }
 
-    revalidatePath('/', 'layout');
+    revalidatePath('/dashboard/memories');
     return { success: true, comment: data };
   } catch (err) {
     const error = err as Error;
@@ -280,7 +276,7 @@ export async function deleteMemoryAction(memoryId: string, userId: string) {
       return { success: false, error: error.message };
     }
 
-    revalidatePath('/', 'layout');
+    revalidatePath('/dashboard/memories');
     return { success: true, memory: data };
   } catch (err) {
     const error = err as Error;

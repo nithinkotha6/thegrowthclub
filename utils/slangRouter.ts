@@ -1,34 +1,56 @@
-/**
- * In-memory Slang Routing Utility
- * Maps user-selected conversational tones and gender styles
- * to target vocabulary arrays to bypass database latency.
- */
-
-const SLANG_MAP: Record<string, Record<string, string[]>> = {
-  ragebait: {
-    Male: ['kothi-badcow', 'adavi manishi', 'waste fellow', 'pichi-fellow'],
-    Female: ['over-action', 'drama queen', 'gossip-monger'],
-    Gay: ['over-action', 'drama queen', 'slay queen', 'fabulous fellow'],
-    Neutral: ['adavi manishi', 'waste fellow'],
-  },
-  flirt_tease: {
-    Male: ['hero', 'manmadhudu', 'heavy personality'],
-    Female: ['bangaram', 'heroine', 'angel', 'attitude queen'],
-    Gay: ['darling', 'sweetheart', 'gorgeous', 'slay queen'],
-    Neutral: ['bangaram'],
-  },
-  motivate: {
-    Male: ['tiger', 'machine', 'boss', 'champion'],
-    Female: ['queen', 'boss-lady', 'superstar'],
-    Gay: ['superstar', 'slay queen', 'champion', 'fabulous'],
-    Neutral: ['champion'],
-  },
-};
+import { createAdminClient } from '@/lib/supabase/server';
 
 /**
- * Returns tone & gender appropriate Romanized Telugu slang vocabulary list.
+ * Slang Routing Utility
+ *
+ * Maps user-selected conversational tones and gender styles to vocabulary
+ * arrays. Consumed by `adminTriggerPoke` (see `app/actions/admin.ts`) — the
+ * resolved array is injected verbatim into the LLM prompt as "friendly-insult
+ * / banter expressions" the model MUST incorporate.
+ *
+ * `vocab_banks` (managed via the admin Settings "Vocab Bank Editor" panel) is
+ * the single source of truth and is scoped per group via its `group_id`
+ * column (see ISO-04) — one group's admin-authored vocab never leaks into
+ * another group's poke output. This file contains no hardcoded vocabulary —
+ * only routing/normalization logic and a short-lived per-group read cache so
+ * repeated calls within the cache window don't hit the database every time.
  */
-export function getSlangFor(tone: string, gender: string): string[] {
+
+type VocabRow = { tone: string; target_gender: string; words: string[] };
+
+const CACHE_TTL_MS = 60_000;
+const cacheByGroup = new Map<string, { rows: VocabRow[]; fetchedAt: number }>();
+
+async function loadVocabBanks(groupId: string): Promise<VocabRow[]> {
+  const cached = cacheByGroup.get(groupId);
+  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
+    return cached.rows;
+  }
+
+  try {
+    const supabase = createAdminClient(groupId);
+    const { data, error } = await supabase
+      .from('vocab_banks')
+      .select('tone, target_gender, words')
+      .eq('group_id', groupId);
+
+    if (error) throw error;
+
+    const entry = { rows: data || [], fetchedAt: Date.now() };
+    cacheByGroup.set(groupId, entry);
+    return entry.rows;
+  } catch (err) {
+    console.error('[slangRouter] Failed to load vocab_banks:', err);
+    return cacheByGroup.get(groupId)?.rows || [];
+  }
+}
+
+/**
+ * Returns the tone + gender appropriate slang vocabulary list from the
+ * caller's own group's `vocab_banks` rows, or an empty array when no
+ * vocabulary is configured for the requested cell.
+ */
+export async function getSlangFor(groupId: string, tone: string, gender: string): Promise<string[]> {
   // Map UI tone strings to seed tones
   let mappedTone = 'ragebait';
   if (tone === 'motivate' || tone === 'praise') {
@@ -49,6 +71,12 @@ export function getSlangFor(tone: string, gender: string): string[] {
     targetGender = 'Gay';
   }
 
-  const list = SLANG_MAP[mappedTone]?.[targetGender] || SLANG_MAP[mappedTone]?.Neutral || [];
-  return list;
+  const rows = await loadVocabBanks(groupId);
+  const match = rows.find((r) => r.tone === mappedTone && r.target_gender === targetGender);
+  if (match) return match.words || [];
+
+  const neutralMatch = rows.find((r) => r.tone === mappedTone && r.target_gender === 'Neutral');
+  return neutralMatch?.words || [];
 }
+
+

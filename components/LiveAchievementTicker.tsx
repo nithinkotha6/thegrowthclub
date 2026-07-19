@@ -10,6 +10,7 @@ import { createClient } from '@/lib/supabase/server';
 type LogRow = {
   value: number;
   metric_slug: string;
+  metric_definitions: { name: string } | null;
   unit: string;
   profiles: { full_name: string | null; nickname: string | null } | null;
   headline?: string | null;
@@ -23,7 +24,9 @@ function formatAchievement(log: LogRow): string {
   const val  = Number(log.value);
   const slug = log.metric_slug ?? '';
   const unit = log.unit ?? '';
-  const metricName = slug.replace(/_/g, ' ');
+  // DATA-01 fix: resolve a custom metric's real name via the joined
+  // metric_definitions row instead of formatting the raw UUID text.
+  const metricName = log.metric_definitions?.name || slug.replace(/_/g, ' ');
  
   switch (slug) {
     case 'top_golf':
@@ -79,6 +82,7 @@ export default async function LiveAchievementTicker({ groupId }: { groupId: stri
     .select(`
       value,
       metric_slug,
+      metric_definitions ( name ),
       unit,
       headline,
       profiles!inner ( full_name, nickname )

@@ -33,7 +33,13 @@ export async function GET(req: Request) {
     return NextResponse.redirect(`${redirectBase}?error=access_denied`);
   }
 
-  const userId = state;
+  // State carries `userId:groupId` (see ISO-06) so this callback can tag the
+  // new wearable_connections row with the caller's own group.
+  const [userId, groupId] = state.split(':');
+  if (!userId || !groupId) {
+    console.error('[Google Callback] Malformed state parameter (expected userId:groupId):', state);
+    return NextResponse.redirect(`${redirectBase}?error=access_denied`);
+  }
 
   try {
     const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -80,6 +86,7 @@ export async function GET(req: Request) {
 
     const connData: any = {
       user_id: userId,
+      group_id: groupId,
       provider: 'fitbit',
       access_token: tokenData.access_token,
       expires_at: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),

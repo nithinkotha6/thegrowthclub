@@ -63,11 +63,11 @@ export async function ingestActivity(
   const supabase = createAdminClient();
  
   // Fetch active configurations and dynamic user metrics
-  const { data: configs } = await supabase.from('metrics_config').select('slug, display_name, unit');
+  const { data: configs } = await supabase.from('metrics_config').select('slug, display_name, unit, requires_verification');
   let customs = null;
   const { data: activeCustoms, error: hideCustomsErr } = await supabase
     .from('metric_definitions')
-    .select('id, name, unit')
+    .select('id, name, unit, requires_verification')
     .eq('group_id', groupId)
     .eq('is_hidden', false);
 
@@ -75,7 +75,7 @@ export async function ingestActivity(
     console.warn('[ingest] Failed to query with is_hidden filter (migration might be pending), falling back to full list.');
     const { data: fallbackCustoms } = await supabase
       .from('metric_definitions')
-      .select('id, name, unit')
+      .select('id, name, unit, requires_verification')
       .eq('group_id', groupId);
     customs = fallbackCustoms;
   } else {
@@ -152,14 +152,26 @@ User text: "${rawText}"`,
   }
  
   // ── 2. INSERT into metric_logs (v2 schema — metric_slug direct) ───────────
-  // status defaults to 'pending' → requires 3 peer votes to become 'verified'
+  // status defaults to 'pending' → requires 3 peer votes to become 'verified'.
+  // Checks both the built-in metrics_config flag AND the custom
+  // metric_definitions flag — a custom metric can now also require
+  // verification if its creator ticked that box in Settings.
+  const requiresVerification =
+    validConfigs.find(c => c.slug === extracted.metric_slug)?.requires_verification ??
+    validCustoms.find(c => c.id === extracted.metric_slug)?.requires_verification ??
+    false;
+  // DATA-01: custom metrics are still identified via metric_slug (holding the
+  // metric_definitions UUID) for backward compatibility, but are now also
+  // recorded via a real FK column so the reference is DB-enforced.
+  const matchedCustomMetric = validCustoms.find(c => c.id === extracted.metric_slug);
   const { error: insertErr } = await supabase.from('metric_logs').insert({
-    user_id:     userId,
-    group_id:    groupId,
-    metric_slug: extracted.metric_slug,
-    value:       extracted.value,
-    unit:        extracted.unit,
-    status:      (extracted.metric_slug === 'car_top_speed' || extracted.metric_slug === 'most_beers') ? 'pending' : 'verified',
+    user_id:              userId,
+    group_id:             groupId,
+    metric_slug:          extracted.metric_slug,
+    metric_definition_id: matchedCustomMetric?.id ?? null,
+    value:                extracted.value,
+    unit:                 extracted.unit,
+    status:               requiresVerification ? 'pending' : 'verified',
   });
  
   if (insertErr) {
@@ -172,7 +184,10 @@ User text: "${rawText}"`,
   }
  
   const { revalidatePath } = await import('next/cache');
-  revalidatePath('/', 'layout');
+  // PERF-06: log ingestion only affects the dashboard chart/feed and
+  // leaderboard, not the whole layout.
+  revalidatePath('/dashboard');
+  revalidatePath('/dashboard/leaderboard');
  
   return {
     success:     true,
