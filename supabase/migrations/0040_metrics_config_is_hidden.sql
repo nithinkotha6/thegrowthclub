@@ -16,10 +16,9 @@ ALTER TABLE public.metrics_config
 INSERT INTO public.metrics_config (slug, display_name, unit, sort_order, xp_reward)
 VALUES
   ('top_golf',          'Top Golf Shot',     'Yards',  'desc', 50),
-  ('weight',            'Weight',            'lbs',    'asc',  25),
-  ('highest_steps',     'Highest Steps',     'steps',  'desc', 25),
-  ('marathon',          'Marathon',          'hrs',    'asc',  25),
-  ('car_top_speed',     'Car Top Speed',     'mph',    'desc', 25),
+  ('steps',     'Steps',     'steps',  'desc', 25),
+  ('run',          'Run',          'miles',    'desc', 25),
+  ('Top_Speed',     'Top Speed',     'mph',    'desc', 25),
   ('underwater_swim',   'Underwater Swim',   'meters', 'desc', 25),
   ('most_beers',        'Most Beers',        'beers',  'desc', 25),
   ('catan_wins',        'Catan Wins',        'wins',   'desc', 25),

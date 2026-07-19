@@ -43,7 +43,7 @@ CREATE INDEX IF NOT EXISTS daily_goal_completions_user_id_idx ON public.daily_go
 CREATE INDEX IF NOT EXISTS daily_goal_completions_daily_goal_id_idx ON public.daily_goal_completions (daily_goal_id);
 -- One completion per user per goal per calendar day (only enforced while not deleted).
 CREATE UNIQUE INDEX IF NOT EXISTS daily_goal_completions_one_per_day_idx
-  ON public.daily_goal_completions (user_id, daily_goal_id, (completed_at::date))
+  ON public.daily_goal_completions (user_id, daily_goal_id, ((completed_at AT TIME ZONE 'UTC')::date))
   WHERE deleted_at IS NULL;
 
 ALTER TABLE public.daily_goal_completions ENABLE ROW LEVEL SECURITY;

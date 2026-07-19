@@ -26,6 +26,11 @@ create table if not exists public.groups (
   created_at  timestamptz not null default now()
 );
 
+-- Example Insert Script (Insert Values):
+-- INSERT INTO public.groups (name, invite_code) VALUES ('TEXASBUDS', 'texasbuds-invite');
+-- INSERT INTO public.groups (name, invite_code) VALUES ('BHUVANBHAI', 'bhuvanbhai-invite');
+
+
 -- ---------------------------------------------------------------------------
 -- TABLE: profiles
 -- One row per group member. id is a plain UUID — NOT tied to auth.users.

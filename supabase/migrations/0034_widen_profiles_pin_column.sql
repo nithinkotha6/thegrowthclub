@@ -14,4 +14,14 @@
 -- pending their lazy-migration rehash on next login).
 -- =============================================================================
 
+-- Drop the trigger that depends on the pin column
+DROP TRIGGER IF EXISTS trg_check_unique_pin_on_profile_update ON public.profiles;
+
+-- Alter the column type
 ALTER TABLE public.profiles ALTER COLUMN pin TYPE text;
+
+-- Recreate the trigger
+CREATE TRIGGER trg_check_unique_pin_on_profile_update
+  AFTER INSERT OR UPDATE OF pin ON public.profiles
+  FOR EACH ROW
+  EXECUTE FUNCTION public.check_unique_pin_on_profile_update();
