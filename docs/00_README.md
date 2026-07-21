@@ -2,8 +2,6 @@
 
 > **Last updated:** 2026-07-21
 
-A short tour of the `docs/` folder. Read top to bottom for a full picture, or jump straight to the file you need.
-
 ## Reference docs (numbered, read in this order for a full tour)
 
 | # | File | Covers |
