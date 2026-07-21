@@ -32,4 +32,3 @@
 - **Ground truth is the codebase.** If a doc and the code disagree, the code wins — file it as a doc bug.
 - **No duplicate sources of truth.** The cron schedule lives only in `09_` §0; the design tokens live only in `08_` §1; the RLS policy list lives only in `04_` §3 and `07_`. Other files link to these instead of repeating them.
 - **Revision Log tables at the top of each numbered doc are historical** — never rewritten, only appended to.
-- Every doc in this folder has a **"Last updated"** line near the top.
