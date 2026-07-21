@@ -1,6 +1,6 @@
 # 00 — Documentation Index
 
-> **Last updated:** 2026-07-19
+> **Last updated:** 2026-07-21
 
 A short tour of the `docs/` folder. Read top to bottom for a full picture, or jump straight to the file you need.
 
