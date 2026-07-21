@@ -1,6 +1,6 @@
 # Admin To-Do — Deployment Runbook
 
-> **Last updated:** 2026-07-19
+> **Last updated:** 2026-07-21
 
 This is an **external-actions runbook**, not a code doc. Every step below happens *outside* this repo (Supabase dashboard, Vercel dashboard, GitHub settings, third-party developer consoles) and cannot be automated by an agent working only inside the codebase. Work through it top to bottom before/during the first production deploy; re-run the relevant section any time a new migration or env var is added later.
 
