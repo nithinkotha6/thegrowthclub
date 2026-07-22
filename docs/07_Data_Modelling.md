@@ -18,6 +18,7 @@
 | 2026-07-22 | (Database Integrity) | §1.6 | Added migration `0041_metric_logs_unique_index.sql` documenting the composite UNIQUE index `metric_logs_unique_per_user_time_value` on `(user_id, metric_slug, (logged_at AT TIME ZONE 'UTC')::date, value) WHERE deleted_at IS NULL` to prevent duplicate activity logs on double-click or network retry. |
 | 2026-07-22 | (Code Cleanup & Observability) | §2.3 (new), `vote.ts` | Removed phantom deletion code for non-existent tables (`approvals`, `comments`, `memory_comments`, `xp_transactions`) from `deleteActivityAction`. Added §2.3 documenting database-level `ON DELETE CASCADE` rules (`metric_logs` → `log_votes`). Integrated structured logging (`lib/logger.ts`). |
 | 2026-07-22 | (Challenge & League Integrity) | §8.4, §8.8 | Added migration `0043_challenge_league_unique_constraints.sql` adding composite UNIQUE indexes `challenge_history_unique_per_user_day_value` on `challenge_history` and `league_match_logs_unique_per_match_user_action_day` on `league_match_logs` to prevent double-click / network retry duplicates. |
+| 2026-07-22 | (Daily Goals Redesign) | §8.1, §8.2 | Documented `lib/config/daily-goals.ts` predefined goals metrics ("10,000 steps", "50 Push-ups", "50 squads", "Gym streak", "Diet") auto-seeded into `daily_goals` and date-scoped completion logging via `logDailyGoalCompletion` in `app/actions/dailyGoals.ts`. |
 
 ---
 

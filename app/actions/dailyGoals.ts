@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 import { SESSION_COOKIE, decodeSession, type AppSession } from '@/lib/session';
+import { DAILY_GOAL_METRICS } from '@/lib/config/daily-goals';
 
 /**
  * Server Actions for the Daily Goals module (Dashboard & Challenges spec,
@@ -60,7 +61,7 @@ export type DailyGoalCompletion = {
   profiles?: { nickname: string | null; full_name: string | null } | null;
 };
 
-/** Fetch every daily goal defined for the caller's group. */
+/** Fetch every daily goal defined for the caller's group (auto-seeds predefined defaults if empty). */
 export async function getDailyGoals(): Promise<{ success: true; goals: DailyGoal[] } | { success: false; error: string }> {
   const { session, error } = await requireSession();
   if (!session) return { success: false, error: error! };
@@ -73,14 +74,35 @@ export async function getDailyGoals(): Promise<{ success: true; goals: DailyGoal
     .order('created_at', { ascending: true });
 
   if (dbErr) return { success: false, error: dbErr.message };
-  return { success: true, goals: data ?? [] };
+
+  let goals = data ?? [];
+
+  // Auto-seed predefined daily goals if group has no goals configured yet
+  if (goals.length === 0) {
+    const defaultInserts = DAILY_GOAL_METRICS.map((m) => ({
+      group_id: session.groupId,
+      title: m.name,
+      description: m.description ?? `${m.name} daily target`,
+    }));
+
+    const { data: seeded, error: seedErr } = await supabase
+      .from('daily_goals')
+      .insert(defaultInserts)
+      .select('id, title, description, created_at');
+
+    if (!seedErr && seeded && seeded.length > 0) {
+      goals = seeded;
+    }
+  }
+
+  return { success: true, goals };
 }
 
 /** Fetch today's (and recent) completions for the caller's group, for the
- * checkbox state + "Recent Activities (Daily)" list. Excludes soft-deleted
- * rows — the single shared filter every read of this table must apply. */
+ * checkbox state. Excludes soft-deleted rows — the single shared filter
+ * every read of this table must apply. */
 export async function getDailyGoalCompletions(
-  limit = 30,
+  limit = 200,
 ): Promise<{ success: true; completions: DailyGoalCompletion[] } | { success: false; error: string }> {
   const { session, error } = await requireSession();
   if (!session) return { success: false, error: error! };
@@ -124,19 +146,23 @@ export async function adminCreateDailyGoal(
  * Checkbox click → log completion (DASH-15). One completion per user per
  * goal per calendar day, enforced at the DB level (see migration 0036's
  * partial unique index) — a duplicate click surfaces a clean error instead
- * of a raw constraint message.
+ * of a raw constraint message. Supports custom target date (completedAtISO).
  */
 export async function logDailyGoalCompletion(
   dailyGoalId: string,
+  completedAtISO?: string,
 ): Promise<{ success: true } | { success: false; error: string }> {
   const { session, error } = await requireSession();
   if (!session) return { success: false, error: error! };
 
   const supabase = createAdminClient(session.groupId);
+  const completed_at = completedAtISO || new Date().toISOString();
+
   const { error: dbErr } = await supabase.from('daily_goal_completions').insert({
     group_id: session.groupId,
     user_id: session.userId,
     daily_goal_id: dailyGoalId,
+    completed_at,
   });
 
   if (dbErr) {
