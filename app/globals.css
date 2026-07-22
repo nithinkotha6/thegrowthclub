@@ -156,7 +156,7 @@
   100% { transform: translateX(-50%); }
 }
 .animate-ticker-scroll {
-  animation: ticker-scroll 40s linear infinite;
+  animation: ticker-scroll 33s linear infinite;
 }
 /* Pause on hover/focus for readability */
 .ticker-wrapper:hover .animate-ticker-scroll {

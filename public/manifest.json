@@ -1,18 +1,25 @@
 {
+  "id": "/",
   "name": "The Growth Club",
   "short_name": "Growth Club",
   "description": "Track activities, streaks, and challenges with your group.",
-  "start_url": "/dashboard",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#F7F8FA",
-  "theme_color": "#111827",
+  "background_color": "#0A0A0A",
+  "theme_color": "#0A0A0A",
   "icons": [
     {
       "src": "/logo.jpg",
       "sizes": "512x512",
       "type": "image/jpeg",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "any maskable"
     },
     {

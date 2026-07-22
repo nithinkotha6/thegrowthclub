@@ -280,7 +280,7 @@ export default function LandingPage() {
           <img
             src="/logo.jpg"
             alt="The Growth Club Logo"
-            className="w-16 h-16 rounded-2xl object-cover mb-3 border-2 border-[#CEFF00]/30 shadow-lg shadow-[#CEFF00]/10"
+            className="w-20 h-20 rounded-2xl object-cover mb-4 border-2 border-[#CEFF00]/30 shadow-xl shadow-[#CEFF00]/15"
           />
           <h1 className="text-3xl font-black uppercase tracking-tight text-white leading-none">
             The Growth Club

@@ -119,7 +119,7 @@ export default async function LiveAchievementTicker({ groupId }: { groupId: stri
         .animate-ticker-marquee {
           display: flex;
           white-space: nowrap;
-          animation: marquee 60s linear infinite;
+          animation: marquee 50s linear infinite;
         }
         @keyframes flashGreen {
           0%, 100% { opacity: 1; }
@@ -131,10 +131,10 @@ export default async function LiveAchievementTicker({ groupId }: { groupId: stri
       `}</style>
 
       {/* Pinned Broadcast Tag (compact 25%-30% horizontal space on mobile) */}
-      <div className="z-10 bg-slate-900 pl-3 pr-2 py-1 flex-shrink-0 w-[28%] max-w-[125px] md:w-auto md:max-w-none flex items-center gap-1.5 font-mono font-black tracking-wider text-[#CEFF00] uppercase text-[9px] md:text-xs border-r border-slate-800">
-        <span className="relative flex h-2 w-2 flex-shrink-0">
+      <div className="z-10 bg-slate-900 pl-3 pr-2 py-1 flex-shrink-0 w-[28%] max-w-[135px] md:w-auto md:max-w-none flex items-center gap-1.5 font-mono font-black tracking-wider text-[#CEFF00] uppercase text-[11.25px] md:text-[15px] border-r border-slate-800">
+        <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
         </span>
         <span className="truncate">BREAKING NEWS</span>
       </div>
@@ -143,7 +143,7 @@ export default async function LiveAchievementTicker({ groupId }: { groupId: stri
       <div className="flex-grow overflow-hidden flex items-center">
         <div className="animate-ticker-marquee" style={{ willChange: 'transform' }}>
           {doubled.map((sentence, i) => (
-            <span key={i} className="inline-flex items-center gap-2 font-mono font-normal tracking-wide text-white text-sm md:text-base mr-16">
+            <span key={i} className="inline-flex items-center gap-2 font-mono font-medium tracking-wide text-white text-[17.5px] md:text-xl mr-16">
               <span>{sentence}</span>
             </span>
           ))}
