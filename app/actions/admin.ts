@@ -418,7 +418,7 @@ export async function adminEditLog(logId: string, newValue: number, groupId?: st
     // PERF-06: log edits only affect the dashboard chart/feed and rankings,
     // not the whole layout (sidebar/nav don't depend on log values). Rankings
     // moved onto /dashboard itself, so revalidating it alone is sufficient.
-    revalidatePath('/dashboard');
+    revalidatePath('/', 'layout');
     return { success: true };
   } catch (err) {
     console.error('[adminEditLog] Error editing log:', err);
@@ -443,7 +443,7 @@ export async function adminVerifyLog(logId: string, groupId?: string) {
 
     if (error) throw error;
     // PERF-06: scoped to the routes that actually render log status.
-    revalidatePath('/dashboard');
+    revalidatePath('/', 'layout');
     return { success: true };
   } catch (err) {
     console.error('[adminVerifyLog] Error verifying log:', err);
@@ -468,7 +468,7 @@ export async function adminDeleteLog(logId: string, groupId?: string) {
 
     if (error) throw error;
     // PERF-06: scoped to the routes that actually render log status.
-    revalidatePath('/dashboard');
+    revalidatePath('/', 'layout');
     return { success: true };
   } catch (err) {
     console.error('[adminDeleteLog] Error deleting log:', err);
@@ -803,7 +803,10 @@ export async function adminUpdatePersistentMood(
 
     if (error) throw error;
 
-    revalidatePath('/settings/metrics');
+    // Revalidate layout to ensure graph, podium, rankings, and all sibling components
+    // reflect the updated metric data simultaneously. Using 'layout' ensures all routes
+    // sharing this data refresh together, maintaining consistency across the app.
+    revalidatePath('/', 'layout');
     return { success: true };
   } catch (err) {
     const errMsg = getErrorMessage(err);

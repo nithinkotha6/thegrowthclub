@@ -143,7 +143,7 @@ export async function processVerificationVote({
     }
 
     // PERF-06: votes only affect the dashboard feed/chart and rankings.
-    revalidatePath('/dashboard');
+    revalidatePath('/', 'layout');
     return { success: true };
   } catch (err: any) {
     console.error('processVerificationVote exception:', err);
@@ -247,7 +247,7 @@ export async function deleteActivityAction(
 
     // PERF-06: deleting an activity only affects the dashboard feed/chart and
     // rankings.
-    revalidatePath('/dashboard');
+    revalidatePath('/', 'layout');
     return { success: true };
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);

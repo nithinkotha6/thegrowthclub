@@ -29,6 +29,6 @@ export async function disconnectWearableAction(userId: string) {
     return { success: false, error: error.message };
   }
  
-  revalidatePath('/dashboard/wearables');
+  revalidatePath('/', 'layout');
   return { success: true };
 }

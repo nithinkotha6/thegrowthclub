@@ -128,7 +128,7 @@ export async function logProgressionActivity(
 
   if (dbErr) return { success: false, error: dbErr.message };
 
-  revalidatePath('/dashboard');
+  revalidatePath('/', 'layout');
   return { success: true };
 }
 
@@ -167,6 +167,6 @@ export async function deleteProgressionActivity(
 
   if (dbErr) return { success: false, error: dbErr.message };
 
-  revalidatePath('/dashboard');
+  revalidatePath('/', 'layout');
   return { success: true };
 }

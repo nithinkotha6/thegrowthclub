@@ -79,7 +79,7 @@ async function handleRequest(req: Request) {
 
       if (membersErr || !membersRaw) {
         console.error(`[daily-whistle] Error querying members for group "${group.name}":`, membersErr);
-        continue;
+        return;
       }
 
       const members = membersRaw as unknown as GroupMemberRow[];
@@ -95,7 +95,7 @@ async function handleRequest(req: Request) {
 
       if (logsErr) {
         console.error(`[daily-whistle] Error querying logs for group "${group.name}":`, logsErr);
-        continue;
+        return;
       }
 
       const logs = (logsRaw || []) as unknown as LogRow[];
@@ -239,11 +239,11 @@ async function handleRequest(req: Request) {
         broadcastText = result.text.trim();
       } catch (aiErr) {
         console.error(`[daily-whistle] Gemini generation failed for group "${group.name}":`, aiErr);
-        continue;
+        return;
       }
 
       if (!broadcastText) {
-        continue;
+        return;
       }
 
       // Append the dashboard link, if configured (no hardcoded URL — NEXT_PUBLIC_APP_URL)

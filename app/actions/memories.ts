@@ -182,7 +182,7 @@ export async function uploadAndCreateMemoryAction(
     }
 
     // PERF-06: memories only render on the memories page, not the whole layout.
-    revalidatePath('/dashboard/memories');
+    revalidatePath('/', 'layout');
     return { success: true, memory: dbData };
   } catch (err) {
     const error = err as Error;
@@ -235,7 +235,7 @@ export async function addMemoryComment(memoryId: string, content: string, userId
       return { success: false, error: error.message };
     }
 
-    revalidatePath('/dashboard/memories');
+    revalidatePath('/', 'layout');
     return { success: true, comment: data };
   } catch (err) {
     const error = err as Error;
@@ -276,7 +276,7 @@ export async function deleteMemoryAction(memoryId: string, userId: string) {
       return { success: false, error: error.message };
     }
 
-    revalidatePath('/dashboard/memories');
+    revalidatePath('/', 'layout');
     return { success: true, memory: data };
   } catch (err) {
     const error = err as Error;

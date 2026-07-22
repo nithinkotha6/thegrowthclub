@@ -92,15 +92,13 @@ export async function GET(req: Request) {
 
       if (logsErr) {
         console.error(`[monthly-summary] Error querying logs for group "${group.name}":`, logsErr);
-        processedGroups.push({ group: group.name, sent: false });
-        continue;
+        return;
       }
 
       const logs = (logsRaw || []) as unknown as LogRow[];
       if (logs.length === 0) {
         console.log(`[monthly-summary] No verified logs for group "${group.name}" in ${monthLabel}. Skipping.`);
-        processedGroups.push({ group: group.name, sent: false });
-        continue;
+        return;
       }
 
       // Aggregate per user: total activity count, per-metric count (for "top
@@ -153,13 +151,11 @@ export async function GET(req: Request) {
         broadcastText = result.text.trim();
       } catch (aiErr) {
         console.error(`[monthly-summary] Gemini generation failed for group "${group.name}":`, aiErr);
-        processedGroups.push({ group: group.name, sent: false });
-        continue;
+        return;
       }
 
       if (!broadcastText) {
-        processedGroups.push({ group: group.name, sent: false });
-        continue;
+        return;
       }
 
         try {

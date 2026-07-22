@@ -109,7 +109,7 @@ export async function adminAssignLeagueTeam(
     );
 
   if (dbErr) return { success: false, error: dbErr.message };
-  revalidatePath('/dashboard');
+  revalidatePath('/', 'layout');
   return { success: true };
 }
 
@@ -149,7 +149,7 @@ export async function adminCreateLeagueChallenge(
     .single();
 
   if (dbErr) return { success: false, error: dbErr.message };
-  revalidatePath('/dashboard');
+  revalidatePath('/', 'layout');
   return { success: true, challenge: data };
 }
 
@@ -199,7 +199,7 @@ export async function createLeagueMatch(
     actor_id: session.userId,
   });
 
-  revalidatePath('/dashboard');
+  revalidatePath('/', 'layout');
   return { success: true, match };
 }
 
@@ -231,7 +231,7 @@ export async function updateLeagueMatchScore(
     return { success: false, error: dbErr.message };
   }
 
-  revalidatePath('/dashboard');
+  revalidatePath('/', 'layout');
   return { success: true };
 }
 
@@ -275,7 +275,7 @@ export async function completeLeagueMatch(
     actor_id: session.userId,
   });
 
-  revalidatePath('/dashboard');
+  revalidatePath('/', 'layout');
   return { success: true, winner };
 }
 
@@ -302,6 +302,6 @@ export async function deleteLeagueMatch(
     actor_id: session.userId,
   });
 
-  revalidatePath('/dashboard');
+  revalidatePath('/', 'layout');
   return { success: true };
 }

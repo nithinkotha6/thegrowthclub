@@ -44,9 +44,7 @@ export async function createMetricDefinition(name: string, unit: string, sortDir
     return { success: false, error: error.message };
   }
 
-  revalidatePath('/settings/metrics');
-  revalidatePath('/dashboard');
-  revalidatePath('/dashboard/leaderboard');
+  revalidatePath('/', 'layout');
   return { success: true, definition: data };
 }
 
@@ -85,8 +83,7 @@ export async function adminUpdateMetricDefinition(id: string, name: string, unit
       .eq('id', id);
 
     if (error) throw error;
-    revalidatePath('/settings/metrics');
-    revalidatePath('/dashboard');
+    revalidatePath('/', 'layout');
     return { success: true };
   } catch (err) {
     console.error('[adminUpdateMetricDefinition] Error:', err);
@@ -103,8 +100,7 @@ export async function adminDeleteMetricDefinition(id: string) {
       .eq('id', id);
 
     if (error) throw error;
-    revalidatePath('/settings/metrics');
-    revalidatePath('/dashboard');
+    revalidatePath('/', 'layout');
     return { success: true };
   } catch (err) {
     console.error('[adminDeleteMetricDefinition] Error:', err);
@@ -126,8 +122,7 @@ export async function adminToggleMetricHidden(id: string, isHidden: boolean) {
       }
       throw error;
     }
-    revalidatePath('/settings/metrics');
-    revalidatePath('/dashboard');
+    revalidatePath('/', 'layout');
     return { success: true };
   } catch (err) {
     console.error('[adminToggleMetricHidden] Error:', err);
@@ -149,8 +144,7 @@ export async function adminToggleMetricRequiresVerification(id: string, requires
       }
       throw error;
     }
-    revalidatePath('/settings/metrics');
-    revalidatePath('/dashboard');
+    revalidatePath('/', 'layout');
     return { success: true };
   } catch (err) {
     console.error('[adminToggleMetricRequiresVerification] Error:', err);
@@ -195,8 +189,7 @@ export async function adminUpdateMetricConfig(slug: string, displayName: string,
       .eq('slug', slug);
 
     if (error) throw error;
-    revalidatePath('/settings/metrics');
-    revalidatePath('/dashboard');
+    revalidatePath('/', 'layout');
     return { success: true };
   } catch (err) {
     console.error('[adminUpdateMetricConfig] Error:', err);
@@ -218,8 +211,7 @@ export async function adminToggleMetricConfigHidden(slug: string, isHidden: bool
       }
       throw error;
     }
-    revalidatePath('/settings/metrics');
-    revalidatePath('/dashboard');
+    revalidatePath('/', 'layout');
     return { success: true };
   } catch (err) {
     console.error('[adminToggleMetricConfigHidden] Error:', err);

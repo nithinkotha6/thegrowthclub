@@ -109,8 +109,7 @@ async function handleRequest(req: Request) {
 
       if (recentLogsErr) {
         console.error(`[whatsapp-digest] Failed to fetch recent logs for group "${group.name}":`, recentLogsErr);
-        processedGroups.push({ group: group.name, status: 'error-recent-logs' });
-        continue;
+        return;
       }
 
       // Format highlights string list
@@ -134,8 +133,7 @@ async function handleRequest(req: Request) {
 
       if (membersErr) {
         console.error(`[whatsapp-digest] Failed to fetch group members for group "${group.name}":`, membersErr);
-        processedGroups.push({ group: group.name, status: 'error-members' });
-        continue;
+        return;
       }
 
       // Query all verified top_golf logs for the group
@@ -148,8 +146,7 @@ async function handleRequest(req: Request) {
 
       if (topGolfLogsErr) {
         console.error(`[whatsapp-digest] Failed to fetch top golf logs for group "${group.name}":`, topGolfLogsErr);
-        processedGroups.push({ group: group.name, status: 'error-top-golf-logs' });
-        continue;
+        return;
       }
 
       interface LeaderboardEntry {
@@ -226,8 +223,7 @@ async function handleRequest(req: Request) {
         broadcastText = result.text;
       } catch (llmError) {
         console.error(`[whatsapp-digest] Daily digest LLM generation error for group "${group.name}":`, llmError);
-        processedGroups.push({ group: group.name, status: 'error-llm' });
-        continue;
+        return;
       }
 
       console.log(`[whatsapp-digest] Broadcast summary prepared for group "${group.name}":\n`, broadcastText);

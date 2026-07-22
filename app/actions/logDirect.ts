@@ -116,7 +116,7 @@ export async function logDirectActivity(
     console.error('[logDirectActivity] Error updating streak:', streakErr);
   }
 
-  revalidatePath('/dashboard');
+  revalidatePath('/', 'layout');
   return { success: true, metric_slug: metricSlug, value, unit };
 }
  
@@ -202,7 +202,7 @@ export async function logActivityManual(
         console.error('[logActivityManual] Error updating streak:', streakErr);
       }
 
-      revalidatePath('/dashboard');
+      revalidatePath('/', 'layout');
       return { success: true, metric_slug: metricSlug, value, unit };
     }
  
@@ -224,6 +224,6 @@ export async function logActivityManual(
     console.error('[logActivityManual] Error updating streak:', streakErr);
   }
 
-  revalidatePath('/dashboard');
+  revalidatePath('/', 'layout');
   return { success: true, metric_slug: metricSlug, value, unit };
 }

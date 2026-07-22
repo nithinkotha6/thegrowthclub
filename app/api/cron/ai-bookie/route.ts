@@ -68,7 +68,7 @@ async function handleRequest(req: Request) {
 
       if (membersErr || !membersRaw) {
         console.error(`[ai-bookie] Members query failed for group "${group.name}":`, membersErr);
-        continue;
+        return;
       }
 
       const members = membersRaw as unknown as GroupMemberRow[];
@@ -92,7 +92,7 @@ async function handleRequest(req: Request) {
 
       if (logsErr) {
         console.error(`[ai-bookie] Metric logs query failed for group "${group.name}":`, logsErr);
-        continue;
+        return;
       }
 
       // 5. Aggregate stats by user
@@ -138,10 +138,10 @@ async function handleRequest(req: Request) {
         broadcastText = result.text.trim();
       } catch (aiErr) {
         console.error(`[ai-bookie] Gemini generation failed for group "${group.name}":`, aiErr);
-        continue;
+        return;
       }
 
-      if (!broadcastText) continue;
+      if (!broadcastText) return;
 
       // 7. Dispatch to WhatsApp via Green API
       const url = `https://api.green-api.com/waInstance${instanceId}/sendMessage/${token}`;

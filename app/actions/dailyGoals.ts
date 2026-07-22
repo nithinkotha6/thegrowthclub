@@ -116,7 +116,7 @@ export async function adminCreateDailyGoal(
     .single();
 
   if (dbErr) return { success: false, error: dbErr.message };
-  revalidatePath('/dashboard');
+  revalidatePath('/', 'layout');
   return { success: true, goal: data };
 }
 
@@ -146,7 +146,7 @@ export async function logDailyGoalCompletion(
     return { success: false, error: dbErr.message };
   }
 
-  revalidatePath('/dashboard');
+  revalidatePath('/', 'layout');
   return { success: true };
 }
 
@@ -184,6 +184,6 @@ export async function deleteDailyGoalCompletion(
 
   if (dbErr) return { success: false, error: dbErr.message };
 
-  revalidatePath('/dashboard');
+  revalidatePath('/', 'layout');
   return { success: true };
 }
