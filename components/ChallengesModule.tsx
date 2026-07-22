@@ -8,7 +8,7 @@ import ProgressionChallengePanel from '@/components/challenges/ProgressionChalle
 import LeagueMatchPanel from '@/components/challenges/LeagueMatchPanel';
 import type { DailyGoal, DailyGoalCompletion } from '@/app/actions/dailyGoals';
 import type { ChallengeProgression, ChallengeHistoryEntry } from '@/app/actions/progression';
-import type { LeagueAssignment, LeagueChallenge, LeagueMatch } from '@/app/actions/leagues';
+import type { LeagueAssignment, LeagueChallenge, LeagueMatch, GroupMemberProfile } from '@/app/actions/leagues';
 
 interface ChallengesModuleProps {
   userId: string;
@@ -20,6 +20,7 @@ interface ChallengesModuleProps {
   leagueAssignments: LeagueAssignment[];
   leagueChallenges: LeagueChallenge[];
   leagueMatches: LeagueMatch[];
+  groupMembers?: GroupMemberProfile[];
 }
 
 type Tab = 'daily' | 'challenges' | 'leagues';
@@ -77,6 +78,7 @@ export default function ChallengesModule(props: ChallengesModuleProps) {
                 assignments={props.leagueAssignments}
                 challenges={props.leagueChallenges}
                 matches={props.leagueMatches}
+                members={props.groupMembers}
               />
             )}
           </motion.div>

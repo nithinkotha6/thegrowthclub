@@ -12,6 +12,7 @@
 | 2026-07-18 | (post-fa4c8bb) | §1.6 | `persistent_mood` allowed set reduced to `'Normal', 'Angry', 'Sad', 'Arrogant', 'Sarcastic'` per new migration `0021_remove_deprecated_moods_and_vocab.sql` (`'Horny', 'Happy', 'Flirting', 'Romantic'` removed). |
 | 2026-07-18 | (security audit) | §1.1, §1.6 | SEC-01: document new server-side admin role check in `requireAdminSession()` and auth guard added to `adminToggleBotMute`/`getBotMuteStatus`. SEC-04: document PIN hashing (bcrypt) replacing plaintext compare in `loginWithPersonalPinAction` and `adminResetPin`. See Findings_and_Recommendations.md SEC-01/SEC-04. |
 | 2026-07-19 | (Documentation audit) | §2 | Corrected stale "daily-whistle is the only cron scheduled" claim (three more crons — `reset-monthly-streaks`, `monthly-summary`, plus `sync-wearables` — are also active). Added `/api/cron/reset-monthly-streaks`, `/api/cron/monthly-summary`, `/api/push/subscribe`, `/api/push/send` route entries. |
+| 2026-07-22 | (Leagues Democratization) | §1.4 | Democratized `assignLeagueTeam` and `createLeagueChallenge` in `app/actions/leagues.ts` (removed `requireAdminSession` restriction; open to all group members). Added `getGroupMembers()` server action to retrieve group roster for player team assignment in the Challenges → Leagues tab. |
 
 ---
 

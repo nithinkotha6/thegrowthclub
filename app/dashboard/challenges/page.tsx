@@ -6,7 +6,7 @@ import { PROGRESSION_CHALLENGE_TYPES } from '@/lib/metrics';
 import ChallengesModule from '@/components/ChallengesModule';
 import { getDailyGoals, getDailyGoalCompletions } from '@/app/actions/dailyGoals';
 import { getMyChallengeProgression, getChallengeHistory } from '@/app/actions/progression';
-import { getLeagueAssignments, getLeagueChallenges, getLeagueMatches } from '@/app/actions/leagues';
+import { getLeagueAssignments, getLeagueChallenges, getLeagueMatches, getGroupMembers } from '@/app/actions/leagues';
 
 /**
  * /dashboard/challenges — repurposed from the old /dashboard/leaderboard
@@ -30,6 +30,7 @@ export default async function ChallengesPage() {
     leagueAssignmentsRes,
     leagueChallengesRes,
     leagueMatchesRes,
+    groupMembersRes,
   ] = await Promise.all([
     getDailyGoals(),
     getDailyGoalCompletions(),
@@ -38,6 +39,7 @@ export default async function ChallengesPage() {
     getLeagueAssignments(),
     getLeagueChallenges(),
     getLeagueMatches(),
+    getGroupMembers(),
   ]);
 
   return (
@@ -62,6 +64,7 @@ export default async function ChallengesPage() {
         leagueAssignments={leagueAssignmentsRes.success ? leagueAssignmentsRes.assignments : []}
         leagueChallenges={leagueChallengesRes.success ? leagueChallengesRes.challenges : []}
         leagueMatches={leagueMatchesRes.success ? leagueMatchesRes.matches : []}
+        groupMembers={groupMembersRes.success ? groupMembersRes.members : []}
       />
     </div>
   );

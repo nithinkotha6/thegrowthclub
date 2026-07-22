@@ -81,15 +81,44 @@ export async function getLeagueAssignments(): Promise<
   return { success: true, assignments: (data ?? []) as unknown as LeagueAssignment[] };
 }
 
-/** Admin-only: assign (or reassign) a member to a fixed team. Upserts on
- * (user_id, group_id) so re-assigning updates the existing row rather than
- * creating a duplicate — the DB UNIQUE constraint backs this even if two
- * admins race on the same member. */
-export async function adminAssignLeagueTeam(
+export type GroupMemberProfile = {
+  user_id: string;
+  nickname: string | null;
+  full_name: string | null;
+  avatar_url: string | null;
+};
+
+/** Fetch group members for the caller's group for player roster assignment. */
+export async function getGroupMembers(): Promise<
+  { success: true; members: GroupMemberProfile[] } | { success: false; error: string }
+> {
+  const { session, error } = await requireSession();
+  if (!session) return { success: false, error: error! };
+
+  const supabase = createAdminClient(session.groupId);
+  const { data: members, error: dbErr } = await supabase
+    .from('group_members')
+    .select('user_id, profiles ( nickname, full_name, avatar_url )')
+    .eq('group_id', session.groupId);
+
+  if (dbErr) return { success: false, error: dbErr.message };
+
+  const formatted: GroupMemberProfile[] = (members ?? []).map((m: any) => ({
+    user_id: m.user_id,
+    nickname: m.profiles?.nickname ?? null,
+    full_name: m.profiles?.full_name ?? null,
+    avatar_url: m.profiles?.avatar_url ?? null,
+  }));
+
+  return { success: true, members: formatted };
+}
+
+/** Democratized: Assign (or reassign) a group member to a team (TITANS or REBELS). Accessible to all group members. */
+export async function assignLeagueTeam(
   userId: string,
   teamName: TeamName,
 ): Promise<{ success: true } | { success: false; error: string }> {
-  const { session, error } = await requireAdminSession();
+  const { session, error } = await requireSession();
   if (!session) return { success: false, error: error! };
 
   const supabase = createAdminClient(session.groupId);
@@ -113,6 +142,9 @@ export async function adminAssignLeagueTeam(
   return { success: true };
 }
 
+/** Backward compatibility alias */
+export const adminAssignLeagueTeam = assignLeagueTeam;
+
 /* ── Challenge types (DASH-23) ────────────────────────────────────────────── */
 
 export async function getLeagueChallenges(): Promise<
@@ -132,13 +164,14 @@ export async function getLeagueChallenges(): Promise<
   return { success: true, challenges: data ?? [] };
 }
 
-export async function adminCreateLeagueChallenge(
+/** Democratized: Create a new league challenge type. Accessible to all group members. */
+export async function createLeagueChallenge(
   name: string,
   description?: string,
 ): Promise<{ success: true; challenge: LeagueChallenge } | { success: false; error: string }> {
   if (!name.trim()) return { success: false, error: 'Name is required.' };
 
-  const { session, error } = await requireAdminSession();
+  const { session, error } = await requireSession();
   if (!session) return { success: false, error: error! };
 
   const supabase = createAdminClient(session.groupId);
@@ -152,6 +185,9 @@ export async function adminCreateLeagueChallenge(
   revalidatePath('/', 'layout');
   return { success: true, challenge: data };
 }
+
+/** Backward compatibility alias */
+export const adminCreateLeagueChallenge = createLeagueChallenge;
 
 /* ── Matches (DASH-24/25/26) ──────────────────────────────────────────────── */
 
