@@ -192,12 +192,16 @@ export async function createLeagueMatch(
 
   if (dbErr || !match) return { success: false, error: dbErr?.message ?? 'Failed to create match.' };
 
-  await supabase.from('league_match_logs').insert({
+  const { error: logErr } = await supabase.from('league_match_logs').insert({
     group_id: session.groupId,
     match_id: match.id,
     action: 'create',
     actor_id: session.userId,
   });
+
+  if (logErr && (logErr.code === '23505' || logErr.message?.includes('unique') || logErr.message?.includes('duplicate'))) {
+    console.warn('[createLeagueMatch] Duplicate match log skipped:', logErr.message);
+  }
 
   revalidatePath('/', 'layout');
   return { success: true, match };
@@ -268,12 +272,16 @@ export async function completeLeagueMatch(
 
   if (dbErr) return { success: false, error: dbErr.message };
 
-  await supabase.from('league_match_logs').insert({
+  const { error: logErr } = await supabase.from('league_match_logs').insert({
     group_id: session.groupId,
     match_id: matchId,
     action: 'complete',
     actor_id: session.userId,
   });
+
+  if (logErr && (logErr.code === '23505' || logErr.message?.includes('unique') || logErr.message?.includes('duplicate'))) {
+    console.warn('[completeLeagueMatch] Duplicate complete log skipped:', logErr.message);
+  }
 
   revalidatePath('/', 'layout');
   return { success: true, winner };
@@ -295,12 +303,16 @@ export async function deleteLeagueMatch(
 
   if (dbErr) return { success: false, error: dbErr.message };
 
-  await supabase.from('league_match_logs').insert({
+  const { error: logErr } = await supabase.from('league_match_logs').insert({
     group_id: session.groupId,
     match_id: matchId,
     action: 'delete',
     actor_id: session.userId,
   });
+
+  if (logErr && (logErr.code === '23505' || logErr.message?.includes('unique') || logErr.message?.includes('duplicate'))) {
+    console.warn('[deleteLeagueMatch] Duplicate delete log skipped:', logErr.message);
+  }
 
   revalidatePath('/', 'layout');
   return { success: true };

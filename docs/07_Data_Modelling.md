@@ -17,6 +17,7 @@
 | 2026-07-19 | (Documentation audit) | §1.2, §1.17 (new), §8 | Corrected `profiles.pin` column-type note (widened to `text` by migration `0034`, doc previously said it was never widened). Added §1.17 `push_subscriptions` table (previously only in the revision log, not the table listing). Updated §8 from "planned" to **implemented** — all 8 Dashboard & Challenges tables shipped in migrations `0036`-`0038`; DASH-06's `league_challenges.group_id` decision resolved (per-group). |
 | 2026-07-22 | (Database Integrity) | §1.6 | Added migration `0041_metric_logs_unique_index.sql` documenting the composite UNIQUE index `metric_logs_unique_per_user_time_value` on `(user_id, metric_slug, (logged_at AT TIME ZONE 'UTC')::date, value) WHERE deleted_at IS NULL` to prevent duplicate activity logs on double-click or network retry. |
 | 2026-07-22 | (Code Cleanup & Observability) | §2.3 (new), `vote.ts` | Removed phantom deletion code for non-existent tables (`approvals`, `comments`, `memory_comments`, `xp_transactions`) from `deleteActivityAction`. Added §2.3 documenting database-level `ON DELETE CASCADE` rules (`metric_logs` → `log_votes`). Integrated structured logging (`lib/logger.ts`). |
+| 2026-07-22 | (Challenge & League Integrity) | §8.4, §8.8 | Added migration `0043_challenge_league_unique_constraints.sql` adding composite UNIQUE indexes `challenge_history_unique_per_user_day_value` on `challenge_history` and `league_match_logs_unique_per_match_user_action_day` on `league_match_logs` to prevent double-click / network retry duplicates. |
 
 ---
 
@@ -1137,6 +1138,9 @@ All tables follow the two conventions already proven across this schema:
 | `tier_after` | numeric NOT NULL | |
 | `deleted_at` | timestamptz | Soft-delete, not hard — a hard delete would make it impossible to recompute `previous_tier` correctly afterward. |
 
+**Constraints**:
+`UNIQUE INDEX challenge_history_unique_per_user_day_value` ON `(user_id, challenge_type, ((entry_date AT TIME ZONE 'UTC')::date), tier_after) WHERE deleted_at IS NULL` (migration `0043`). Prevents duplicate progression logs on double-click or network retry.
+
 **Trigger** (`recompute_challenge_progression()`, migration `0037`): fires on INSERT and on soft-delete of `challenge_history`, recomputing `challenge_progression.current_tier`/`previous_tier` from the latest remaining non-deleted row — mirroring the existing `total_xp`/`current_level` recompute-on-verify trigger pattern already used for `metric_logs` (see §2.2 above). Application code (`app/actions/progression.ts`) never writes `current_tier`/`previous_tier` directly.
 
 ### 8.5 `league_assignments` (migration `0038`)
@@ -1183,6 +1187,9 @@ Note: no `titans_team_id`/`rebels_team_id` FK — team rosters are read live fro
 | `action` | text NOT NULL CHECK (action IN (''create'',''complete'',''delete'')) | |
 | `actor_id` | uuid NOT NULL REFERENCES profiles(id) | |
 | `created_at` | timestamptz NOT NULL DEFAULT now() | |
+
+**Constraints**:
+`UNIQUE INDEX league_match_logs_unique_per_match_user_action_day` ON `(match_id, actor_id, action, ((created_at AT TIME ZONE 'UTC')::date))` (migration `0043`). Prevents duplicate match action logs on double-click or network retry.
 
 ### 8.9 `group_stats` / composite metrics (still UNDECIDED — see DASH-09)
 Not designed and not implemented. The dashboard computes chart data and leaderboard rankings live from `metric_logs` joined with `metrics_config`/`metric_definitions` — no cached stats table exists or is required for the *current* single-metric graph/leaderboard, and the Challenges Module (§8.1-8.8) ships independently without needing one. A table would only be needed if a future unified Podium ranks on a composite "growth score" spanning daily goals + progression + leagues. Decision remains open, tracked in DASH-09.

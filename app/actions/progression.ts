@@ -126,7 +126,12 @@ export async function logProgressionActivity(
     tier_after: newTierValue,
   });
 
-  if (dbErr) return { success: false, error: dbErr.message };
+  if (dbErr) {
+    if (dbErr.code === '23505' || dbErr.message?.includes('unique') || dbErr.message?.includes('duplicate')) {
+      return { success: false, error: "You've already logged this value today." };
+    }
+    return { success: false, error: dbErr.message };
+  }
 
   revalidatePath('/', 'layout');
   return { success: true };
