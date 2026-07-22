@@ -116,6 +116,9 @@ export async function logDirectActivity(
     console.error('[logDirectActivity] Error updating streak:', streakErr);
   }
 
+  // Revalidate layout to ensure graph, podium, rankings, and all sibling components
+  // reflect the updated metric data simultaneously. Using 'layout' ensures all routes
+  // sharing this data refresh together, maintaining consistency across the app.
   revalidatePath('/', 'layout');
   return { success: true, metric_slug: metricSlug, value, unit };
 }
@@ -202,6 +205,9 @@ export async function logActivityManual(
         console.error('[logActivityManual] Error updating streak:', streakErr);
       }
 
+      // Revalidate layout to ensure graph, podium, rankings, and all sibling components
+      // reflect the updated metric data simultaneously. Using 'layout' ensures all routes
+      // sharing this data refresh together, maintaining consistency across the app.
       revalidatePath('/', 'layout');
       return { success: true, metric_slug: metricSlug, value, unit };
     }
@@ -224,6 +230,9 @@ export async function logActivityManual(
     console.error('[logActivityManual] Error updating streak:', streakErr);
   }
 
+  // Revalidate layout to ensure graph, podium, rankings, and all sibling components
+  // reflect the updated metric data simultaneously. Using 'layout' ensures all routes
+  // sharing this data refresh together, maintaining consistency across the app.
   revalidatePath('/', 'layout');
   return { success: true, metric_slug: metricSlug, value, unit };
 }

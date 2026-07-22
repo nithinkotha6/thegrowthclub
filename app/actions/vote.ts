@@ -142,7 +142,9 @@ export async function processVerificationVote({
       }
     }
 
-    // PERF-06: votes only affect the dashboard feed/chart and rankings.
+    // Revalidate layout to ensure graph, podium, rankings, and all sibling components
+    // reflect the updated metric data simultaneously. Using 'layout' ensures all routes
+    // sharing this data refresh together, maintaining consistency across the app.
     revalidatePath('/', 'layout');
     return { success: true };
   } catch (err: any) {
@@ -245,8 +247,9 @@ export async function deleteActivityAction(
 
     logger.info('[deleteActivityAction] Activity deleted', { logId });
 
-    // PERF-06: deleting an activity only affects the dashboard feed/chart and
-    // rankings.
+    // Revalidate layout to ensure graph, podium, rankings, and all sibling components
+    // reflect the updated metric data simultaneously. Using 'layout' ensures all routes
+    // sharing this data refresh together, maintaining consistency across the app.
     revalidatePath('/', 'layout');
     return { success: true };
   } catch (err: unknown) {

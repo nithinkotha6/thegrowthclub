@@ -194,8 +194,9 @@ User text: "${rawText}"`,
   }
 
   const { revalidatePath } = await import('next/cache');
-  // PERF-06: log ingestion only affects the dashboard chart/feed/rankings,
-  // not the whole layout.
+  // Revalidate layout to ensure graph, podium, rankings, and all sibling components
+  // reflect the updated metric data simultaneously. Using 'layout' ensures all routes
+  // sharing this data refresh together, maintaining consistency across the app.
   revalidatePath('/', 'layout');
  
   return {
