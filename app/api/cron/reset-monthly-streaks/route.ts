@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { safeCompare } from '@/lib/security';
+import { runCronIdempotent } from '@/lib/cron/idempotent-runner';
 
 /**
  * Monthly streak reset cron. Runs 1st of every month — for every profile in
@@ -38,45 +39,47 @@ export async function GET(req: Request) {
     }
 
     let totalReset = 0;
-    const results: { group: string; reset: number }[] = [];
+    const results: { group: string; status: string; reset: number }[] = [];
+    const executionDateStr = `${currentMonth}-01`;
 
     for (const group of groups || []) {
-      const { data: members, error: membersErr } = await supabaseAdmin
-        .from('group_members')
-        .select('user_id, profiles!inner ( id, last_reset_month )')
-        .eq('group_id', group.id);
+      let resetCount = 0;
+      const runResult = await runCronIdempotent('reset-monthly-streaks', group.id, executionDateStr, async () => {
+        const { data: members, error: membersErr } = await supabaseAdmin
+          .from('group_members')
+          .select('user_id, profiles!inner ( id, last_reset_month )')
+          .eq('group_id', group.id);
 
-      if (membersErr) {
-        console.error(`[reset-monthly-streaks] Query members error for group "${group.name}":`, membersErr);
-        continue;
-      }
-
-      const idsToReset: string[] = [];
-      for (const m of (members || []) as unknown as { profiles: { id: string; last_reset_month: string | null } | null }[]) {
-        const profile = m.profiles;
-        if (profile && profile.last_reset_month !== currentMonth) {
-          idsToReset.push(profile.id);
+        if (membersErr) {
+          console.error(`[reset-monthly-streaks] Query members error for group "${group.name}":`, membersErr);
+          throw membersErr;
         }
-      }
 
-      if (idsToReset.length === 0) {
-        results.push({ group: group.name, reset: 0 });
-        continue;
-      }
+        const idsToReset: string[] = [];
+        for (const m of (members || []) as unknown as { profiles: { id: string; last_reset_month: string | null } | null }[]) {
+          const profile = m.profiles;
+          if (profile && profile.last_reset_month !== currentMonth) {
+            idsToReset.push(profile.id);
+          }
+        }
 
-      const { error: updateErr } = await supabaseAdmin
-        .from('profiles')
-        .update({ streak_count: 0, last_reset_month: currentMonth })
-        .in('id', idsToReset);
+        if (idsToReset.length > 0) {
+          const { error: updateErr } = await supabaseAdmin
+            .from('profiles')
+            .update({ streak_count: 0, last_reset_month: currentMonth })
+            .in('id', idsToReset);
 
-      if (updateErr) {
-        console.error(`[reset-monthly-streaks] Update error for group "${group.name}":`, updateErr);
-        continue;
-      }
+          if (updateErr) {
+            console.error(`[reset-monthly-streaks] Update error for group "${group.name}":`, updateErr);
+            throw updateErr;
+          }
+          resetCount = idsToReset.length;
+          console.log(`[reset-monthly-streaks] Reset ${idsToReset.length} profile(s) in group "${group.name}".`);
+        }
+      });
 
-      totalReset += idsToReset.length;
-      results.push({ group: group.name, reset: idsToReset.length });
-      console.log(`[reset-monthly-streaks] Reset ${idsToReset.length} profile(s) in group "${group.name}".`);
+      totalReset += resetCount;
+      results.push({ group: group.name, status: runResult.status, reset: resetCount });
     }
 
     return NextResponse.json({ ok: true, month: currentMonth, totalReset, results });

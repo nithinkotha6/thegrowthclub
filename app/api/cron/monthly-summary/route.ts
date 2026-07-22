@@ -4,6 +4,7 @@ import { executeWithKeyRotation } from '@/utils/geminiPool';
 import { createAdminClient } from '@/lib/supabase/server';
 import { safeCompare } from '@/lib/security';
 import { sendWhatsAppGroupMessage } from '@/lib/whatsapp';
+import { runCronIdempotent } from '@/lib/cron/idempotent-runner';
 
 export const maxDuration = 60;
 
@@ -56,18 +57,20 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: groupsErr.message }, { status: 500 });
     }
 
-    const processedGroups: { group: string; sent: boolean }[] = [];
+    const processedGroups: { group: string; status: string; sent: boolean }[] = [];
+    const executionDateStr = monthStart.toISOString().slice(0, 10);
 
     for (const group of groups || []) {
-      const instanceId = group.whatsapp_instance_id || process.env.GREEN_API_INSTANCE_ID;
-      const token = group.whatsapp_token || process.env.GREEN_API_TOKEN;
-      const waChatId = group.whatsapp_group_id || process.env.WHATSAPP_GROUP_ID;
+      let isSent = false;
+      const runResult = await runCronIdempotent('monthly-summary', group.id, executionDateStr, async () => {
+        const instanceId = group.whatsapp_instance_id || process.env.GREEN_API_INSTANCE_ID;
+        const token = group.whatsapp_token || process.env.GREEN_API_TOKEN;
+        const waChatId = group.whatsapp_group_id || process.env.WHATSAPP_GROUP_ID;
 
-      if (!instanceId || !token || !waChatId) {
-        console.log(`[monthly-summary] Group "${group.name}" lacks configured WhatsApp credentials. Skipping.`);
-        processedGroups.push({ group: group.name, sent: false });
-        continue;
-      }
+        if (!instanceId || !token || !waChatId) {
+          console.log(`[monthly-summary] Group "${group.name}" lacks configured WhatsApp credentials. Skipping.`);
+          return;
+        }
 
       const { data: membersRaw } = await supabaseAdmin
         .from('group_members')
@@ -159,18 +162,21 @@ export async function GET(req: Request) {
         continue;
       }
 
-      try {
-        await sendWhatsAppGroupMessage(broadcastText, undefined, {
-          instanceId: group.whatsapp_instance_id,
-          token: group.whatsapp_token,
-          chatId: group.whatsapp_group_id,
-        });
-        console.log(`[monthly-summary] Sent monthly summary to group "${group.name}".`);
-        processedGroups.push({ group: group.name, sent: true });
-      } catch (sendErr) {
-        console.error(`[monthly-summary] Failed to send WhatsApp message for group "${group.name}":`, sendErr);
-        processedGroups.push({ group: group.name, sent: false });
-      }
+        try {
+          await sendWhatsAppGroupMessage(broadcastText, undefined, {
+            instanceId: group.whatsapp_instance_id,
+            token: group.whatsapp_token,
+            chatId: group.whatsapp_group_id,
+          });
+          console.log(`[monthly-summary] Sent monthly summary to group "${group.name}".`);
+          isSent = true;
+        } catch (sendErr) {
+          console.error(`[monthly-summary] Failed to send WhatsApp message for group "${group.name}":`, sendErr);
+          throw sendErr;
+        }
+      });
+
+      processedGroups.push({ group: group.name, status: runResult.status, sent: isSent });
     }
 
     return NextResponse.json({ ok: true, month: monthLabel, processedGroups });

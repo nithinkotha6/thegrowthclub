@@ -12,6 +12,7 @@
 | 2026-07-18 | (post-fa4c8bb) | §3.2 | `ai-bookie` challenge-tone description changed from "Hyderabadi slang" to "casual friend-group tone" to reflect the neutralized agent prompts. |
 | 2026-07-18 | (wearables accuracy pass) | §1.1 (title), §1.3 (rewritten) | §1.3 replaced: WHOOP now syncs via the real WHOOP API v2 OAuth flow (`/api/wearables/connect/whoop`, `/api/wearables/callback/whoop`), not a mock generator. WHOOP never writes `wearable_steps` (the hardware has no step-count metric). Added §1.4 documenting the new `WEARABLE_KEY_<PROVIDER>_<NICKNAME>` env-var fallback connection mechanism. |
 | 2026-07-19 | (Documentation audit) | §0 (new), §5 (new), §6-§9 (renumbered), §7 | Added §0, a single canonical cron-schedule table — the source of truth referenced by `01_Architecture_and_App_Structure.md` §8 instead of a duplicated table there. Added §5 documenting the two new streak-related crons (`reset-monthly-streaks`, `monthly-summary`), shifting Service Inventory/Cost Projections/Billing-Risk/Deployment Pipeline from §5-§8 to §6-§9. Removed the stale Telegram Bot API cost row from §7 (integration fully removed from the codebase in an earlier pass). |
+| 2026-07-22 | (Cron Reliability) | §0.1 (new), §0.2 (new) | Added migration `0042_cron_execution_log.sql` and `runCronIdempotent` helper module (`lib/cron/idempotent-runner.ts`) to enforce per-group single execution per date window, preventing duplicate WhatsApp broadcasts or stats recalculation on Vercel double-triggers. |
 
 ---
 
@@ -21,12 +22,23 @@ Single source of truth for all cron schedules — do not duplicate this table el
 
 | Job | Path | Schedule (UTC) | Status | Authorization |
 |---|---|---|---|---|
-| Daily Whistle | `/api/cron/daily-whistle` | `0 3 * * *` (03:00 daily) | Active | `Bearer CRON_SECRET` |
-| Wearables Sync | `/api/cron/sync-wearables` | `0 0 * * *` (midnight daily) | Active | `Bearer CRON_SECRET` |
-| Reset Monthly Streaks | `/api/cron/reset-monthly-streaks` | `0 0 1 * *` (1st of month, midnight) | Active | `Bearer CRON_SECRET` |
-| Monthly Summary | `/api/cron/monthly-summary` | `0 1 1 * *` (1st of month, 01:00) | Active | `Bearer CRON_SECRET` |
-| AI Bookie | `/api/cron/ai-bookie` | `0 13 * * 1` (13:00 Monday) | **Dormant** — route exists, not scheduled in `vercel.json` | `Bearer CRON_SECRET` |
-| WhatsApp Digest | `/api/cron/whatsapp-digest` | `0 12 * * *` (12:00 daily) | **Dormant** — route exists, not scheduled in `vercel.json`; the equivalent GitHub Actions workflow (`.github/workflows/whatsapp-digest.yml`) is also manual-trigger-only, by the same deliberate "one daily broadcast only" decision | `Bearer CRON_SECRET` |
+| Daily Whistle | `/api/cron/daily-whistle` | `0 3 * * *` (03:00 daily) | Active | `Bearer CRON_SECRET` | Idempotent |
+| Wearables Sync | `/api/cron/sync-wearables` | `0 0 * * *` (midnight daily) | Active | `Bearer CRON_SECRET` | Idempotent |
+| Reset Monthly Streaks | `/api/cron/reset-monthly-streaks` | `0 0 1 * *` (1st of month, midnight) | Active | `Bearer CRON_SECRET` | Idempotent |
+| Monthly Summary | `/api/cron/monthly-summary` | `0 1 1 * *` (1st of month, 01:00) | Active | `Bearer CRON_SECRET` | Idempotent |
+| AI Bookie | `/api/cron/ai-bookie` | `0 13 * * 1` (13:00 Monday) | **Dormant** | `Bearer CRON_SECRET` | Idempotent |
+| WhatsApp Digest | `/api/cron/whatsapp-digest` | `0 12 * * *` (12:00 daily) | **Dormant** | `Bearer CRON_SECRET` | Idempotent |
+
+---
+
+## 0.1 Idempotency & Execution Lock Architecture
+
+All cron endpoints execute through `runCronIdempotent` ([`lib/cron/idempotent-runner.ts`](file:///d:/Nithinkotha6-Git/The-Growth-Hub-App/thegrowthclub/lib/cron/idempotent-runner.ts)).
+Before executing cron logic, `runCronIdempotent` checks `public.cron_execution_log` for an existing completed record matching `(cron_name, group_id, execution_date)`:
+- **Completed**: Skips execution instantly returning `{ status: 'skipped', reason: 'already_executed' }`.
+- **Started / Unrecorded**: Inserts or updates status to `'started'`, executes cron logic, and updates status to `'completed'` upon success.
+- **Failed**: Stores `'failed'` and `error_message`, permitting subsequent retries for transient error recovery.
+- **Database Unique Key**: Composite constraint `UNIQUE (cron_name, group_id, execution_date)` on `public.cron_execution_log` prevents race conditions from simultaneous double-triggers.
 
 All cron handlers validate `Authorization: Bearer <CRON_SECRET>` via `safeCompare()`. A supplementary GitHub Actions workflow (`.github/workflows/sync-wearables.yml`) also calls `/api/cron/sync-wearables` every 6 hours (Vercel Hobby plans only allow daily-granularity crons) — see `Admin_to_do.md` §5 for the required `APP_BASE_URL`/`CRON_SECRET` repo secrets.
 

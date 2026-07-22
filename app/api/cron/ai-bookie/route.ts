@@ -7,6 +7,7 @@ import { executeWithKeyRotation } from '@/utils/geminiPool';
 import { buildBookiePrompt } from '@/lib/ai/prompts';
 import { createAdminClient } from '@/lib/supabase/server';
 import { safeCompare } from '@/lib/security';
+import { runCronIdempotent } from '@/lib/cron/idempotent-runner';
 
 interface ProfileDetails {
   id: string;
@@ -43,16 +44,18 @@ async function handleRequest(req: Request) {
     }
 
     const processedGroups = [];
+    const todayStr = new Date().toISOString().slice(0, 10);
 
     for (const group of groups || []) {
-      const instanceId = group.whatsapp_instance_id || process.env.GREEN_API_INSTANCE_ID;
-      const token = group.whatsapp_token || process.env.GREEN_API_TOKEN;
-      const waChatId = group.whatsapp_group_id || process.env.WHATSAPP_GROUP_ID;
+      const runResult = await runCronIdempotent('ai-bookie', group.id, todayStr, async () => {
+        const instanceId = group.whatsapp_instance_id || process.env.GREEN_API_INSTANCE_ID;
+        const token = group.whatsapp_token || process.env.GREEN_API_TOKEN;
+        const waChatId = group.whatsapp_group_id || process.env.WHATSAPP_GROUP_ID;
 
-      if (!instanceId || !token || !waChatId) {
-        console.log(`[ai-bookie] Skipping group "${group.name}" - WhatsApp not configured`);
-        continue;
-      }
+        if (!instanceId || !token || !waChatId) {
+          console.log(`[ai-bookie] Skipping group "${group.name}" - WhatsApp not configured`);
+          return;
+        }
 
       // 3. Query group members
       const { data: membersRaw, error: membersErr } = await supabaseAdmin
@@ -155,14 +158,18 @@ async function handleRequest(req: Request) {
         if (!response.ok) {
           const errorText = await response.text();
           console.error(`[ai-bookie] Green API dispatch failed for group "${group.name}":`, response.status, errorText);
+          throw new Error(`Green API dispatch failed: ${response.status} ${errorText}`);
         } else {
           console.log(`[ai-bookie] Monday Prop Bet sent successfully to group "${group.name}".`);
-          processedGroups.push({ group: group.name, status: 'sent', length: broadcastText.length });
         }
       } catch (dispatchErr) {
         console.error(`[ai-bookie] Connection error dispatching to group "${group.name}":`, dispatchErr);
+        throw dispatchErr;
       }
-    }
+    });
+
+    processedGroups.push({ group: group.name, status: runResult.status });
+  }
 
     return NextResponse.json({ success: true, processed: processedGroups });
   } catch (err) {

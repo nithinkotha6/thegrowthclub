@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/server';
 import { safeCompare } from '@/lib/security';
+import { runCronIdempotent } from '@/lib/cron/idempotent-runner';
 
 /**
  * Env-var fallback wearable connections.
@@ -733,63 +734,62 @@ export async function GET(req: Request) {
     let usersProcessed = 0;
     let successfulInserts = 0;
     const errorsList: string[] = [];
-    const processedGroups: { group: string; usersProcessed: number; inserts: number }[] = [];
+    const processedGroups: { group: string; status: string; usersProcessed: number; inserts: number }[] = [];
+    const todayStr = new Date().toISOString().slice(0, 10);
 
     for (const group of groups || []) {
-      const { data: connections, error: connErr } = await supabaseAdmin
-        .from('wearable_connections')
-        .select('*')
-        .eq('group_id', group.id);
-
-      if (connErr) {
-        console.error(`[Wearables Cron] Query connections error for group ${group.name}:`, connErr);
-        errorsList.push(`Group ${group.name}: ${connErr.message}`);
-        continue;
-      }
-
-      // Auto-provision any WEARABLE_KEY_<PROVIDER>_<NICKNAME> env-var fallback
-      // connections for members who don't already have a real OAuth-linked row.
-      const allConnections = [...(connections || [])];
-      const envFallbackConnections = await provisionEnvFallbackConnections(supabaseAdmin, group.id, allConnections);
-      allConnections.push(...envFallbackConnections);
-
       let groupUsersProcessed = 0;
       let groupInserts = 0;
 
-      // The Provider Switch Statement
-      for (const connection of allConnections) {
-        try {
-          groupUsersProcessed++;
-          let inserts = 0;
-          switch (connection.provider) {
-            case 'fitbit':
-              console.log(`[Wearables Debug] Routing user ${connection.user_id} (Provider: fitbit, Group: ${group.name}) to native syncGoogleHealthV4`);
-              inserts = await syncGoogleHealthV4(connection);
-              break;
-            case 'google_fit':
-              console.log(`[Wearables Debug] Routing user ${connection.user_id} (Provider: google_fit, Group: ${group.name}) to native syncGoogleHealthV4`);
-              inserts = await syncGoogleHealthV4(connection);
-              break;
-            case 'whoop':
-              console.log(`[Wearables Debug] Routing user ${connection.user_id} (Group: ${group.name}) to syncWhoop`);
-              inserts = await syncWhoop(connection);
-              break;
-            default:
-              console.error(`[Wearables Debug] Unsupported provider: ${connection.provider}`);
-          }
-          groupInserts += inserts;
-        } catch (error: any) {
-          console.error(
-            `[Wearables] Failed to sync ${connection.provider} for user ${connection.user_id} (Group: ${group.name}):`,
-            error
-          );
-          errorsList.push(`Group ${group.name} / User ${connection.user_id} (${connection.provider}): ${error?.message || error}`);
+      const runResult = await runCronIdempotent('sync-wearables', group.id, todayStr, async () => {
+        const { data: connections, error: connErr } = await supabaseAdmin
+          .from('wearable_connections')
+          .select('*')
+          .eq('group_id', group.id);
+
+        if (connErr) {
+          console.error(`[Wearables Cron] Query connections error for group ${group.name}:`, connErr);
+          throw connErr;
         }
-      }
+
+        const allConnections = [...(connections || [])];
+        const envFallbackConnections = await provisionEnvFallbackConnections(supabaseAdmin, group.id, allConnections);
+        allConnections.push(...envFallbackConnections);
+
+        for (const connection of allConnections) {
+          try {
+            groupUsersProcessed++;
+            let inserts = 0;
+            switch (connection.provider) {
+              case 'fitbit':
+                console.log(`[Wearables Debug] Routing user ${connection.user_id} (Provider: fitbit, Group: ${group.name}) to native syncGoogleHealthV4`);
+                inserts = await syncGoogleHealthV4(connection);
+                break;
+              case 'google_fit':
+                console.log(`[Wearables Debug] Routing user ${connection.user_id} (Provider: google_fit, Group: ${group.name}) to native syncGoogleHealthV4`);
+                inserts = await syncGoogleHealthV4(connection);
+                break;
+              case 'whoop':
+                console.log(`[Wearables Debug] Routing user ${connection.user_id} (Group: ${group.name}) to syncWhoop`);
+                inserts = await syncWhoop(connection);
+                break;
+              default:
+                console.error(`[Wearables Debug] Unsupported provider: ${connection.provider}`);
+            }
+            groupInserts += inserts;
+          } catch (error: any) {
+            console.error(
+              `[Wearables] Failed to sync ${connection.provider} for user ${connection.user_id} (Group: ${group.name}):`,
+              error
+            );
+            errorsList.push(`Group ${group.name} / User ${connection.user_id} (${connection.provider}): ${error?.message || error}`);
+          }
+        }
+      });
 
       usersProcessed += groupUsersProcessed;
       successfulInserts += groupInserts;
-      processedGroups.push({ group: group.name, usersProcessed: groupUsersProcessed, inserts: groupInserts });
+      processedGroups.push({ group: group.name, status: runResult.status, usersProcessed: groupUsersProcessed, inserts: groupInserts });
     }
 
     return NextResponse.json({

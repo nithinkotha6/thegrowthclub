@@ -6,6 +6,7 @@ import { executeWithKeyRotation } from '@/utils/geminiPool';
 import { buildWebhookReplyPrompt, buildDigestUserPrompt } from '@/lib/ai/prompts';
 import { createAdminClient } from '@/lib/supabase/server';
 import { safeCompare } from '@/lib/security';
+import { runCronIdempotent } from '@/lib/cron/idempotent-runner';
 
 interface ProfileDetails {
   id: string;
@@ -70,21 +71,22 @@ async function handleRequest(req: Request) {
     }
 
     const processedGroups: { group: string; status: string; length?: number }[] = [];
+    const todayStr = new Date().toISOString().slice(0, 10);
 
     for (const group of groups || []) {
       const groupId = group.id;
-      const instanceId = group.whatsapp_instance_id || process.env.GREEN_API_INSTANCE_ID;
-      const token = group.whatsapp_token || process.env.GREEN_API_TOKEN;
-      const waChatId = group.whatsapp_group_id || process.env.WHATSAPP_GROUP_ID;
+      const runResult = await runCronIdempotent('whatsapp-digest', groupId, todayStr, async () => {
+        const instanceId = group.whatsapp_instance_id || process.env.GREEN_API_INSTANCE_ID;
+        const token = group.whatsapp_token || process.env.GREEN_API_TOKEN;
+        const waChatId = group.whatsapp_group_id || process.env.WHATSAPP_GROUP_ID;
 
-      // Skip groups that lack a configured WhatsApp integration
-      if (!instanceId || !token || !waChatId) {
-        console.log(`[whatsapp-digest] Group "${group.name}" lacks configured WhatsApp credentials. Skipping.`);
-        processedGroups.push({ group: group.name, status: 'skipped-no-config' });
-        continue;
-      }
+        // Skip groups that lack a configured WhatsApp integration
+        if (!instanceId || !token || !waChatId) {
+          console.log(`[whatsapp-digest] Group "${group.name}" lacks configured WhatsApp credentials. Skipping.`);
+          return;
+        }
 
-      console.log(`[whatsapp-digest] Running digest for group: ${group.name} (ID: ${groupId})`);
+        console.log(`[whatsapp-digest] Running digest for group: ${group.name} (ID: ${groupId})`);
 
       // ── 3. Database Aggregation (Last 24 Hours) ─────────────────────────────
       const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -242,16 +244,18 @@ async function handleRequest(req: Request) {
         if (!response.ok) {
           const errorText = await response.text();
           console.error(`[whatsapp-digest] Green API dispatch failed for group "${group.name}":`, response.status, errorText);
-          processedGroups.push({ group: group.name, status: 'error-dispatch' });
+          throw new Error(`Green API dispatch failed: ${response.status} ${errorText}`);
         } else {
           console.log(`[whatsapp-digest] Digest sent successfully to group "${group.name}".`);
-          processedGroups.push({ group: group.name, status: 'sent', length: broadcastText.length });
         }
       } catch (dispatchErr) {
         console.error(`[whatsapp-digest] Connection error dispatching to group "${group.name}":`, dispatchErr);
-        processedGroups.push({ group: group.name, status: 'error-dispatch' });
+        throw dispatchErr;
       }
-    }
+    });
+
+    processedGroups.push({ group: group.name, status: runResult.status });
+  }
 
     return NextResponse.json({ success: true, processed: processedGroups });
   } catch (error) {
