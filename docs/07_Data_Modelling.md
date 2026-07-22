@@ -16,6 +16,7 @@
 | 2026-07-19 | (Streaks/Profile/PWA spec) | §1.1 | Migration `0039_add_streak_to_profiles.sql` adds `profiles.streak_count`/`profiles.last_reset_month` and a new `push_subscriptions` table; new `/profile/[userId]` route and monthly cron routes (`reset-monthly-streaks`, `monthly-summary`) consume this schema. Not yet applied to the live DB. |
 | 2026-07-19 | (Documentation audit) | §1.2, §1.17 (new), §8 | Corrected `profiles.pin` column-type note (widened to `text` by migration `0034`, doc previously said it was never widened). Added §1.17 `push_subscriptions` table (previously only in the revision log, not the table listing). Updated §8 from "planned" to **implemented** — all 8 Dashboard & Challenges tables shipped in migrations `0036`-`0038`; DASH-06's `league_challenges.group_id` decision resolved (per-group). |
 | 2026-07-22 | (Database Integrity) | §1.6 | Added migration `0041_metric_logs_unique_index.sql` documenting the composite UNIQUE index `metric_logs_unique_per_user_time_value` on `(user_id, metric_slug, (logged_at AT TIME ZONE 'UTC')::date, value) WHERE deleted_at IS NULL` to prevent duplicate activity logs on double-click or network retry. |
+| 2026-07-22 | (Code Cleanup & Observability) | §2.3 (new), `vote.ts` | Removed phantom deletion code for non-existent tables (`approvals`, `comments`, `memory_comments`, `xp_transactions`) from `deleteActivityAction`. Added §2.3 documenting database-level `ON DELETE CASCADE` rules (`metric_logs` → `log_votes`). Integrated structured logging (`lib/logger.ts`). |
 
 ---
 
@@ -278,7 +279,15 @@ Web Push (PWA) subscriptions — one row per browser/device a member has opted i
 
 (source: [sql/consolidated_schema.sql L177-241](../sql/consolidated_schema.sql#L177-L241))
 
-### 2.3 Unique PIN per Group Checks
+### 2.3 Deletion & Cascading Rules
+Database-level foreign key constraints enforce cascading deletion for all child tables. Application-level Server Actions rely on DB constraints rather than manual child deletion loops.
+- **`metric_logs` → `log_votes`**: `log_votes.log_id` defines `REFERENCES public.metric_logs(id) ON DELETE CASCADE`. Deleting a `metric_logs` row automatically deletes all associated peer votes in `log_votes`.
+- **`profiles` → `metric_logs` / `group_members` / `push_subscriptions`**: `ON DELETE CASCADE` clears all user logs, group memberships, and push subscriptions upon profile deletion.
+- **`groups` → `metric_logs` / `metric_definitions` / `push_subscriptions`**: `ON DELETE CASCADE` clears all group logs, custom metrics, and subscriptions upon group deletion.
+
+---
+
+### 2.4 Unique PIN per Group Checks
 - **Triggers**:
   - `trg_check_unique_pin_per_group` (AFTER INSERT OR UPDATE on `group_members`)
   - `trg_check_unique_pin_on_profile_update` (AFTER INSERT OR UPDATE OF pin on `profiles`)

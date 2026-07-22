@@ -4,6 +4,7 @@ import { createClient as createBaseClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 import { SESSION_COOKIE, decodeSession } from '@/lib/session';
+import { logger } from '@/lib/logger';
 
 function getAdminClient() {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -189,13 +190,15 @@ export async function rejectActivityAction(
  */
 export async function deleteActivityAction(
   logId: string,
-  userId: string,
-): Promise<VoteResult> {
+  userId?: string
+): Promise<{ success: boolean; error?: string }> {
   try {
+    let currentUserId = userId;
+
     const cookieStore = await cookies();
     const token = cookieStore.get(SESSION_COOKIE)?.value;
     const session = token ? await decodeSession(token) : null;
-    let currentUserId = session?.userId;
+    currentUserId = currentUserId || session?.userId;
 
     // Check supabase auth just in case
     if (!currentUserId) {
@@ -205,6 +208,7 @@ export async function deleteActivityAction(
     }
 
     if (!currentUserId) {
+      logger.warn('[deleteActivityAction] Unauthorized attempt - missing session', { logId });
       return { success: false, error: 'Unauthorized: Session not found.' };
     }
 
@@ -218,52 +222,36 @@ export async function deleteActivityAction(
       .maybeSingle();
 
     if (fetchError || !record) {
+      logger.warn('[deleteActivityAction] Activity record not found', { logId });
       return { success: false, error: 'Activity record not found.' };
     }
 
     // Permission check
     if (String(record.user_id) !== String(currentUserId)) {
+      logger.warn('[deleteActivityAction] Unauthorized deletion attempt', { logId, recordUserId: record.user_id, currentUserId });
       return { success: false, error: 'Unauthorized: You can only delete activities you logged.' };
     }
 
-    // 1. Defensively delete child records from log_votes first to prevent foreign key errors
-    await supabase
-      .from('log_votes')
-      .delete()
-      .eq('log_id', logId);
-
-    // Defensively try deleting approvals, comments, and xp_transactions child rows
-    try {
-      await supabase.from('approvals').delete().eq('log_id', logId);
-    } catch (_) {}
-    try {
-      await supabase.from('comments').delete().eq('log_id', logId);
-    } catch (_) {}
-    try {
-      await supabase.from('memory_comments').delete().eq('memory_id', logId);
-    } catch (_) {}
-    try {
-      await supabase.from('xp_transactions').delete().eq('log_id', logId);
-    } catch (_) {}
-
-    // 2. Delete parent record from metric_logs
+    // Delete parent record from metric_logs (database ON DELETE CASCADE handles child log_votes)
     const { error: logError } = await supabase
       .from('metric_logs')
       .delete()
       .eq('id', logId);
 
     if (logError) {
-      console.error('[deleteActivityAction] Log delete error:', logError.message);
+      logger.error('[deleteActivityAction] Activity deletion failed', { logId, error: logError.message });
       return { success: false, error: `Failed to delete activity: ${logError.message}` };
     }
+
+    logger.info('[deleteActivityAction] Activity deleted', { logId });
 
     // PERF-06: deleting an activity only affects the dashboard feed/chart and
     // rankings.
     revalidatePath('/dashboard');
     return { success: true };
-  } catch (err: any) {
-    console.error('[deleteActivityAction] Exception:', err);
-    return { success: false, error: err?.message || 'Server error occurred during deletion.' };
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    logger.error('[deleteActivityAction] Unexpected error deleting activity', { logId, error: errorMsg });
+    return { success: false, error: 'Failed to delete activity.' };
   }
 }
-
