@@ -8,6 +8,12 @@ import { safeCompare } from '@/lib/security';
  * `streak_count` to 0 and stamp `last_reset_month`. Idempotent: a repeat run
  * on the same day is a no-op for any profile already reset this month
  * (`last_reset_month` already matches, so the `.neq()` filter excludes it).
+ *
+ * Design Note:
+ * Monthly reset clears streak_count to 0 so users compete on a monthly slate.
+ * When a user logs an activity in the new month, `incrementStreakIfContinuous`
+ * in `lib/actions/updateStreak.ts` will start their streak count at 1 and re-accumulate
+ * it daily on consecutive activity days.
  */
 export async function GET(req: Request) {
   try {

@@ -15,6 +15,7 @@
 | 2026-07-19 | (Dashboard & Challenges spec decomposition) | §8 (new) | Added §8 documenting the **planned** (not yet implemented) schema for 9 new tables (`daily_goals`, `daily_goal_completions`, `challenge_progression`, `challenge_history`, `league_assignments`, `league_challenges`, `league_matches`, `league_match_logs`, and the still-undecided `group_stats`) — see `Findings_and_Recommendations.md` DASH-01..DASH-09 for full status/evidence per table. |
 | 2026-07-19 | (Streaks/Profile/PWA spec) | §1.1 | Migration `0039_add_streak_to_profiles.sql` adds `profiles.streak_count`/`profiles.last_reset_month` and a new `push_subscriptions` table; new `/profile/[userId]` route and monthly cron routes (`reset-monthly-streaks`, `monthly-summary`) consume this schema. Not yet applied to the live DB. |
 | 2026-07-19 | (Documentation audit) | §1.2, §1.17 (new), §8 | Corrected `profiles.pin` column-type note (widened to `text` by migration `0034`, doc previously said it was never widened). Added §1.17 `push_subscriptions` table (previously only in the revision log, not the table listing). Updated §8 from "planned" to **implemented** — all 8 Dashboard & Challenges tables shipped in migrations `0036`-`0038`; DASH-06's `league_challenges.group_id` decision resolved (per-group). |
+| 2026-07-22 | (Database Integrity) | §1.6 | Added migration `0041_metric_logs_unique_index.sql` documenting the composite UNIQUE index `metric_logs_unique_per_user_time_value` on `(user_id, metric_slug, (logged_at AT TIME ZONE 'UTC')::date, value) WHERE deleted_at IS NULL` to prevent duplicate activity logs on double-click or network retry. |
 
 ---
 
@@ -98,6 +99,7 @@ Group-scoped dynamic custom metrics.
 ### 1.6 Table: `metric_logs`
 Chronological training performance logs.
 - **PK**: `id` (uuid, default `uuid_generate_v4()`)
+- **Constraints**: Composite UNIQUE index `metric_logs_unique_per_user_time_value` on `(user_id, metric_slug, (logged_at AT TIME ZONE 'UTC')::date, value) WHERE deleted_at IS NULL` (migration `0041_metric_logs_unique_index.sql`). Prevents duplicate activity logs from double-clicks or network retries while allowing intentional re-logging of the same metric on different days or with different values.
 - **Columns**:
   - `id` (uuid, PK)
   - `user_id` (uuid, FK → profiles(id) ON DELETE CASCADE)
@@ -111,6 +113,7 @@ Chronological training performance logs.
   - `duration_seconds` (integer, NULL)
   - `headline` (text, NULL)
   - `logged_at` (timestamptz, NOT NULL, default `now()`)
+  - `deleted_at` (timestamptz, NULL)
 
 ### 1.7 Table: `log_votes`
 Peer approvals for verification of pending logs.

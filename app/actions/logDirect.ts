@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 import { SESSION_COOKIE, decodeSession } from '@/lib/session';
+import { incrementStreakIfContinuous } from '@/lib/actions/updateStreak';
 
 export type DirectLogResult =
   | { success: true; metric_slug: string; value: number; unit: string }
@@ -98,6 +99,9 @@ export async function logDirectActivity(
   });
  
   if (insertErr) {
+    if (insertErr.code === '23505' || insertErr.message?.includes('unique') || insertErr.message?.includes('duplicate')) {
+      return { success: false, error: 'Activity already logged today with this value.' };
+    }
     console.error('[logDirectActivity] Insert error details:', {
       message: insertErr.message,
       code: insertErr.code,
@@ -106,6 +110,12 @@ export async function logDirectActivity(
     return { success: false, error: `Database error: ${insertErr.message} (Code: ${insertErr.code})` };
   }
  
+  try {
+    await incrementStreakIfContinuous(userId, groupId);
+  } catch (streakErr) {
+    console.error('[logDirectActivity] Error updating streak:', streakErr);
+  }
+
   revalidatePath('/dashboard');
   return { success: true, metric_slug: metricSlug, value, unit };
 }
@@ -175,6 +185,9 @@ export async function logActivityManual(
       });
 
       if (retryErr) {
+        if (retryErr.code === '23505' || retryErr.message?.includes('unique') || retryErr.message?.includes('duplicate')) {
+          return { success: false, error: 'Activity already logged today with this value.' };
+        }
         console.error('[logActivityManual] Retry insert error details:', {
           message: retryErr.message,
           code: retryErr.code,
@@ -182,16 +195,33 @@ export async function logActivityManual(
         });
         return { success: false, error: `Database error (retry): ${retryErr.message} (Code: ${retryErr.code})` };
       }
+
+      try {
+        await incrementStreakIfContinuous(userId, groupId);
+      } catch (streakErr) {
+        console.error('[logActivityManual] Error updating streak:', streakErr);
+      }
+
       revalidatePath('/dashboard');
       return { success: true, metric_slug: metricSlug, value, unit };
     }
  
+    if (insertErr.code === '23505' || insertErr.message?.includes('unique') || insertErr.message?.includes('duplicate')) {
+      return { success: false, error: 'Activity already logged today with this value.' };
+    }
+
     console.error('[logActivityManual] Insert error details:', {
       message: insertErr.message,
       code: insertErr.code,
       details: insertErr.details,
     });
     return { success: false, error: `Database error: ${insertErr.message} (Code: ${insertErr.code})` };
+  }
+
+  try {
+    await incrementStreakIfContinuous(userId, groupId);
+  } catch (streakErr) {
+    console.error('[logActivityManual] Error updating streak:', streakErr);
   }
 
   revalidatePath('/dashboard');
