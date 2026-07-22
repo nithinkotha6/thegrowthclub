@@ -266,16 +266,23 @@ export default async function DashboardPage({
 
         {/* ── Row 2: Page Header ──────────────────────────────────── */}
         <header className="flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tight text-[#111827] leading-none">
-              The Growth Club
-            </h1>
-            <p className="mt-2 text-[11px] font-bold tracking-[0.18em] text-[#6B7280] uppercase">
-              Train Together. Compete Together. Grow Together.
-            </p>
-            <svg width="340" height="14" viewBox="0 0 340 14" fill="none" aria-hidden="true" className="mt-0.5 max-w-full">
-              <path d="M2 10 C40 3, 90 13, 140 7 S210 2, 260 8 S305 12, 338 6" stroke="#22C55E" strokeWidth="2.8" strokeLinecap="round" fill="none" />
-            </svg>
+          <div className="flex items-center gap-3.5">
+            <img
+              src="/logo.jpg"
+              alt="The Growth Club Logo"
+              className="w-12 h-12 md:w-14 md:h-14 rounded-2xl object-cover border-2 border-[#22C55E]/20 shadow-md flex-shrink-0"
+            />
+            <div>
+              <h1 className="text-3xl md:text-5xl font-black uppercase tracking-tight text-[#111827] leading-none">
+                The Growth Club
+              </h1>
+              <p className="mt-1.5 text-[10px] md:text-[11px] font-bold tracking-[0.18em] text-[#6B7280] uppercase">
+                Train Together. Compete Together. Grow Together.
+              </p>
+              <svg width="340" height="14" viewBox="0 0 340 14" fill="none" aria-hidden="true" className="mt-0.5 max-w-full">
+                <path d="M2 10 C40 3, 90 13, 140 7 S210 2, 260 8 S305 12, 338 6" stroke="#22C55E" strokeWidth="2.8" strokeLinecap="round" fill="none" />
+              </svg>
+            </div>
           </div>
           <Suspense fallback={
             <div className="p-2.5 bg-white border border-[#E5E7EB] rounded-full w-11 h-11 animate-pulse" />

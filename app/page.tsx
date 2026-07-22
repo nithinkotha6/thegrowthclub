@@ -276,7 +276,12 @@ export default function LandingPage() {
       <div className="w-full max-w-sm">
 
         {/* Brand Header */}
-        <div className="mb-8 text-center">
+        <div className="mb-8 text-center flex flex-col items-center">
+          <img
+            src="/logo.jpg"
+            alt="The Growth Club Logo"
+            className="w-16 h-16 rounded-2xl object-cover mb-3 border-2 border-[#CEFF00]/30 shadow-lg shadow-[#CEFF00]/10"
+          />
           <h1 className="text-3xl font-black uppercase tracking-tight text-white leading-none">
             The Growth Club
           </h1>

@@ -14,12 +14,12 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'The Growth Club',
     description: 'Train together. Compete together. Grow together.',
-    images: ['/logo.png'],
+    images: ['/logo.jpg'],
   },
   manifest: '/manifest.json',
   icons: {
-    icon: '/favicon.ico',
-    apple: '/apple-touch-icon.png',
+    icon: '/logo.jpg',
+    apple: '/logo.jpg',
   },
   appleWebApp: {
     capable: true,

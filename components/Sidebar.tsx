@@ -57,6 +57,23 @@ export default function Sidebar({ userName, groupName, totalXp, currentLevel, av
       className="hidden md:flex flex-col w-[240px] min-h-screen bg-[#0A0A0A] px-4 py-6 flex-shrink-0"
       aria-label="Sidebar navigation"
     >
+      {/* ── Brand Logo Header ── */}
+      <div className="flex items-center gap-3 px-2 mb-6">
+        <img
+          src="/logo.jpg"
+          alt="The Growth Club Logo"
+          className="w-9 h-9 rounded-xl object-cover border border-[#CEFF00]/30 shadow-sm flex-shrink-0"
+        />
+        <div className="flex flex-col min-w-0">
+          <span className="text-white font-black text-xs tracking-tight uppercase leading-none truncate">
+            The Growth Club
+          </span>
+          <span className="text-[#CEFF00] text-[9px] font-bold tracking-wider uppercase mt-1">
+            Train. Compete. Grow.
+          </span>
+        </div>
+      </div>
+
       {/* ── Primary Navigation ───────────────────────────────────── */}
       <nav className="flex flex-col gap-1 flex-1" aria-label="Primary">
         {NAV_ITEMS.map(({ icon: Icon, label, href }) => {
