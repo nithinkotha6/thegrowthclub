@@ -285,29 +285,24 @@ export default function DailyGoalsPanel({ goals, completions, userId }: DailyGoa
                   : 'bg-white border-slate-200 hover:bg-slate-50 shadow-sm'
               }`}
             >
-              <div className="flex items-center gap-3.5 min-w-0">
-                {isChecked ? (
-                  <CheckCircle2 size={24} className="text-[#658000] flex-shrink-0" />
-                ) : (
-                  <Circle size={24} className="text-slate-300 flex-shrink-0" />
-                )}
-                <div className="flex flex-col leading-tight min-w-0">
-                  <span
-                    className={`text-base font-extrabold tracking-tight ${
-                      isChecked ? 'text-slate-900 line-through decoration-[#658000]/60' : 'text-slate-900'
-                    }`}
-                  >
-                    {goal.title}
+              {/* Left Side: Title & Description */}
+              <div className="flex flex-col leading-tight min-w-0">
+                <span
+                  className={`text-base font-extrabold tracking-tight ${
+                    isChecked ? 'text-slate-900 line-through decoration-[#658000]/60' : 'text-[#0F1F3C]'
+                  }`}
+                >
+                  {goal.title}
+                </span>
+                {goal.description && (
+                  <span className="text-xs text-slate-500 font-medium truncate mt-0.5">
+                    {goal.description}
                   </span>
-                  {goal.description && (
-                    <span className="text-xs text-slate-500 font-medium truncate mt-0.5">
-                      {goal.description}
-                    </span>
-                  )}
-                </div>
+                )}
               </div>
 
-              <div className="flex-shrink-0">
+              {/* Far Right Side: Status Tag + Round Checkbox */}
+              <div className="flex items-center gap-3 flex-shrink-0">
                 <span
                   className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full ${
                     isChecked
@@ -317,6 +312,12 @@ export default function DailyGoalsPanel({ goals, completions, userId }: DailyGoa
                 >
                   {isChecked ? 'Completed' : 'Pending'}
                 </span>
+
+                {isChecked ? (
+                  <CheckCircle2 size={24} className="text-[#658000] flex-shrink-0" />
+                ) : (
+                  <Circle size={24} className="text-slate-300 hover:text-[#CEFF00] flex-shrink-0" />
+                )}
               </div>
             </button>
           );

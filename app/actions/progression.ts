@@ -133,16 +133,33 @@ export async function logProgressionActivity(
     return { success: false, error: dbErr.message };
   }
 
+  // Explicitly recompute and upsert challenge_progression to guarantee instant sync
+  const { data: activeLogs } = await supabase
+    .from('challenge_history')
+    .select('tier_after')
+    .eq('user_id', session.userId)
+    .eq('group_id', session.groupId)
+    .eq('challenge_type', challengeType)
+    .is('deleted_at', null);
+
+  const newHighest = (activeLogs || []).reduce((max, h) => Math.max(max, Number(h.tier_after) || 0), 0);
+
+  await supabase.from('challenge_progression').upsert({
+    user_id: session.userId,
+    group_id: session.groupId,
+    challenge_type: challengeType,
+    current_tier: newHighest,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'user_id,group_id,challenge_type' });
+
   revalidatePath('/', 'layout');
   return { success: true };
 }
 
 /**
- * Delete a progression history entry (DASH-20). Soft-deletes the row; the DB
- * trigger recomputes `challenge_progression` from whatever the new latest
- * remaining history row says — correctly cascading back multiple steps if
- * called repeatedly, since each call re-derives from DB state rather than
- * decrementing a locally-held value.
+ * Delete a progression history entry (DASH-20). Soft-deletes the row; then
+ * recomputes `challenge_progression` from whatever the new highest remaining history
+ * row says — correctly cascading back multiple steps if called repeatedly.
  */
 export async function deleteProgressionActivity(
   historyId: string,
@@ -153,7 +170,7 @@ export async function deleteProgressionActivity(
   const supabase = createAdminClient(session.groupId);
   const { data: existing, error: fetchErr } = await supabase
     .from('challenge_history')
-    .select('user_id')
+    .select('user_id, challenge_type')
     .eq('id', historyId)
     .eq('group_id', session.groupId)
     .maybeSingle();
@@ -172,6 +189,26 @@ export async function deleteProgressionActivity(
 
   if (dbErr) return { success: false, error: dbErr.message };
 
+  // Recompute remaining highest value for this challenge type
+  const { data: activeLogs } = await supabase
+    .from('challenge_history')
+    .select('tier_after')
+    .eq('user_id', session.userId)
+    .eq('group_id', session.groupId)
+    .eq('challenge_type', existing.challenge_type)
+    .is('deleted_at', null);
+
+  const newHighest = (activeLogs || []).reduce((max, h) => Math.max(max, Number(h.tier_after) || 0), 0);
+
+  await supabase.from('challenge_progression').upsert({
+    user_id: session.userId,
+    group_id: session.groupId,
+    challenge_type: existing.challenge_type,
+    current_tier: newHighest,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'user_id,group_id,challenge_type' });
+
   revalidatePath('/', 'layout');
   return { success: true };
 }
+

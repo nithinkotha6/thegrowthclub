@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
+import { CheckCircle2, Circle } from 'lucide-react';
 import { METRIC_PROGRESSION_CATALOG, normalizeMetricSlug, type ChallengeTierDef } from '@/lib/config/challenge-tiers';
 
 interface ChallengeTierListProps {
@@ -31,18 +32,21 @@ export function ChallengeTierList({ metric, currentHighest, onToggleTier }: Chal
         const isCompleted = currentHighest >= tier.targetValue;
 
         return (
-          <div
+          <button
             key={tier.tierNumber}
-            className={`flex items-center justify-between gap-4 p-4 rounded-xl border transition-all ${
+            type="button"
+            onClick={() => onToggleTier?.(tier)}
+            className={`flex items-center justify-between gap-4 p-4 rounded-2xl border text-left transition-all cursor-pointer active:scale-[0.99] ${
               isCompleted
-                ? 'bg-slate-100 border-slate-200 opacity-75 order-last shadow-none'
-                : 'bg-white border-slate-200 shadow-xs hover:border-[#CEFF00]'
+                ? 'bg-[#CEFF00]/10 border-[#CEFF00]/40 shadow-xs order-last'
+                : 'bg-white border-slate-200 hover:bg-slate-50 shadow-xs hover:border-[#CEFF00]'
             }`}
           >
+            {/* Left Side: Tier Description & Subtitle */}
             <div className="flex flex-col leading-tight min-w-0">
               <span
                 className={`text-base font-extrabold tracking-tight ${
-                  isCompleted ? 'text-slate-500 line-through decoration-slate-400' : 'text-[#0F1F3C]'
+                  isCompleted ? 'text-slate-900 line-through decoration-[#658000]/60' : 'text-[#0F1F3C]'
                 }`}
               >
                 {tier.description}
@@ -54,16 +58,15 @@ export function ChallengeTierList({ metric, currentHighest, onToggleTier }: Chal
               )}
             </div>
 
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={isCompleted}
-                disabled={!isCompleted && currentHighest < tier.targetValue}
-                onChange={() => onToggleTier?.(tier)}
-                className="w-6 h-6 rounded-md border-slate-300 text-[#0F1F3C] focus:ring-[#CEFF00] cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
-              />
+            {/* Far Right Side: Completely Round Checkbox Indicator */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {isCompleted ? (
+                <CheckCircle2 size={24} className="text-[#658000] flex-shrink-0" />
+              ) : (
+                <Circle size={24} className="text-slate-300 hover:text-[#CEFF00] flex-shrink-0" />
+              )}
             </div>
-          </div>
+          </button>
         );
       })}
     </div>
