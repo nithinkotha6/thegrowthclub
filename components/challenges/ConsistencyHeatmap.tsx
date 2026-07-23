@@ -190,8 +190,7 @@ export function ConsistencyHeatmap({ userId, goals = [], completions }: Consiste
                 }
 
                 const bgColor = getColorForIntensity(cell.intensity);
-                const isDarkCell = cell.intensity === 4;
-                const textColor = isDarkCell ? 'text-white' : 'text-slate-900';
+                const textColor = 'text-slate-950 font-black';
 
                 const tooltipText =
                   selectedMetric === 'all'
@@ -205,7 +204,7 @@ export function ConsistencyHeatmap({ userId, goals = [], completions }: Consiste
                     key={cell.dateStr}
                     style={{ backgroundColor: bgColor }}
                     title={tooltipText}
-                    className={`w-full aspect-square rounded-xl flex items-center justify-center text-[10px] md:text-xs font-black tracking-tight cursor-pointer transition-transform hover:scale-110 hover:shadow-lg hover:z-10 select-none ${textColor}`}
+                    className={`w-full aspect-square rounded-xl flex items-center justify-center text-[10px] md:text-xs tracking-tight cursor-pointer transition-transform hover:scale-110 hover:shadow-lg hover:z-10 select-none ${textColor}`}
                   >
                     {cell.dayOfMonth}
                   </div>
@@ -223,20 +222,20 @@ export function ConsistencyHeatmap({ userId, goals = [], completions }: Consiste
           <span className="uppercase tracking-wider text-[10px] text-slate-400">Legend:</span>
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-1.5">
-              <div className="w-3.5 h-3.5 rounded-md bg-[#E8E8E8]" />
-              <span>None</span>
+              <div className="w-3.5 h-3.5 rounded-md bg-[#FFFFFF] border border-slate-400/40" />
+              <span>None (0)</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <div className="w-3.5 h-3.5 rounded-md bg-[#F5E6D3]" />
-              <span>Partial</span>
+              <div className="w-3.5 h-3.5 rounded-md bg-[#E8FF80]" />
+              <span>Partial (1-3)</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <div className="w-3.5 h-3.5 rounded-md bg-[#CCFF00]" />
-              <span>Good</span>
+              <div className="w-3.5 h-3.5 rounded-md bg-[#DFFF33]" />
+              <span>Good (4)</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <div className="w-3.5 h-3.5 rounded-md bg-[#4CAF50]" />
-              <span>Perfect</span>
+              <div className="w-3.5 h-3.5 rounded-md bg-[#E5FF00]" />
+              <span>Perfect (5)</span>
             </div>
           </div>
         </div>

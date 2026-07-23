@@ -5,11 +5,11 @@
 export type HeatmapIntensity = 0 | 1 | 2 | 3 | 4;
 
 export const HEATMAP_COLORS: Record<HeatmapIntensity, { bg: string; text: string; label: string }> = {
-  0: { bg: '#E8E8E8', text: '#4B5563', label: 'None' },
-  1: { bg: '#F5E6D3', text: '#92400E', label: 'Partial' },
-  2: { bg: '#FFE082', text: '#78350F', label: 'Partial' },
-  3: { bg: '#CCFF00', text: '#0F1F3C', label: 'Good' },
-  4: { bg: '#4CAF50', text: '#FFFFFF', label: 'Perfect' },
+  0: { bg: '#FFFFFF', text: '#0F1F3C', label: 'None' },
+  1: { bg: '#E8FF80', text: '#0F1F3C', label: 'Partial' },
+  2: { bg: '#E8FF80', text: '#0F1F3C', label: 'Partial' },
+  3: { bg: '#DFFF33', text: '#0F1F3C', label: 'Good' },
+  4: { bg: '#E5FF00', text: '#0F1F3C', label: 'Perfect' },
 };
 
 export function getColorForIntensity(intensity: HeatmapIntensity): string {
@@ -18,16 +18,15 @@ export function getColorForIntensity(intensity: HeatmapIntensity): string {
 
 /** Calculates completion intensity for composite 'all' metrics mode (0 to 5 completed habits). */
 export function calculateIntensityForAll(count: number): HeatmapIntensity {
-  if (count <= 0) return 0; // White (#E8E8E8)
-  if (count <= 2) return 1; // Cream (#F5E6D3)
-  if (count === 3) return 2; // Light Yellow (#FFE082)
-  if (count === 4) return 3; // Neon Lime (#CCFF00)
-  return 4; // Dark Green (#4CAF50) - Perfect (all 5)
+  if (count <= 0) return 0; // White (#FFFFFF)
+  if (count <= 3) return 1; // Light Lime (#E8FF80) - 1, 2, or 3 habits
+  if (count === 4) return 3; // Neon Lime (#DFFF33) - 4 habits
+  return 4; // Electric Lime (#E5FF00) - Perfect (all 5)
 }
 
 /** Calculates completion intensity for single metric mode. */
 export function calculateIntensityForMetric(completed: boolean): HeatmapIntensity {
-  return completed ? 4 : 0; // Dark Green (#4CAF50) or White (#E8E8E8)
+  return completed ? 4 : 0; // Electric Lime (#E5FF00) or White (#FFFFFF)
 }
 
 export interface DayHeatmapData {

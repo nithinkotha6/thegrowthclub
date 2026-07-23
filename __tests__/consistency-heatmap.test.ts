@@ -12,24 +12,23 @@ import {
 describe('Consistency Heatmap Unit Tests', () => {
   it('calculates intensity correctly for composite all metrics mode', () => {
     assert.strictEqual(calculateIntensityForAll(0), 0); // None
-    assert.strictEqual(calculateIntensityForAll(1), 1); // Partial (1-2)
-    assert.strictEqual(calculateIntensityForAll(2), 1); // Partial (1-2)
-    assert.strictEqual(calculateIntensityForAll(3), 2); // Partial (3)
+    assert.strictEqual(calculateIntensityForAll(1), 1); // Partial (1-3)
+    assert.strictEqual(calculateIntensityForAll(2), 1); // Partial (1-3)
+    assert.strictEqual(calculateIntensityForAll(3), 1); // Partial (1-3)
     assert.strictEqual(calculateIntensityForAll(4), 3); // Good (4)
     assert.strictEqual(calculateIntensityForAll(5), 4); // Perfect (5)
   });
 
   it('calculates intensity correctly for individual metric mode', () => {
-    assert.strictEqual(calculateIntensityForMetric(false), 0); // None
-    assert.strictEqual(calculateIntensityForMetric(true), 4); // Perfect (Dark Green)
+    assert.strictEqual(calculateIntensityForMetric(false), 0); // None (#FFFFFF)
+    assert.strictEqual(calculateIntensityForMetric(true), 4); // Perfect (#E5FF00)
   });
 
   it('maps intensity level to correct color hex strings', () => {
-    assert.strictEqual(getColorForIntensity(0), '#E8E8E8'); // White / Light Gray
-    assert.strictEqual(getColorForIntensity(1), '#F5E6D3'); // Cream
-    assert.strictEqual(getColorForIntensity(2), '#FFE082'); // Light Yellow
-    assert.strictEqual(getColorForIntensity(3), '#CCFF00'); // Neon Lime
-    assert.strictEqual(getColorForIntensity(4), '#4CAF50'); // Dark Green
+    assert.strictEqual(getColorForIntensity(0), '#FFFFFF'); // White
+    assert.strictEqual(getColorForIntensity(1), '#E8FF80'); // Light Lime (1-3)
+    assert.strictEqual(getColorForIntensity(3), '#DFFF33'); // Neon Lime (4)
+    assert.strictEqual(getColorForIntensity(4), '#E5FF00'); // Electric Lime (5 / Perfect)
   });
 
   it('calculates streak correctly for consecutive days', () => {
