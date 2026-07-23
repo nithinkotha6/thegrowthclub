@@ -208,8 +208,87 @@ export async function deleteDailyGoalCompletion(
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', completionId);
 
-  if (dbErr) return { success: false, error: dbErr.message };
-
   revalidatePath('/', 'layout');
   return { success: true };
 }
+
+import { calculateStreak, calculateCompletionRate } from '@/lib/utils/heatmapColors';
+
+/**
+ * Fetch 30-day habit consistency data for the user.
+ */
+export async function getConsistencyData(
+  targetUserId?: string,
+  targetGroupId?: string,
+  metric: string = 'all'
+): Promise<
+  | {
+      success: true;
+      byDateMap: Record<string, string[]>;
+      streak: number;
+      completionRate: number;
+    }
+  | { success: false; error: string }
+> {
+  const { session, error } = await requireSession();
+  if (!session) return { success: false, error: error! };
+
+  const userId = targetUserId || session.userId;
+  const groupId = targetGroupId || session.groupId;
+
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  const supabase = createAdminClient(groupId);
+  const { data, error: dbErr } = await supabase
+    .from('daily_goal_completions')
+    .select('daily_goal_id, completed_at, daily_goals ( title )')
+    .eq('user_id', userId)
+    .eq('group_id', groupId)
+    .is('deleted_at', null)
+    .gte('completed_at', thirtyDaysAgo.toISOString());
+
+  if (dbErr) return { success: false, error: dbErr.message };
+
+  // Map completions by YYYY-MM-DD -> list of metric slugs/identifiers
+  const setByDate: Record<string, Set<string>> = {};
+  const arrayByDate: Record<string, string[]> = {};
+
+  for (const c of data || []) {
+    const dateStr = new Date(c.completed_at).toISOString().split('T')[0];
+    if (!setByDate[dateStr]) {
+      setByDate[dateStr] = new Set();
+    }
+
+    const title = (c as any).daily_goals?.title?.toLowerCase() || '';
+    let slug = c.daily_goal_id;
+
+    for (const preset of DAILY_GOAL_METRICS) {
+      if (
+        title.includes(preset.slug.replace(/_/g, ' ')) ||
+        title.includes(preset.name.toLowerCase()) ||
+        preset.name.toLowerCase().includes(title)
+      ) {
+        slug = preset.slug;
+        break;
+      }
+    }
+
+    setByDate[dateStr].add(slug);
+  }
+
+  for (const [d, set] of Object.entries(setByDate)) {
+    arrayByDate[d] = Array.from(set);
+  }
+
+  const streak = calculateStreak(setByDate, metric, DAILY_GOAL_METRICS.length);
+  const completionRate = calculateCompletionRate(setByDate, metric, DAILY_GOAL_METRICS.length);
+
+  return {
+    success: true,
+    byDateMap: arrayByDate,
+    streak,
+    completionRate,
+  };
+}
+

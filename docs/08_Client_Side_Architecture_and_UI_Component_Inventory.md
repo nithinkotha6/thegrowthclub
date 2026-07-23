@@ -15,6 +15,7 @@
 | 2026-07-19 | (Structural refactor) | §5, §8 | DASH-10/11/27 resolved: `Podium`/`RankingsList` (new `components/dashboard/`) moved onto `/dashboard`, unified with the existing `activeMetric`/`activeRange` state (no more separate leaderboard-only pill selector). `ChallengesModule` moved to the new `/dashboard/challenges` route (renamed from `/dashboard/leaderboard`), gained Framer Motion fade-in/zoom-in-95 tab transitions. "Leaderboard" nav item renamed "Challenges" (Trophy icon). Command Center in Settings is no longer a collapsible accordion — always visible. Sidebar's user card now renders the real `profiles.avatar_url` photo via `UserAvatar` instead of initials-only.
 | 2026-07-22 | (Daily Goals Redesign) | §8 | Redesigned `DailyGoalsPanel.tsx` to display predefined daily goal metrics ("10,000 steps", "50 Push-ups", "50 squads", "Gym streak", "Diet") defined in `lib/config/daily-goals.ts`. Added Date Navigation bar (`< Today >`) and interactive Calendar Date Picker modal. Checkbox state directly logs/un-logs completions in `daily_goal_completions` for the selected date. Removed Recent Activities section below the goals list. |
 | 2026-07-22 | (Leagues Democratization) | §8 | Moved Leagues match initiation and team roster management from Settings/Command Center into the Challenges → Leagues section (`LeagueMatchPanel.tsx`). Created `CreateLeagueModal.tsx` accessible to all group members (no admin required) for picking challenges and assigning players to TITANS vs REBELS. Updated team cards with avatars, live score inputs, gold winner highlight, and Recent Matches history. |
+| 2026-07-22 | (Consistency Heatmap) | §8, §10 (new) | Added `ConsistencyHeatmap.tsx` inside the Daily Goals tab (`DailyGoalsPanel.tsx`). Renders a GitHub-inspired 30-day habit completion grid with dark navy background (`#0A1628`), dropdown metric selector ("ALL METRICS", "10,000 steps", "50 Push-ups", "50 squads", "Gym streak", "Diet"), completion intensity colors (`#E8E8E8`, `#F5E6D3`, `#FFE082`, `#CCFF00`, `#4CAF50`), streak counter (`X days 🔥`), and completion rate (`X%`). |
 
 ---
 
@@ -310,4 +311,27 @@ stateDiagram-v2
 | Screen | Route / File | Render Mode | Purpose | Auth Guard |
 |---|---|---|---|---|
 | Profile | `/profile/[userId]` — `app/profile/[userId]/page.tsx` | RSC | Personal bests + streak/level badges | Session check + group-membership check on the target `userId` |
+
+---
+
+## 10. Consistency Heatmap Component (IMPLEMENTED)
+
+### 10.1 Overview
+The `ConsistencyHeatmap` component ([`components/challenges/ConsistencyHeatmap.tsx`](file:///d:/Nithinkotha6-Git/The-Growth-Hub-App/thegrowthclub/components/challenges/ConsistencyHeatmap.tsx)) visualizes 30-day habit completion patterns inside the Daily Goals tab (`DailyGoalsPanel.tsx`).
+
+### 10.2 Features & Palette
+- **Card Design**: Dark Navy background (`#0A1628`), neon lime border (`#CEFF00`), rounded corners (`rounded-3xl`).
+- **Metric Filter Selector**:
+  - `ALL METRICS` (`'all'`): Composite view (0 to 5 completed habits).
+  - Individual Metric Options: `10,000 steps`, `50 Push-ups`, `50 squads`, `Gym streak`, `Diet`.
+- **30-Day Grid Layout**: Arranged in calendar week rows (Sun–Sat) with date labels (1–31 inside rounded squares) and tooltips.
+- **Color Mapping**:
+  - `None` (0%): White / Light Gray (`#E8E8E8`)
+  - `Partial` (1-2 habits): Cream (`#F5E6D3`) / Light Yellow (`#FFE082`)
+  - `Good` (4 habits): Neon Lime (`#CCFF00`)
+  - `Perfect` (5 habits or single metric completed): Dark Green (`#4CAF50`)
+- **Stats Row**:
+  - `Current Streak`: `X days 🔥` (consecutive days satisfied up to today/yesterday).
+  - `Completion Rate`: `X%` (total completions vs 150 possible over 30 days).
+
 

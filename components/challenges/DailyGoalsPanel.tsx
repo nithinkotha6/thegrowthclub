@@ -17,6 +17,7 @@ import {
   deleteDailyGoalCompletion,
 } from '@/app/actions/dailyGoals';
 import { DAILY_GOAL_METRICS } from '@/lib/config/daily-goals';
+import ConsistencyHeatmap from './ConsistencyHeatmap';
 
 interface DailyGoalsPanelProps {
   goals: DailyGoal[];
@@ -323,6 +324,9 @@ export default function DailyGoalsPanel({ goals, completions, userId }: DailyGoa
       </div>
 
       {error && <p className="text-xs font-bold text-red-600 px-1">{error}</p>}
+
+      {/* ── CONSISTENCY HEATMAP (30-day habit completion patterns) ─── */}
+      <ConsistencyHeatmap userId={userId} goals={displayGoals} completions={completions} />
     </div>
   );
 }
