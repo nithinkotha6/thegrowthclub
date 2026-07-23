@@ -15,7 +15,8 @@
 | 2026-07-19 | (Structural refactor) | §5, §8 | DASH-10/11/27 resolved: `Podium`/`RankingsList` (new `components/dashboard/`) moved onto `/dashboard`, unified with the existing `activeMetric`/`activeRange` state (no more separate leaderboard-only pill selector). `ChallengesModule` moved to the new `/dashboard/challenges` route (renamed from `/dashboard/leaderboard`), gained Framer Motion fade-in/zoom-in-95 tab transitions. "Leaderboard" nav item renamed "Challenges" (Trophy icon). Command Center in Settings is no longer a collapsible accordion — always visible. Sidebar's user card now renders the real `profiles.avatar_url` photo via `UserAvatar` instead of initials-only.
 | 2026-07-22 | (Daily Goals Redesign) | §8 | Redesigned `DailyGoalsPanel.tsx` to display predefined daily goal metrics ("10,000 steps", "50 Push-ups", "50 squads", "Gym streak", "Diet") defined in `lib/config/daily-goals.ts`. Added Date Navigation bar (`< Today >`) and interactive Calendar Date Picker modal. Checkbox state directly logs/un-logs completions in `daily_goal_completions` for the selected date. Removed Recent Activities section below the goals list. |
 | 2026-07-22 | (Leagues Democratization) | §8 | Moved Leagues match initiation and team roster management from Settings/Command Center into the Challenges → Leagues section (`LeagueMatchPanel.tsx`). Created `CreateLeagueModal.tsx` accessible to all group members (no admin required) for picking challenges and assigning players to TITANS vs REBELS. Updated team cards with avatars, live score inputs, gold winner highlight, and Recent Matches history. |
-| 2026-07-22 | (Consistency Heatmap) | §8, §10 (new) | Added `ConsistencyHeatmap.tsx` inside the Daily Goals tab (`DailyGoalsPanel.tsx`). Renders a GitHub-inspired 30-day habit completion grid with dark navy background (`#0A1628`), dropdown metric selector ("ALL METRICS", "10,000 steps", "50 Push-ups", "50 squads", "Gym streak", "Diet"), completion intensity colors (`#E8E8E8`, `#F5E6D3`, `#FFE082`, `#CCFF00`, `#4CAF50`), streak counter (`X days 🔥`), and completion rate (`X%`). |
+| 2026-07-22 | (Consistency Heatmap) | §8, §10 | Added `ConsistencyHeatmap.tsx` inside the Daily Goals tab (`DailyGoalsPanel.tsx`). Renders a GitHub-inspired 30-day habit completion grid with dark navy background (`#0A1628`), dropdown metric selector ("ALL METRICS", "10,000 steps", "50 Push-ups", "50 squads", "Gym streak", "Diet"), completion intensity colors (`#111A0A`, `#2C4815`, `#6AA31A`, `#CEFF00`), month navigation controls, streak counter (`X Days 🔥`), and consistency rate (`X/31 Days`). |
+| 2026-07-22 | (Challenge Progression System) | §8, §11 (new) | Implemented Clash of Clans-inspired tier progression UI in `ProgressionChallengePanel.tsx` with subcomponents (`MetricPillSelector.tsx`, `CurrentHighestCard.tsx`, `ChallengeTierList.tsx`, `LogValueInput.tsx`, `ChallengeHistory.tsx`). Seeding migration `0046_seed_challenge_tiers.sql` seeds 14 tiers per metric for Push-ups, Pull-ups, Squats, and Plank. |
 
 ---
 
@@ -331,7 +332,22 @@ The `ConsistencyHeatmap` component ([`components/challenges/ConsistencyHeatmap.t
   - `Good` (4 habits): Neon Lime (`#CCFF00`)
   - `Perfect` (5 habits or single metric completed): Dark Green (`#4CAF50`)
 - **Stats Row**:
-  - `Current Streak`: `X days 🔥` (consecutive days satisfied up to today/yesterday).
-  - `Completion Rate`: `X%` (total completions vs 150 possible over 30 days).
+  - `Current Streak`: `X Days 🔥` (consecutive days satisfied up to today/yesterday).
+  - `Consistency Rate`: `X/31 Days` (days attended in selected month).
+
+---
+
+## 11. Challenge Progression Components (IMPLEMENTED)
+
+### 11.1 Overview
+The Clash of Clans-inspired tier progression interface is mounted inside `ProgressionChallengePanel.tsx` under the Challenges tab ([`components/challenges/ProgressionChallengePanel.tsx`](file:///d:/Nithinkotha6-Git/The-Growth-Hub-App/thegrowthclub/components/challenges/ProgressionChallengePanel.tsx)).
+
+### 11.2 Component Breakdown
+1. `MetricPillSelector.tsx`: Horizontal scrollable metric pills (`Push-ups`, `Pull-ups`, `Squats`, `Plank (sec)`) with hidden scrollbar. Active pill has `#0F1F3C` background with `#CEFF00` text.
+2. `CurrentHighestCard.tsx`: Hero card displaying personal best record value with `🔥` animation and `CURRENT HIGHEST [METRIC]` label.
+3. `ChallengeTierList.tsx`: Displays 14 progressive challenge tiers per metric. Checkboxes enable when `currentHighest >= targetValue`. Completed tiers reorder to the bottom.
+4. `LogValueInput.tsx`: Numeric value input with neon lime `LOG` button.
+5. `ChallengeHistory.tsx`: History list displaying previous values, entry dates, and soft-delete trash button.
+
 
 

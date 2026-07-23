@@ -1,139 +1,112 @@
 'use client';
 
-import { useState, useTransition } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
-import { Trash2, TrendingUp, Award } from 'lucide-react';
+import { useState, useTransition, useMemo } from 'react';
 import {
   type ChallengeProgression,
   type ChallengeHistoryEntry,
   logProgressionActivity,
   deleteProgressionActivity,
 } from '@/app/actions/progression';
+import MetricPillSelector from './MetricPillSelector';
+import CurrentHighestCard from './CurrentHighestCard';
+import ChallengeTierList from './ChallengeTierList';
+import LogValueInput from './LogValueInput';
+import ChallengeHistory from './ChallengeHistory';
+import { normalizeMetricSlug, METRIC_PROGRESSION_CATALOG, type ChallengeTierDef } from '@/lib/config/challenge-tiers';
 
 interface ProgressionChallengePanelProps {
   progression: ChallengeProgression[];
   history: (ChallengeHistoryEntry & { user_id: string; profiles?: { nickname: string | null; full_name: string | null } | null })[];
   userId: string;
-  challengeTypes: string[]; // e.g. ['Push-ups', 'Pull-ups', ...] — logging targets
+  challengeTypes?: string[];
 }
 
-export default function ProgressionChallengePanel({ progression, history, userId, challengeTypes }: ProgressionChallengePanelProps) {
-  const [activeType, setActiveType] = useState(challengeTypes[0] ?? 'Push-ups');
-  const [inputValue, setInputValue] = useState('');
+export default function ProgressionChallengePanel({
+  progression,
+  history,
+  userId,
+}: ProgressionChallengePanelProps) {
+  const [selectedMetric, setSelectedMetric] = useState<string>('push_ups');
   const [isPending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
 
-  const myProgression = progression.find((p) => p.challenge_type === activeType) ?? null;
-
-  const handleLog = () => {
-    const val = Number(inputValue);
-    if (!Number.isFinite(val) || val < 0) {
-      setError('Enter a valid number.');
-      return;
+  // Find personal best value for current selected metric
+  const currentHighest = useMemo(() => {
+    const normSlug = normalizeMetricSlug(selectedMetric);
+    // Find in progression array or derive from history
+    const match = progression.find((p) => normalizeMetricSlug(p.challenge_type) === normSlug);
+    if (match && typeof match.current_tier === 'number') {
+      return match.current_tier;
     }
-    setError(null);
+
+    // Derive highest value from history entries
+    let highest = 0;
+    for (const h of history) {
+      if (h.user_id === userId && normalizeMetricSlug(h.challenge_type) === normSlug) {
+        highest = Math.max(highest, h.tier_after ?? 0);
+      }
+    }
+    return highest;
+  }, [progression, history, userId, selectedMetric]);
+
+  // Filter history for current metric and user
+  const metricHistory = useMemo(() => {
+    const normSlug = normalizeMetricSlug(selectedMetric);
+    return history.filter(
+      (h) => h.user_id === userId && normalizeMetricSlug(h.challenge_type) === normSlug
+    );
+  }, [history, userId, selectedMetric]);
+
+  const handleLogValue = async (value: number) => {
+    const config = METRIC_PROGRESSION_CATALOG[normalizeMetricSlug(selectedMetric)];
+    const metricTypeLabel = config?.label || selectedMetric;
+
+    return logProgressionActivity(metricTypeLabel, value);
+  };
+
+  const handleToggleTier = (tier: ChallengeTierDef) => {
+    if (currentHighest >= tier.targetValue) return;
     startTransition(async () => {
-      const res = await logProgressionActivity(activeType, val);
-      if (!res.success) setError(res.error);
-      else setInputValue('');
+      await handleLogValue(tier.targetValue);
     });
   };
 
-  const handleDelete = (historyId: string) => {
-    setError(null);
-    startTransition(async () => {
-      const res = await deleteProgressionActivity(historyId);
-      if (!res.success) setError(res.error);
-    });
+  const handleDeleteEntry = async (historyId: string) => {
+    return deleteProgressionActivity(historyId);
   };
-
-  const myHistory = history.filter((h) => h.user_id === userId && h.challenge_type === activeType).slice(0, 10);
 
   return (
-    <div className="flex flex-col gap-5">
-      {/* ── Challenge type selector ──────────────────────────────────── */}
-      <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
-        {challengeTypes.map((type) => (
-          <button
-            key={type}
-            type="button"
-            onClick={() => setActiveType(type)}
-            className={`px-4 py-2 rounded-full text-xs font-black whitespace-nowrap transition cursor-pointer ${
-              activeType === type ? 'bg-[#111827] text-[#CEFF00]' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
-          >
-            {type}
-          </button>
-        ))}
-      </div>
+    <div className="flex flex-col gap-4 max-w-4xl mx-auto py-2">
+      {/* ── 1. Metric Pill Selector (Invisible Horizontal Scroller) ── */}
+      <MetricPillSelector
+        selectedMetric={selectedMetric}
+        onMetricChange={setSelectedMetric}
+      />
 
-      {/* ── Tier display with AnimatePresence (DASH-21) ─────────────── */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col items-center gap-2">
-        <TrendingUp size={22} className="text-[#CEFF00]" />
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={`${activeType}-${myProgression?.current_tier ?? 0}`}
-            initial={{ opacity: 0, y: 12, scale: 0.9 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -12, scale: 0.9 }}
-            transition={{ duration: 0.3 }}
-            className="text-4xl font-black text-slate-900 tabular-nums"
-          >
-            {myProgression?.current_tier ?? '—'}
-          </motion.div>
-        </AnimatePresence>
-        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Current Tier · {activeType}</span>
-        {myProgression?.previous_tier != null && (
-          <span className="mt-1 inline-flex items-center gap-1 bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full">
-            <Award size={11} /> Previous Record: {myProgression.previous_tier}
-          </span>
-        )}
-      </div>
+      {/* ── 2. Current Highest Card (Flame icon + Value + Label) ───── */}
+      <CurrentHighestCard
+        metric={selectedMetric}
+        value={currentHighest}
+      />
 
-      {/* ── Log new activity ─────────────────────────────────────────── */}
-      <div className="flex gap-2">
-        <input
-          type="number"
-          min={0}
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          placeholder={`Log a new ${activeType} value...`}
-          disabled={isPending}
-          className="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-900 bg-slate-50 focus:outline-none focus:ring-1 focus:ring-[#CEFF00] focus:border-[#CEFF00] disabled:opacity-50"
-        />
-        <button
-          type="button"
-          onClick={handleLog}
-          disabled={isPending || !inputValue.trim()}
-          className="px-5 py-3 rounded-xl bg-[#CEFF00] text-black text-xs font-black uppercase tracking-wider disabled:opacity-40 cursor-pointer"
-        >
-          Log
-        </button>
-      </div>
-      {error && <p className="text-xs font-bold text-red-600">{error}</p>}
+      {/* ── 3. Challenge Tier List (1-14 Progressive Tiers) ───────── */}
+      <ChallengeTierList
+        metric={selectedMetric}
+        currentHighest={currentHighest}
+        onToggleTier={handleToggleTier}
+      />
 
-      {/* ── History log with delete (rollback) ──────────────────────── */}
-      <div className="flex flex-col gap-2">
-        <h4 className="text-xs font-black uppercase tracking-wider text-slate-500">History</h4>
-        {myHistory.length === 0 && <p className="text-xs text-slate-400">No entries yet.</p>}
-        {myHistory.map((h) => (
-          <div key={h.id} className="flex items-center justify-between gap-2 bg-white border border-slate-200 rounded-lg px-3 py-2">
-            <span className="text-xs font-semibold text-slate-700">
-              {h.tier_before} → {h.tier_after}
-              <span className="text-slate-400 font-normal ml-2">{new Date(h.entry_date).toLocaleDateString()}</span>
-            </span>
-            <button
-              type="button"
-              onClick={() => handleDelete(h.id)}
-              disabled={isPending}
-              className="p-1 rounded text-red-500 hover:bg-red-50 cursor-pointer disabled:opacity-50"
-              title="Delete entry (reverts tier)"
-            >
-              <Trash2 size={14} />
-            </button>
-          </div>
-        ))}
-      </div>
+      {/* ── 4. Log New Value Input Field & LOG Button ──────────────── */}
+      <LogValueInput
+        metric={selectedMetric}
+        onLogValue={handleLogValue}
+      />
+
+      {/* ── 5. Challenge History Section ───────────────────────────── */}
+      <ChallengeHistory
+        history={metricHistory}
+        userId={userId}
+        onDeleteEntry={handleDeleteEntry}
+      />
     </div>
   );
 }
