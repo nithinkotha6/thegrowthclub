@@ -19,6 +19,7 @@
 | 2026-07-22 | (Code Cleanup & Observability) | §2.3 (new), `vote.ts` | Removed phantom deletion code for non-existent tables (`approvals`, `comments`, `memory_comments`, `xp_transactions`) from `deleteActivityAction`. Added §2.3 documenting database-level `ON DELETE CASCADE` rules (`metric_logs` → `log_votes`). Integrated structured logging (`lib/logger.ts`). |
 | 2026-07-22 | (Challenge & League Integrity) | §8.4, §8.8 | Added migration `0043_challenge_league_unique_constraints.sql` adding composite UNIQUE indexes `challenge_history_unique_per_user_day_value` on `challenge_history` and `league_match_logs_unique_per_match_user_action_day` on `league_match_logs` to prevent double-click / network retry duplicates. |
 | 2026-07-22 | (Daily Goals Redesign) | §8.1, §8.2 | Documented `lib/config/daily-goals.ts` predefined goals metrics ("10,000 steps", "50 Push-ups", "50 squads", "Gym streak", "Diet") auto-seeded into `daily_goals` and date-scoped completion logging via `logDailyGoalCompletion` in `app/actions/dailyGoals.ts`. |
+| 2026-07-22 | (Database Resilience) | §9 | Added Section 9 documenting `backup` schema migration (`0044_create_backup_schema.sql`), replication procedure `backup_replicate_from_master()` (`0045_backup_replication_function.sql`), nightly cron schedule (`/api/cron/daily-schema-backup` at 3 AM UTC), audit trail (`backup.backup_metadata`), and admin recovery UI (`/admin/backup-status`). |
 
 ---
 
@@ -1194,3 +1195,23 @@ Note: no `titans_team_id`/`rebels_team_id` FK — team rosters are read live fro
 
 ### 8.9 `group_stats` / composite metrics (still UNDECIDED — see DASH-09)
 Not designed and not implemented. The dashboard computes chart data and leaderboard rankings live from `metric_logs` joined with `metrics_config`/`metric_definitions` — no cached stats table exists or is required for the *current* single-metric graph/leaderboard, and the Challenges Module (§8.1-8.8) ships independently without needing one. A table would only be needed if a future unified Podium ranks on a composite "growth score" spanning daily goals + progression + leagues. Decision remains open, tracked in DASH-09.
+
+---
+
+## 9. Backup Schema Replication & Resilience
+
+### 9.1 Overview
+Migration `0044_create_backup_schema.sql` creates an isolated `"backup"` schema with exact 1:1 table structure mirrors for all 30 primary tables. Foreign key constraints within `"backup"` point strictly to other `"backup"` tables.
+
+### 9.2 Stored Replication & Recovery Procedures
+- `backup_replicate_from_master()` (migration `0045`):
+  Truncates `"backup"` tables in dependency order (`CASCADE`), replicates active records from `public`/`Master` schema (`WHERE deleted_at IS NULL` for soft-deletable tables), and logs an execution summary into `backup.backup_metadata`.
+- `backup_restore_to_master(p_table_name text DEFAULT NULL)` (migration `0045`):
+  Restores single or all backup tables back into the primary schema via `INSERT INTO ... ON CONFLICT DO NOTHING`.
+
+### 9.3 Nightly Backup Cron
+- Route: `/api/cron/daily-schema-backup`
+- Schedule: `0 3 * * *` (3 AM UTC daily, configured in `vercel.json`)
+- Audit Trail: `backup.backup_metadata` (`backed_up_at`, `status`, `total_tables_copied`, `total_rows_copied`, `error_message`)
+- Admin Recovery UI: `/admin/backup-status`
+
