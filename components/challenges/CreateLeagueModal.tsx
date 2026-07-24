@@ -10,7 +10,6 @@ import {
   type TeamName,
   createLeagueChallenge,
   assignLeagueTeam,
-  createLeagueMatch,
 } from '@/app/actions/leagues';
 
 interface CreateLeagueModalProps {
@@ -79,7 +78,7 @@ export default function CreateLeagueModal({
           challengeId = cRes.challenge.id;
         }
 
-        // 2. Update roster team assignments
+        // 2. Persist team assignments to DB (roster only — match started separately via START MATCH)
         for (const member of members) {
           const team = teamMap[member.user_id];
           if (team) {
@@ -87,16 +86,9 @@ export default function CreateLeagueModal({
           }
         }
 
-        // 3. Create the new match
-        const mRes = await createLeagueMatch(challengeId);
-        if (!mRes.success) {
-          setError(mRes.error);
-          return;
-        }
-
         onClose();
       } catch (err: any) {
-        setError(err?.message || 'Failed to create league.');
+        setError(err?.message || 'Failed to save league roster.');
       }
     });
   };
@@ -114,8 +106,8 @@ export default function CreateLeagueModal({
               <Swords size={20} />
             </div>
             <div>
-              <h3 className="text-base font-black uppercase tracking-wider text-white">Create New League Match</h3>
-              <p className="text-xs text-slate-400 font-medium">Democratized for all club members</p>
+              <h3 className="text-base font-black uppercase tracking-wider text-white">Create League Challenge</h3>
+              <p className="text-xs text-slate-400 font-medium">Save a challenge type and set the team roster</p>
             </div>
           </div>
           <button
@@ -277,7 +269,7 @@ export default function CreateLeagueModal({
                 disabled={isPending}
                 className="flex-2 py-3 bg-[#CEFF00] text-black font-black text-xs uppercase tracking-wider rounded-2xl transition cursor-pointer hover:bg-[#b8e600] disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                <Swords size={16} /> {isPending ? 'Launching...' : 'Launch Match'}
+                <Swords size={16} /> {isPending ? 'Saving...' : 'Save Roster & Close'}
               </button>
             </div>
           </div>
