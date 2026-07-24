@@ -5,11 +5,6 @@ import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 import { SESSION_COOKIE, decodeSession, type AppSession } from '@/lib/session';
 
-/**
- * Server Actions for the Leagues module (TITANS vs REBELS). Dashboard &
- * Challenges spec DASH-22/23/24/25/26. See Findings_and_Recommendations.md.
- */
-
 type SessionResult =
   | { session: AppSession; error: null }
   | { session: null; error: string };
@@ -20,25 +15,6 @@ async function requireSession(): Promise<SessionResult> {
   const session = token ? await decodeSession(token) : null;
   if (!session) {
     return { session: null, error: 'Unauthorized: Session credentials mismatch.' };
-  }
-  return { session, error: null };
-}
-
-/** Admin-role check, matching the pattern already used in app/actions/admin.ts. */
-async function requireAdminSession(): Promise<SessionResult> {
-  const { session, error } = await requireSession();
-  if (!session) return { session: null, error };
-
-  const supabase = createAdminClient(session.groupId);
-  const { data: membership } = await supabase
-    .from('group_members')
-    .select('role')
-    .eq('user_id', session.userId)
-    .eq('group_id', session.groupId)
-    .maybeSingle();
-
-  if (!membership || membership.role !== 'admin') {
-    return { session: null, error: 'Unauthorized: admin role required for this group.' };
   }
   return { session, error: null };
 }
@@ -61,6 +37,17 @@ export type LeagueMatch = {
   winner_team: TeamName | 'TIE' | null;
   completed_at: string | null;
   created_at: string;
+  timer_duration_seconds?: number | null;
+  timer_started_at?: string | null;
+};
+
+export type PlayerScoreRow = {
+  id: string;
+  match_id: string;
+  user_id: string;
+  team_name: TeamName;
+  score: number;
+  profiles?: { nickname: string | null; full_name: string | null; avatar_url: string | null } | null;
 };
 
 /* ── Team assignment (DASH-22) ────────────────────────────────────────────── */
@@ -88,7 +75,6 @@ export type GroupMemberProfile = {
   avatar_url: string | null;
 };
 
-/** Fetch group members for the caller's group for player roster assignment. */
 export async function getGroupMembers(): Promise<
   { success: true; members: GroupMemberProfile[] } | { success: false; error: string }
 > {
@@ -113,7 +99,6 @@ export async function getGroupMembers(): Promise<
   return { success: true, members: formatted };
 }
 
-/** Democratized: Assign (or reassign) a group member to a team (TITANS or REBELS). Accessible to all group members. */
 export async function assignLeagueTeam(
   userId: string,
   teamName: TeamName,
@@ -142,7 +127,6 @@ export async function assignLeagueTeam(
   return { success: true };
 }
 
-/** Backward compatibility alias */
 export const adminAssignLeagueTeam = assignLeagueTeam;
 
 /* ── Challenge types (DASH-23) ────────────────────────────────────────────── */
@@ -164,7 +148,6 @@ export async function getLeagueChallenges(): Promise<
   return { success: true, challenges: data ?? [] };
 }
 
-/** Democratized: Create a new league challenge type. Accessible to all group members. */
 export async function createLeagueChallenge(
   name: string,
   description?: string,
@@ -186,7 +169,6 @@ export async function createLeagueChallenge(
   return { success: true, challenge: data };
 }
 
-/** Backward compatibility alias */
 export const adminCreateLeagueChallenge = createLeagueChallenge;
 
 /* ── Matches (DASH-24/25/26) ──────────────────────────────────────────────── */
@@ -200,7 +182,7 @@ export async function getLeagueMatches(
   const supabase = createAdminClient(session.groupId);
   const { data, error: dbErr } = await supabase
     .from('league_matches')
-    .select('id, league_challenge_id, titans_score, rebels_score, winner_team, completed_at, created_at')
+    .select('id, league_challenge_id, titans_score, rebels_score, winner_team, completed_at, created_at, timer_duration_seconds, timer_started_at')
     .eq('group_id', session.groupId)
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
@@ -210,11 +192,9 @@ export async function getLeagueMatches(
   return { success: true, matches: data ?? [] };
 }
 
-/** Create a new (not-yet-completed) match for a challenge type. Rosters are
- * NOT duplicated onto this row — they're read live from `league_assignments`
- * at render time. */
 export async function createLeagueMatch(
   leagueChallengeId: string,
+  timerSeconds?: number
 ): Promise<{ success: true; match: LeagueMatch } | { success: false; error: string }> {
   const { session, error } = await requireSession();
   if (!session) return { success: false, error: error! };
@@ -222,29 +202,105 @@ export async function createLeagueMatch(
   const supabase = createAdminClient(session.groupId);
   const { data: match, error: dbErr } = await supabase
     .from('league_matches')
-    .insert({ group_id: session.groupId, league_challenge_id: leagueChallengeId })
-    .select('id, league_challenge_id, titans_score, rebels_score, winner_team, completed_at, created_at')
+    .insert({
+      group_id: session.groupId,
+      league_challenge_id: leagueChallengeId,
+      timer_duration_seconds: timerSeconds ?? null,
+      timer_started_at: timerSeconds ? new Date().toISOString() : null,
+    })
+    .select('id, league_challenge_id, titans_score, rebels_score, winner_team, completed_at, created_at, timer_duration_seconds, timer_started_at')
     .single();
 
   if (dbErr || !match) return { success: false, error: dbErr?.message ?? 'Failed to create match.' };
 
-  const { error: logErr } = await supabase.from('league_match_logs').insert({
+  await supabase.from('league_match_logs').insert({
     group_id: session.groupId,
     match_id: match.id,
     action: 'create',
     actor_id: session.userId,
   });
 
-  if (logErr && (logErr.code === '23505' || logErr.message?.includes('unique') || logErr.message?.includes('duplicate'))) {
-    console.warn('[createLeagueMatch] Duplicate match log skipped:', logErr.message);
-  }
-
   revalidatePath('/', 'layout');
   return { success: true, match };
 }
 
-/** Update the manual score inputs while the match is still open (rejected by
- * the DB trigger once completed — see migration 0038). */
+/* ── Individual Player Scores Server Actions ────────────────────────────────── */
+
+export async function getLeagueMatchPlayerScores(
+  matchId: string
+): Promise<{ success: true; scores: PlayerScoreRow[] } | { success: false; error: string }> {
+  const { session, error } = await requireSession();
+  if (!session) return { success: false, error: error! };
+
+  const supabase = createAdminClient(session.groupId);
+  const { data, error: dbErr } = await supabase
+    .from('league_match_player_scores')
+    .select('id, match_id, user_id, team_name, score, profiles ( nickname, full_name, avatar_url )')
+    .eq('match_id', matchId)
+    .eq('group_id', session.groupId);
+
+  if (dbErr) return { success: false, error: dbErr.message };
+  return { success: true, scores: (data ?? []) as unknown as PlayerScoreRow[] };
+}
+
+export async function updatePlayerScoreAction(
+  matchId: string,
+  targetUserId: string,
+  teamName: TeamName,
+  score: number
+): Promise<{ success: true; titansTotal: number; rebelsTotal: number } | { success: false; error: string }> {
+  if (!Number.isFinite(score) || score < 0) {
+    return { success: false, error: 'Score must be a non-negative number.' };
+  }
+
+  const { session, error } = await requireSession();
+  if (!session) return { success: false, error: error! };
+
+  const supabase = createAdminClient(session.groupId);
+
+  // Upsert individual player score
+  const { error: upsertErr } = await supabase
+    .from('league_match_player_scores')
+    .upsert(
+      {
+        match_id: matchId,
+        group_id: session.groupId,
+        user_id: targetUserId,
+        team_name: teamName,
+        score,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'match_id,user_id' }
+    );
+
+  if (upsertErr) return { success: false, error: upsertErr.message };
+
+  // Recalculate team totals via SUM aggregation
+  const { data: allScores } = await supabase
+    .from('league_match_player_scores')
+    .select('team_name, score')
+    .eq('match_id', matchId)
+    .eq('group_id', session.groupId);
+
+  let titansTotal = 0;
+  let rebelsTotal = 0;
+
+  for (const s of allScores || []) {
+    if (s.team_name === 'TITANS') titansTotal += Number(s.score) || 0;
+    if (s.team_name === 'REBELS') rebelsTotal += Number(s.score) || 0;
+  }
+
+  // Update league_matches table with aggregated team totals
+  await supabase
+    .from('league_matches')
+    .update({ titans_score: titansTotal, rebels_score: rebelsTotal })
+    .eq('id', matchId)
+    .eq('group_id', session.groupId);
+
+  revalidatePath('/', 'layout');
+  return { success: true, titansTotal, rebelsTotal };
+}
+
 export async function updateLeagueMatchScore(
   matchId: string,
   titansScore: number,
@@ -264,23 +320,12 @@ export async function updateLeagueMatchScore(
     .eq('id', matchId)
     .eq('group_id', session.groupId);
 
-  if (dbErr) {
-    if (dbErr.message.toLowerCase().includes('already completed')) {
-      return { success: false, error: 'This match is already completed and its score cannot be changed.' };
-    }
-    return { success: false, error: dbErr.message };
-  }
+  if (dbErr) return { success: false, error: dbErr.message };
 
   revalidatePath('/', 'layout');
   return { success: true };
 }
 
-/**
- * "Complete Challenge" button (DASH-25). Determines the winner from the
- * current scores and locks the match — the DB trigger from migration 0038
- * (`prevent_completed_match_edit`) is the real enforcement; this action just
- * performs the one legitimate transition from open → completed.
- */
 export async function completeLeagueMatch(
   matchId: string,
 ): Promise<{ success: true; winner: TeamName | 'TIE' } | { success: false; error: string }> {
@@ -308,22 +353,17 @@ export async function completeLeagueMatch(
 
   if (dbErr) return { success: false, error: dbErr.message };
 
-  const { error: logErr } = await supabase.from('league_match_logs').insert({
+  await supabase.from('league_match_logs').insert({
     group_id: session.groupId,
     match_id: matchId,
     action: 'complete',
     actor_id: session.userId,
   });
 
-  if (logErr && (logErr.code === '23505' || logErr.message?.includes('unique') || logErr.message?.includes('duplicate'))) {
-    console.warn('[completeLeagueMatch] Duplicate complete log skipped:', logErr.message);
-  }
-
   revalidatePath('/', 'layout');
   return { success: true, winner };
 }
 
-/** Soft-delete a match (DASH-26). */
 export async function deleteLeagueMatch(
   matchId: string,
 ): Promise<{ success: true } | { success: false; error: string }> {
@@ -338,18 +378,6 @@ export async function deleteLeagueMatch(
     .eq('group_id', session.groupId);
 
   if (dbErr) return { success: false, error: dbErr.message };
-
-  const { error: logErr } = await supabase.from('league_match_logs').insert({
-    group_id: session.groupId,
-    match_id: matchId,
-    action: 'delete',
-    actor_id: session.userId,
-  });
-
-  if (logErr && (logErr.code === '23505' || logErr.message?.includes('unique') || logErr.message?.includes('duplicate'))) {
-    console.warn('[deleteLeagueMatch] Duplicate delete log skipped:', logErr.message);
-  }
-
   revalidatePath('/', 'layout');
   return { success: true };
 }
