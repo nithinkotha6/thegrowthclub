@@ -18,12 +18,15 @@ import TimerConfigModal from '@/components/challenges/TimerConfigModal';
 import MatchDetailsModal from '@/components/challenges/MatchDetailsModal';
 import LiveMatchTimer from '@/components/challenges/LiveMatchTimer';
 import TeamSelectionModal from '@/components/challenges/TeamSelectionModal';
+import { useRouter } from 'next/navigation';
 import {
   type LeagueAssignment,
   type LeagueChallenge,
   type LeagueMatch,
   type GroupMemberProfile,
+  type TeamName,
   createLeagueMatch,
+  assignLeagueTeam,
   updatePlayerScoreAction,
   completeLeagueMatch,
   getLeagueMatchPlayerScores,
@@ -102,27 +105,76 @@ export default function LeagueMatchPanel({
   // Player score map (only relevant when MATCH_ACTIVE)
   const [playerScoresMap, setPlayerScoresMap] = useState<Record<string, number>>({});
 
+  const router = useRouter();
+
   // ─── Recent matches (completed only, from server-fetched prop) ─────────────
   const recentMatches = useMemo(
     () => matches.filter((m) => m.completed_at != null),
     [matches],
   );
 
+  // ─── Active match in DB (uncompleted) ──────────────────────────────────────
+  const serverOpenMatch = useMemo(
+    () => matches.find((m) => m.completed_at == null) ?? null,
+    [matches],
+  );
+
   // ─── Derived challenge info ────────────────────────────────────────────────
   const selectedChallenge = challenges.find((c) => c.id === selectedChallengeId) ?? null;
 
-  // ─── Load player scores when a match becomes active ───────────────────────
+  // Map user assignments from server
+  const assignmentMap = useMemo(() => {
+    const map: Record<string, TeamName> = {};
+    for (const a of assignments) {
+      map[a.user_id] = a.team_name;
+    }
+    return map;
+  }, [assignments]);
+
+  // ─── Sync active match from server for ALL group members ──────────────────
   useEffect(() => {
-    if (activeMatchId) {
-      getLeagueMatchPlayerScores(activeMatchId).then((res) => {
+    if (serverOpenMatch) {
+      setActiveMatchId(serverOpenMatch.id);
+      setActiveMatch(serverOpenMatch);
+      setSelectedChallengeId(serverOpenMatch.league_challenge_id);
+      setTimerSeconds(serverOpenMatch.timer_duration_seconds ?? null);
+      setMatchStatus('MATCH_ACTIVE');
+
+      // Populate team rosters for all group members from DB assignments
+      const titans = members.filter((m) => assignmentMap[m.user_id] === 'TITANS');
+      const rebels = members.filter((m) => assignmentMap[m.user_id] === 'REBELS');
+      setTitanTeamMembers(titans);
+      setRebelTeamMembers(rebels);
+    } else if (matchStatus === 'MATCH_ACTIVE') {
+      // The active match was completed by someone else
+      setMatchStatus('NO_MATCH');
+      setActiveMatchId(null);
+      setActiveMatch(null);
+      setTitanTeamMembers(null);
+      setRebelTeamMembers(null);
+      setTimerSeconds(null);
+      setPlayerScoresMap({});
+    }
+  }, [serverOpenMatch, assignmentMap, members]);
+
+  // ─── Real-time multi-user synchronization ─────────────────────────────────
+  useEffect(() => {
+    const syncScoresAndMatches = async () => {
+      if (activeMatchId) {
+        const res = await getLeagueMatchPlayerScores(activeMatchId);
         if (res.success) {
           const map: Record<string, number> = {};
           for (const s of res.scores) map[s.user_id] = s.score;
           setPlayerScoresMap(map);
         }
-      });
-    }
-  }, [activeMatchId]);
+      }
+      router.refresh();
+    };
+
+    // Poll every 3 seconds to keep all users in group synchronized
+    const interval = setInterval(syncScoresAndMatches, 3000);
+    return () => clearInterval(interval);
+  }, [activeMatchId, router]);
 
   // ─── Aggregated team scores (real-time, client-side) ──────────────────────
   const titansTeamScore = useMemo(() => {
@@ -208,6 +260,15 @@ export default function LeagueMatchPanel({
 
     setError(null);
     startTransition(async () => {
+      // 1. Persist team assignments to DB so all users in group see the team rosters
+      for (const m of titanTeamMembers) {
+        await assignLeagueTeam(m.user_id, 'TITANS');
+      }
+      for (const m of rebelTeamMembers) {
+        await assignLeagueTeam(m.user_id, 'REBELS');
+      }
+
+      // 2. Create the match record in DB
       const res = await createLeagueMatch(selectedChallengeId, timerSeconds ?? undefined);
       if (!res.success) {
         setError(res.error);
@@ -218,6 +279,7 @@ export default function LeagueMatchPanel({
       setPlayerScoresMap({});
       setIsTimerExpired(false);
       setMatchStatus('MATCH_ACTIVE');
+      router.refresh();
     });
   };
 
@@ -255,6 +317,7 @@ export default function LeagueMatchPanel({
         setTimerSeconds(null);
         setIsTimerExpired(false);
         setPlayerScoresMap({});
+        router.refresh();
         setTimeout(() => setCelebrationWinner(null), 5000);
       } else {
         setError(res.error);
