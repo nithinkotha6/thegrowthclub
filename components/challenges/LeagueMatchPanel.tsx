@@ -90,6 +90,9 @@ export default function LeagueMatchPanel({
   const [customChallengeInput, setCustomChallengeInput] = useState<string>('');
   const dropdownRef = useRef<HTMLDivElement>(null);
   const customInputRef = useRef<HTMLInputElement>(null);
+  const pillRef = useRef<HTMLButtonElement>(null);
+  // Fixed-position coordinates for the dropdown portal
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null);
 
   // Feedback
   const [isPending, startTransition] = useTransition();
@@ -141,8 +144,23 @@ export default function LeagueMatchPanel({
     setRebelTeamMembers(null);
     setMatchStatus('NO_MATCH');
     setIsDropdownOpen(false);
+    setDropdownPos(null);
     setCustomChallengeInput('');
     setError(null);
+  };
+
+  /** Open / close dropdown — measure pill position for fixed overlay */
+  const handleToggleDropdown = () => {
+    if (isDropdownOpen) {
+      setIsDropdownOpen(false);
+      setDropdownPos(null);
+      return;
+    }
+    if (pillRef.current) {
+      const rect = pillRef.current.getBoundingClientRect();
+      setDropdownPos({ top: rect.bottom + 8, left: rect.left });
+    }
+    setIsDropdownOpen(true);
   };
 
   /** Custom challenge: add to local state, set as selected */
@@ -273,226 +291,367 @@ export default function LeagueMatchPanel({
         </div>
       )}
 
-      {/* ── CONTROL BAR: Single horizontal pill strip, no wrap ───────────── */}
+      {/*
+        ── CONTROL BAR ────────────────────────────────────────────────────────
+        THREE-LAYER ARCHITECTURE:
+          1. Shell   — visual chrome only (bg, border, border-radius).
+                       overflow: visible so the dropdown portal can escape.
+          2. Track   — overflow: hidden clips scrolling buttons to shell corners.
+          3. Scroll  — overflow-x: auto, transparent, no border, hidden scrollbar.
+      */}
       <div
-        className="bg-[#0F1F3C] border border-white/10 rounded-2xl px-4 py-3 shadow-xl w-full"
         style={{
-          overflowX: 'auto',
-          overflowY: 'visible',
-          scrollbarWidth: 'none',
-          msOverflowStyle: 'none',
+          position: 'relative',
+          background: '#0F1F3C',
+          border: '1px solid rgba(255,255,255,0.10)',
+          borderRadius: '16px',
+          boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
+          overflow: 'visible',   /* Shell MUST be visible so dropdown escapes */
         }}
       >
-        {/* Inner strip — items do NOT wrap and do NOT grow */}
-        <div
-          className="flex items-center gap-3"
-          style={{ flexDirection: 'row', flexWrap: 'nowrap' }}
-        >
-
-          {/* 1 ── Challenge Dropdown Pill ──────────────────────────────── */}
-          <div className="relative" style={{ flexShrink: 0 }} ref={dropdownRef}>
-            <button
-              type="button"
-              id="league-challenge-pill"
-              onClick={() => setIsDropdownOpen((prev) => !prev)}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-extrabold whitespace-nowrap transition cursor-pointer active:scale-95 shadow-sm"
+        {/* Track — clips buttons to shell's rounded corners */}
+        <div style={{ overflow: 'hidden', borderRadius: '16px' }}>
+          {/* Scroll — transparent, just handles overflow-x */}
+          <div
+            style={{
+              overflowX: 'auto',
+              overflowY: 'visible',
+              scrollbarWidth: 'none',
+              msOverflowStyle: 'none',
+              padding: '12px 16px',
+            }}
+          >
+            {/* Pills strip */}
+            <div
               style={{
-                minHeight: '44px',
-                background: selectedChallenge ? '#CEFF00' : '#1E3A5F',
-                color: selectedChallenge ? '#0F1F3C' : '#94a3b8',
-                border: selectedChallenge ? 'none' : '1.5px solid rgba(255,255,255,0.15)',
-                fontSize: '13px',
-                maxWidth: '200px',
+                display: 'flex',
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: '10px',
+                flexWrap: 'nowrap',
               }}
             >
-              <Swords size={14} style={{ flexShrink: 0 }} />
-              <span
+
+              {/* 1 ── Challenge Dropdown Pill ── */}
+              <button
+                ref={pillRef}
+                type="button"
+                id="league-challenge-pill"
+                onClick={handleToggleDropdown}
                 style={{
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
+                  flexShrink: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '10px 14px',
+                  borderRadius: '10px',
+                  fontWeight: 800,
+                  fontSize: '13px',
                   whiteSpace: 'nowrap',
-                  maxWidth: '130px',
-                  display: 'inline-block',
+                  cursor: 'pointer',
+                  minHeight: '44px',
+                  transition: 'all 0.15s ease',
+                  background: selectedChallenge ? '#CEFF00' : '#1E3A5F',
+                  color: selectedChallenge ? '#0F1F3C' : '#94a3b8',
+                  border: selectedChallenge ? 'none' : '1.5px solid rgba(255,255,255,0.15)',
+                  maxWidth: '200px',
                 }}
               >
-                {challengePillLabel}
-              </span>
-              <ChevronDown size={13} style={{ flexShrink: 0 }} />
-            </button>
-
-            {/* Dropdown panel */}
-            {isDropdownOpen && (
-              <div
-                className="absolute top-full left-0 mt-2 bg-[#0A1628] border-2 border-[#CEFF00] rounded-2xl p-2 z-50 shadow-2xl flex flex-col gap-1"
-                style={{ minWidth: '220px' }}
-              >
-                {/* Predefined options */}
-                {challenges
-                  .filter((c) => !c.id.startsWith('custom-'))
-                  .map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => handleSelectChallenge(c.id)}
-                      className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider text-left transition cursor-pointer ${
-                        selectedChallengeId === c.id
-                          ? 'bg-[#CEFF00] text-black'
-                          : 'text-white hover:bg-white/10'
-                      }`}
-                    >
-                      <span>{c.name}</span>
-                      {selectedChallengeId === c.id && <Check size={13} />}
-                    </button>
-                  ))}
-
-                {/* Custom challenge already selected — show it too */}
-                {selectedChallengeId?.startsWith('custom-') && (() => {
-                  const cc = challenges.find((c) => c.id === selectedChallengeId);
-                  return cc ? (
-                    <button
-                      key={cc.id}
-                      type="button"
-                      onClick={() => handleSelectChallenge(cc.id)}
-                      className="flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider text-left bg-[#CEFF00] text-black cursor-pointer"
-                    >
-                      <span>{cc.name}</span>
-                      <Check size={13} />
-                    </button>
-                  ) : null;
-                })()}
-
-                {/* Divider */}
-                <div className="border-t border-white/10 my-1" />
-
-                {/* Custom challenge input */}
-                <div className="flex items-center gap-1.5 px-1">
-                  <input
-                    ref={customInputRef}
-                    type="text"
-                    value={customChallengeInput}
-                    onChange={(e) => setCustomChallengeInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleCustomChallengeSubmit();
-                      if (e.key === 'Escape') setIsDropdownOpen(false);
-                    }}
-                    placeholder="Custom: e.g. 1 Mile Run"
-                    className="flex-1 bg-[#0F1F3C] border border-white/20 focus:border-[#CEFF00] rounded-xl px-3 py-2 text-xs font-bold text-white placeholder:text-slate-500 focus:outline-none transition"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleCustomChallengeSubmit}
-                    disabled={!customChallengeInput.trim()}
-                    className="p-2 rounded-xl bg-[#CEFF00] text-black hover:bg-[#b8e600] disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer flex-shrink-0"
-                    title="Add custom challenge"
-                  >
-                    <CornerDownLeft size={13} />
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Divider */}
-          <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.12)', flexShrink: 0 }} />
-
-          {/* 2 ── SELECT TEAMS ─────────────────────────────────────────── */}
-          <button
-            id="league-select-teams"
-            type="button"
-            onClick={() => setIsTeamModalOpen(true)}
-            disabled={!selectedChallengeId || matchStatus === 'MATCH_ACTIVE'}
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-extrabold whitespace-nowrap transition cursor-pointer active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{
-              flexShrink: 0,
-              minHeight: '44px',
-              fontSize: '13px',
-              background: titanTeamMembers && rebelTeamMembers ? 'rgba(206,255,0,0.12)' : '#1E3A5F',
-              color: titanTeamMembers && rebelTeamMembers ? '#CEFF00' : '#94a3b8',
-              border: titanTeamMembers && rebelTeamMembers ? '1.5px solid rgba(206,255,0,0.5)' : '1.5px solid rgba(255,255,255,0.15)',
-            }}
-          >
-            <Users size={14} style={{ flexShrink: 0 }} />
-            <span style={{ whiteSpace: 'nowrap' }}>{teamsLabel}</span>
-          </button>
-
-          {/* 3 ── SET TIMER ────────────────────────────────────────────── */}
-          <button
-            id="league-set-timer"
-            type="button"
-            onClick={() => setIsTimerModalOpen(true)}
-            disabled={matchStatus === 'MATCH_ACTIVE'}
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-extrabold whitespace-nowrap transition cursor-pointer active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{
-              flexShrink: 0,
-              minHeight: '44px',
-              fontSize: '13px',
-              background: timerSeconds ? 'rgba(206,255,0,0.12)' : '#1E3A5F',
-              color: timerSeconds ? '#CEFF00' : '#94a3b8',
-              border: timerSeconds ? '1.5px solid rgba(206,255,0,0.5)' : '1.5px solid rgba(255,255,255,0.15)',
-            }}
-          >
-            <Clock size={14} style={{ flexShrink: 0 }} />
-            <span style={{ whiteSpace: 'nowrap' }}>⏱ {timerLabel}</span>
-          </button>
-
-          {/* 4 ── START MATCH ──────────────────────────────────────────── */}
-          <button
-            id="league-start-match"
-            type="button"
-            onClick={handleStartMatch}
-            disabled={
-              isPending ||
-              !selectedChallengeId ||
-              !titanTeamMembers ||
-              !rebelTeamMembers ||
-              matchStatus === 'MATCH_ACTIVE'
-            }
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-extrabold whitespace-nowrap transition cursor-pointer active:scale-95 shadow-md disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{
-              flexShrink: 0,
-              minHeight: '44px',
-              fontSize: '13px',
-              background:
-                matchStatus === 'MATCH_ACTIVE'
-                  ? 'rgba(52,211,153,0.12)'
-                  : '#CEFF00',
-              color:
-                matchStatus === 'MATCH_ACTIVE'
-                  ? '#34d399'
-                  : '#0F1F3C',
-              border:
-                matchStatus === 'MATCH_ACTIVE'
-                  ? '1.5px solid rgba(52,211,153,0.5)'
-                  : 'none',
-            }}
-          >
-            {matchStatus === 'MATCH_ACTIVE' ? (
-              <>
+                <Swords size={14} style={{ flexShrink: 0 }} />
                 <span
                   style={{
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    maxWidth: '130px',
                     display: 'inline-block',
-                    width: '7px',
-                    height: '7px',
-                    borderRadius: '50%',
-                    background: '#34d399',
+                  }}
+                >
+                  {challengePillLabel}
+                </span>
+                <ChevronDown
+                  size={13}
+                  style={{
                     flexShrink: 0,
-                    animation: 'pulse 1.5s ease-in-out infinite',
+                    transition: 'transform 0.2s ease',
+                    transform: isDropdownOpen ? 'rotate(180deg)' : 'none',
                   }}
                 />
-                <span style={{ whiteSpace: 'nowrap' }}>MATCH LIVE</span>
-              </>
-            ) : (
-              <>
-                <Play size={13} fill="currentColor" style={{ flexShrink: 0 }} />
-                <span style={{ whiteSpace: 'nowrap' }}>
-                  {isPending ? 'STARTING...' : 'START MATCH'}
-                </span>
-              </>
-            )}
-          </button>
+              </button>
 
+              {/* Divider */}
+              <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.12)', flexShrink: 0 }} />
+
+              {/* 2 ── SELECT TEAMS ── */}
+              <button
+                id="league-select-teams"
+                type="button"
+                onClick={() => setIsTeamModalOpen(true)}
+                disabled={!selectedChallengeId || matchStatus === 'MATCH_ACTIVE'}
+                style={{
+                  flexShrink: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '10px 14px',
+                  borderRadius: '10px',
+                  fontWeight: 800,
+                  fontSize: '13px',
+                  whiteSpace: 'nowrap',
+                  cursor: 'pointer',
+                  minHeight: '44px',
+                  transition: 'all 0.15s ease',
+                  background: titanTeamMembers && rebelTeamMembers ? 'rgba(206,255,0,0.12)' : '#1E3A5F',
+                  color: titanTeamMembers && rebelTeamMembers ? '#CEFF00' : '#94a3b8',
+                  border: titanTeamMembers && rebelTeamMembers ? '1.5px solid rgba(206,255,0,0.5)' : '1.5px solid rgba(255,255,255,0.15)',
+                  opacity: (!selectedChallengeId || matchStatus === 'MATCH_ACTIVE') ? 0.4 : 1,
+                }}
+              >
+                <Users size={14} style={{ flexShrink: 0 }} />
+                <span>{teamsLabel}</span>
+              </button>
+
+              {/* 3 ── SET TIMER ── */}
+              <button
+                id="league-set-timer"
+                type="button"
+                onClick={() => setIsTimerModalOpen(true)}
+                disabled={matchStatus === 'MATCH_ACTIVE'}
+                style={{
+                  flexShrink: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '10px 14px',
+                  borderRadius: '10px',
+                  fontWeight: 800,
+                  fontSize: '13px',
+                  whiteSpace: 'nowrap',
+                  cursor: 'pointer',
+                  minHeight: '44px',
+                  transition: 'all 0.15s ease',
+                  background: timerSeconds ? 'rgba(206,255,0,0.12)' : '#1E3A5F',
+                  color: timerSeconds ? '#CEFF00' : '#94a3b8',
+                  border: timerSeconds ? '1.5px solid rgba(206,255,0,0.5)' : '1.5px solid rgba(255,255,255,0.15)',
+                  opacity: matchStatus === 'MATCH_ACTIVE' ? 0.4 : 1,
+                }}
+              >
+                <Clock size={14} style={{ flexShrink: 0 }} />
+                <span>⏱ {timerLabel}</span>
+              </button>
+
+              {/* 4 ── START MATCH ── */}
+              <button
+                id="league-start-match"
+                type="button"
+                onClick={handleStartMatch}
+                disabled={
+                  isPending ||
+                  !selectedChallengeId ||
+                  !titanTeamMembers ||
+                  !rebelTeamMembers ||
+                  matchStatus === 'MATCH_ACTIVE'
+                }
+                style={{
+                  flexShrink: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '10px 16px',
+                  borderRadius: '10px',
+                  fontWeight: 800,
+                  fontSize: '13px',
+                  whiteSpace: 'nowrap',
+                  cursor: 'pointer',
+                  minHeight: '44px',
+                  transition: 'all 0.15s ease',
+                  boxShadow: matchStatus !== 'MATCH_ACTIVE' ? '0 4px 14px rgba(206,255,0,0.25)' : 'none',
+                  background: matchStatus === 'MATCH_ACTIVE' ? 'rgba(52,211,153,0.12)' : '#CEFF00',
+                  color: matchStatus === 'MATCH_ACTIVE' ? '#34d399' : '#0F1F3C',
+                  border: matchStatus === 'MATCH_ACTIVE' ? '1.5px solid rgba(52,211,153,0.5)' : 'none',
+                  opacity:
+                    isPending || !selectedChallengeId || !titanTeamMembers || !rebelTeamMembers
+                      ? 0.4
+                      : 1,
+                }}
+              >
+                {matchStatus === 'MATCH_ACTIVE' ? (
+                  <>
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        width: '7px',
+                        height: '7px',
+                        borderRadius: '50%',
+                        background: '#34d399',
+                        flexShrink: 0,
+                        animation: 'pulse 1.5s ease-in-out infinite',
+                      }}
+                    />
+                    MATCH LIVE
+                  </>
+                ) : (
+                  <>
+                    <Play size={13} fill="currentColor" style={{ flexShrink: 0 }} />
+                    {isPending ? 'STARTING...' : 'START MATCH'}
+                  </>
+                )}
+              </button>
+
+            </div>
+          </div>
         </div>
       </div>
+
+      {/*
+        ── DROPDOWN PORTAL ──────────────────────────────────────────────────────
+        Rendered OUTSIDE the control bar DOM tree via position:fixed.
+        Uses getBoundingClientRect coordinates from the pill button ref.
+        This fully escapes overflow:hidden and overflow:auto ancestors.
+      */}
+      {isDropdownOpen && dropdownPos && (
+        <>
+          {/* Click-away backdrop */}
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 998,
+            }}
+            onClick={() => { setIsDropdownOpen(false); setDropdownPos(null); }}
+          />
+          {/* Dropdown panel */}
+          <div
+            style={{
+              position: 'fixed',
+              top: dropdownPos.top,
+              left: dropdownPos.left,
+              zIndex: 999,
+              minWidth: '240px',
+              background: '#0A1628',
+              border: '2px solid #CEFF00',
+              borderRadius: '16px',
+              padding: '8px',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '4px',
+            }}
+          >
+            {/* Predefined options */}
+            {challenges
+              .filter((c) => !c.id.startsWith('custom-'))
+              .map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => handleSelectChallenge(c.id)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    fontSize: '12px',
+                    fontWeight: 900,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                    cursor: 'pointer',
+                    transition: 'background 0.12s ease',
+                    background: selectedChallengeId === c.id ? '#CEFF00' : 'transparent',
+                    color: selectedChallengeId === c.id ? '#0F1F3C' : '#ffffff',
+                    border: 'none',
+                  }}
+                  onMouseEnter={(e) => { if (selectedChallengeId !== c.id) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.08)'; }}
+                  onMouseLeave={(e) => { if (selectedChallengeId !== c.id) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                >
+                  <span>{c.name}</span>
+                  {selectedChallengeId === c.id && <Check size={13} />}
+                </button>
+              ))}
+
+            {/* Active custom challenge — show as selected entry */}
+            {selectedChallengeId?.startsWith('custom-') && (() => {
+              const cc = challenges.find((c) => c.id === selectedChallengeId);
+              return cc ? (
+                <button
+                  key={cc.id}
+                  type="button"
+                  onClick={() => handleSelectChallenge(cc.id)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    fontSize: '12px',
+                    fontWeight: 900,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                    cursor: 'pointer',
+                    background: '#CEFF00',
+                    color: '#0F1F3C',
+                    border: 'none',
+                  }}
+                >
+                  <span>{cc.name}</span>
+                  <Check size={13} />
+                </button>
+              ) : null;
+            })()}
+
+            {/* Divider */}
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.10)', margin: '4px 0' }} />
+
+            {/* Custom challenge input row */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '0 4px' }}>
+              <input
+                ref={customInputRef}
+                type="text"
+                value={customChallengeInput}
+                onChange={(e) => setCustomChallengeInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleCustomChallengeSubmit();
+                  if (e.key === 'Escape') { setIsDropdownOpen(false); setDropdownPos(null); }
+                }}
+                placeholder="Custom: e.g. 1 Mile Run"
+                style={{
+                  flex: 1,
+                  background: '#0F1F3C',
+                  border: '1px solid rgba(255,255,255,0.20)',
+                  borderRadius: '10px',
+                  padding: '8px 12px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  color: '#ffffff',
+                  outline: 'none',
+                }}
+                onFocus={(e) => { e.currentTarget.style.borderColor = '#CEFF00'; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.20)'; }}
+              />
+              <button
+                type="button"
+                onClick={handleCustomChallengeSubmit}
+                disabled={!customChallengeInput.trim()}
+                title="Add custom challenge"
+                style={{
+                  padding: '8px',
+                  borderRadius: '10px',
+                  background: '#CEFF00',
+                  color: '#0F1F3C',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                  border: 'none',
+                  opacity: customChallengeInput.trim() ? 1 : 0.3,
+                  transition: 'opacity 0.15s ease',
+                }}
+              >
+                <CornerDownLeft size={13} />
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* ── Error Display ─────────────────────────────────────────────────── */}
       {error && (
