@@ -1,10 +1,9 @@
 'use client';
 
-import { useState, useEffect, useTransition, useMemo } from 'react';
+import { useState, useEffect, useTransition, useMemo, useRef } from 'react';
 import {
   Trophy,
   Swords,
-  Plus,
   Clock,
   ChevronDown,
   Check,
@@ -12,9 +11,9 @@ import {
   Play,
   Zap,
   Shield,
+  CornerDownLeft,
 } from 'lucide-react';
 import UserAvatar from '@/components/UserAvatar';
-import CreateLeagueModal from '@/components/challenges/CreateLeagueModal';
 import TimerConfigModal from '@/components/challenges/TimerConfigModal';
 import MatchDetailsModal from '@/components/challenges/MatchDetailsModal';
 import LiveMatchTimer from '@/components/challenges/LiveMatchTimer';
@@ -54,10 +53,15 @@ export default function LeagueMatchPanel({
   matches,
   members = [],
 }: LeagueMatchPanelProps) {
-  // ─── Challenge list ────────────────────────────────────────────────────────
+  // ─── Challenge list (prop challenges + user-added custom entries) ────────────
+  const [customChallenges, setCustomChallenges] = useState<Array<{id: string; name: string; description: string | null}>>([]);
+
   const challenges = useMemo(() => {
-    return propChallenges.length > 0 ? propChallenges : DEFAULT_CHALLENGES;
-  }, [propChallenges]);
+    const base = propChallenges.length > 0 ? propChallenges : DEFAULT_CHALLENGES;
+    // Merge custom challenges that aren't already in base
+    const extras = customChallenges.filter((cc) => !base.find((b) => b.id === cc.id));
+    return [...base, ...extras];
+  }, [propChallenges, customChallenges]);
 
   // ─── Core State Machine ────────────────────────────────────────────────────
   const [matchStatus, setMatchStatus] = useState<MatchStatus>('NO_MATCH');
@@ -79,9 +83,13 @@ export default function LeagueMatchPanel({
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
   const [isTeamModalOpen, setIsTeamModalOpen] = useState<boolean>(false);
   const [isTimerModalOpen, setIsTimerModalOpen] = useState<boolean>(false);
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
   const [selectedMatchForDetails, setSelectedMatchForDetails] = useState<LeagueMatch | null>(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState<boolean>(false);
+
+  // Custom challenge input (inside dropdown)
+  const [customChallengeInput, setCustomChallengeInput] = useState<string>('');
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const customInputRef = useRef<HTMLInputElement>(null);
 
   // Feedback
   const [isPending, startTransition] = useTransition();
@@ -133,6 +141,26 @@ export default function LeagueMatchPanel({
     setRebelTeamMembers(null);
     setMatchStatus('NO_MATCH');
     setIsDropdownOpen(false);
+    setCustomChallengeInput('');
+    setError(null);
+  };
+
+  /** Custom challenge: add to local state, set as selected */
+  const handleCustomChallengeSubmit = () => {
+    const trimmed = customChallengeInput.trim();
+    if (!trimmed) return;
+    const customId = `custom-${trimmed.toLowerCase().replace(/\s+/g, '-')}`;
+    // Add to custom list if not already there
+    setCustomChallenges((prev) => {
+      if (prev.find((c) => c.id === customId)) return prev;
+      return [...prev, { id: customId, name: trimmed, description: null }];
+    });
+    setSelectedChallengeId(customId);
+    setTitanTeamMembers(null);
+    setRebelTeamMembers(null);
+    setMatchStatus('NO_MATCH');
+    setIsDropdownOpen(false);
+    setCustomChallengeInput('');
     setError(null);
   };
 
@@ -219,12 +247,17 @@ export default function LeagueMatchPanel({
   // ─── Derived display helpers ───────────────────────────────────────────────
   const teamsLabel =
     titanTeamMembers && rebelTeamMembers
-      ? `👥 ${titanTeamMembers.length} vs ${rebelTeamMembers.length}`
-      : '👥 SELECT TEAMS';
+      ? `${titanTeamMembers.length}v${rebelTeamMembers.length} TEAMS`
+      : 'SELECT TEAMS';
 
   const timerLabel = timerSeconds
     ? `${Math.floor(timerSeconds / 60)}:${String(timerSeconds % 60).padStart(2, '0')}`
-    : 'SET TIMER';
+    : 'TIMER';
+
+  // Challenge pill label — truncate long names gracefully
+  const challengePillLabel = selectedChallenge
+    ? selectedChallenge.name.toUpperCase()
+    : 'CHALLENGE';
 
   return (
     <div className="flex flex-col gap-6 max-w-5xl mx-auto py-2">
@@ -240,95 +273,171 @@ export default function LeagueMatchPanel({
         </div>
       )}
 
-      {/* ── CONTROL BAR: Full horizontal, never stacks vertically ────────── */}
+      {/* ── CONTROL BAR: Single horizontal pill strip, no wrap ───────────── */}
       <div
-        className="bg-[#0F1F3C] border border-white/10 rounded-2xl px-4 py-3 shadow-xl"
-        style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}
+        className="bg-[#0F1F3C] border border-white/10 rounded-2xl px-4 py-3 shadow-xl w-full"
+        style={{
+          overflowX: 'auto',
+          overflowY: 'visible',
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none',
+        }}
       >
+        {/* Inner strip — items do NOT wrap and do NOT grow */}
         <div
           className="flex items-center gap-3"
-          style={{ flexDirection: 'row', flexWrap: 'nowrap', minWidth: 'max-content' }}
+          style={{ flexDirection: 'row', flexWrap: 'nowrap' }}
         >
-          {/* 1. Challenge Dropdown */}
-          <div className="relative flex-shrink-0">
+
+          {/* 1 ── Challenge Dropdown Pill ──────────────────────────────── */}
+          <div className="relative" style={{ flexShrink: 0 }} ref={dropdownRef}>
             <button
               type="button"
+              id="league-challenge-pill"
               onClick={() => setIsDropdownOpen((prev) => !prev)}
-              className="bg-[#CEFF00] text-black px-3.5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-md hover:bg-[#b8e600] transition whitespace-nowrap"
-              style={{ minHeight: '44px' }}
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-extrabold whitespace-nowrap transition cursor-pointer active:scale-95 shadow-sm"
+              style={{
+                minHeight: '44px',
+                background: selectedChallenge ? '#CEFF00' : '#1E3A5F',
+                color: selectedChallenge ? '#0F1F3C' : '#94a3b8',
+                border: selectedChallenge ? 'none' : '1.5px solid rgba(255,255,255,0.15)',
+                fontSize: '13px',
+                maxWidth: '200px',
+              }}
             >
-              <Swords size={13} />
-              <span className="hidden sm:inline">
-                {selectedChallenge ? selectedChallenge.name : 'CHALLENGE'}
+              <Swords size={14} style={{ flexShrink: 0 }} />
+              <span
+                style={{
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  maxWidth: '130px',
+                  display: 'inline-block',
+                }}
+              >
+                {challengePillLabel}
               </span>
-              <span className="sm:hidden">
-                {selectedChallenge ? selectedChallenge.name.split(' ').slice(0, 2).join(' ') : 'CHALL'}
-              </span>
-              <ChevronDown size={13} />
+              <ChevronDown size={13} style={{ flexShrink: 0 }} />
             </button>
 
+            {/* Dropdown panel */}
             {isDropdownOpen && (
-              <div className="absolute top-full left-0 mt-2 w-60 bg-[#0A1628] border-2 border-[#CEFF00] rounded-2xl p-2 z-40 shadow-2xl flex flex-col gap-1">
-                {challenges.map((c) => (
+              <div
+                className="absolute top-full left-0 mt-2 bg-[#0A1628] border-2 border-[#CEFF00] rounded-2xl p-2 z-50 shadow-2xl flex flex-col gap-1"
+                style={{ minWidth: '220px' }}
+              >
+                {/* Predefined options */}
+                {challenges
+                  .filter((c) => !c.id.startsWith('custom-'))
+                  .map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => handleSelectChallenge(c.id)}
+                      className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider text-left transition cursor-pointer ${
+                        selectedChallengeId === c.id
+                          ? 'bg-[#CEFF00] text-black'
+                          : 'text-white hover:bg-white/10'
+                      }`}
+                    >
+                      <span>{c.name}</span>
+                      {selectedChallengeId === c.id && <Check size={13} />}
+                    </button>
+                  ))}
+
+                {/* Custom challenge already selected — show it too */}
+                {selectedChallengeId?.startsWith('custom-') && (() => {
+                  const cc = challenges.find((c) => c.id === selectedChallengeId);
+                  return cc ? (
+                    <button
+                      key={cc.id}
+                      type="button"
+                      onClick={() => handleSelectChallenge(cc.id)}
+                      className="flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider text-left bg-[#CEFF00] text-black cursor-pointer"
+                    >
+                      <span>{cc.name}</span>
+                      <Check size={13} />
+                    </button>
+                  ) : null;
+                })()}
+
+                {/* Divider */}
+                <div className="border-t border-white/10 my-1" />
+
+                {/* Custom challenge input */}
+                <div className="flex items-center gap-1.5 px-1">
+                  <input
+                    ref={customInputRef}
+                    type="text"
+                    value={customChallengeInput}
+                    onChange={(e) => setCustomChallengeInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleCustomChallengeSubmit();
+                      if (e.key === 'Escape') setIsDropdownOpen(false);
+                    }}
+                    placeholder="Custom: e.g. 1 Mile Run"
+                    className="flex-1 bg-[#0F1F3C] border border-white/20 focus:border-[#CEFF00] rounded-xl px-3 py-2 text-xs font-bold text-white placeholder:text-slate-500 focus:outline-none transition"
+                  />
                   <button
-                    key={c.id}
                     type="button"
-                    onClick={() => handleSelectChallenge(c.id)}
-                    className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider text-left transition cursor-pointer ${
-                      selectedChallengeId === c.id
-                        ? 'bg-[#CEFF00] text-black'
-                        : 'text-white hover:bg-white/10'
-                    }`}
+                    onClick={handleCustomChallengeSubmit}
+                    disabled={!customChallengeInput.trim()}
+                    className="p-2 rounded-xl bg-[#CEFF00] text-black hover:bg-[#b8e600] disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer flex-shrink-0"
+                    title="Add custom challenge"
                   >
-                    <span>{c.name}</span>
-                    {selectedChallengeId === c.id && <Check size={13} />}
+                    <CornerDownLeft size={13} />
                   </button>
-                ))}
+                </div>
               </div>
             )}
           </div>
 
           {/* Divider */}
-          <div className="w-px h-6 bg-white/15 flex-shrink-0" />
+          <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.12)', flexShrink: 0 }} />
 
-          {/* 2. SELECT TEAMS Button */}
+          {/* 2 ── SELECT TEAMS ─────────────────────────────────────────── */}
           <button
+            id="league-select-teams"
             type="button"
             onClick={() => setIsTeamModalOpen(true)}
             disabled={!selectedChallengeId || matchStatus === 'MATCH_ACTIVE'}
-            className={`flex-shrink-0 flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition cursor-pointer whitespace-nowrap border ${
-              titanTeamMembers && rebelTeamMembers
-                ? 'bg-[#CEFF00]/12 border-[#CEFF00] text-[#CEFF00]'
-                : 'bg-[#0A1628] border-white/20 text-slate-300 hover:border-white/40'
-            } disabled:opacity-40 disabled:cursor-not-allowed`}
-            style={{ minHeight: '44px' }}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-extrabold whitespace-nowrap transition cursor-pointer active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{
+              flexShrink: 0,
+              minHeight: '44px',
+              fontSize: '13px',
+              background: titanTeamMembers && rebelTeamMembers ? 'rgba(206,255,0,0.12)' : '#1E3A5F',
+              color: titanTeamMembers && rebelTeamMembers ? '#CEFF00' : '#94a3b8',
+              border: titanTeamMembers && rebelTeamMembers ? '1.5px solid rgba(206,255,0,0.5)' : '1.5px solid rgba(255,255,255,0.15)',
+            }}
           >
-            <Users size={13} />
-            <span className="hidden sm:inline">{teamsLabel}</span>
-            <span className="sm:hidden">
-              {titanTeamMembers && rebelTeamMembers ? `${titanTeamMembers.length}v${rebelTeamMembers.length}` : '👥'}
-            </span>
+            <Users size={14} style={{ flexShrink: 0 }} />
+            <span style={{ whiteSpace: 'nowrap' }}>{teamsLabel}</span>
           </button>
 
-          {/* 3. SET TIMER Button */}
+          {/* 3 ── SET TIMER ────────────────────────────────────────────── */}
           <button
+            id="league-set-timer"
             type="button"
             onClick={() => setIsTimerModalOpen(true)}
             disabled={matchStatus === 'MATCH_ACTIVE'}
-            className={`flex-shrink-0 flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition cursor-pointer whitespace-nowrap border ${
-              timerSeconds
-                ? 'bg-[#CEFF00]/12 border-[#CEFF00] text-[#CEFF00]'
-                : 'bg-[#0A1628] border-white/20 text-slate-300 hover:border-white/40'
-            } disabled:opacity-40 disabled:cursor-not-allowed`}
-            style={{ minHeight: '44px' }}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-extrabold whitespace-nowrap transition cursor-pointer active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{
+              flexShrink: 0,
+              minHeight: '44px',
+              fontSize: '13px',
+              background: timerSeconds ? 'rgba(206,255,0,0.12)' : '#1E3A5F',
+              color: timerSeconds ? '#CEFF00' : '#94a3b8',
+              border: timerSeconds ? '1.5px solid rgba(206,255,0,0.5)' : '1.5px solid rgba(255,255,255,0.15)',
+            }}
           >
-            <Clock size={13} />
-            <span className="hidden sm:inline">⏱ {timerLabel}</span>
-            <span className="sm:hidden">⏱</span>
+            <Clock size={14} style={{ flexShrink: 0 }} />
+            <span style={{ whiteSpace: 'nowrap' }}>⏱ {timerLabel}</span>
           </button>
 
-          {/* 4. START MATCH Button */}
+          {/* 4 ── START MATCH ──────────────────────────────────────────── */}
           <button
+            id="league-start-match"
             type="button"
             onClick={handleStartMatch}
             disabled={
@@ -338,43 +447,50 @@ export default function LeagueMatchPanel({
               !rebelTeamMembers ||
               matchStatus === 'MATCH_ACTIVE'
             }
-            className={`flex-shrink-0 flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition cursor-pointer whitespace-nowrap shadow-md ${
-              matchStatus === 'MATCH_ACTIVE'
-                ? 'bg-emerald-500/20 border border-emerald-500 text-emerald-400 cursor-default'
-                : 'bg-[#CEFF00] hover:bg-[#b8e600] text-black'
-            } disabled:opacity-40 disabled:cursor-not-allowed`}
-            style={{ minHeight: '44px' }}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-extrabold whitespace-nowrap transition cursor-pointer active:scale-95 shadow-md disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{
+              flexShrink: 0,
+              minHeight: '44px',
+              fontSize: '13px',
+              background:
+                matchStatus === 'MATCH_ACTIVE'
+                  ? 'rgba(52,211,153,0.12)'
+                  : '#CEFF00',
+              color:
+                matchStatus === 'MATCH_ACTIVE'
+                  ? '#34d399'
+                  : '#0F1F3C',
+              border:
+                matchStatus === 'MATCH_ACTIVE'
+                  ? '1.5px solid rgba(52,211,153,0.5)'
+                  : 'none',
+            }}
           >
             {matchStatus === 'MATCH_ACTIVE' ? (
               <>
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="hidden sm:inline">MATCH LIVE</span>
-                <span className="sm:hidden">LIVE</span>
+                <span
+                  style={{
+                    display: 'inline-block',
+                    width: '7px',
+                    height: '7px',
+                    borderRadius: '50%',
+                    background: '#34d399',
+                    flexShrink: 0,
+                    animation: 'pulse 1.5s ease-in-out infinite',
+                  }}
+                />
+                <span style={{ whiteSpace: 'nowrap' }}>MATCH LIVE</span>
               </>
             ) : (
               <>
-                <Play size={12} fill="currentColor" />
-                <span className="hidden sm:inline">
+                <Play size={13} fill="currentColor" style={{ flexShrink: 0 }} />
+                <span style={{ whiteSpace: 'nowrap' }}>
                   {isPending ? 'STARTING...' : 'START MATCH'}
                 </span>
-                <span className="sm:hidden">START</span>
               </>
             )}
           </button>
 
-          {/* Spacer pushes CREATE to the right */}
-          <div className="flex-shrink-0 w-2" />
-
-          {/* 5. CREATE LEAGUE — compact icon+text or icon-only */}
-          <button
-            type="button"
-            onClick={() => setIsCreateModalOpen(true)}
-            className="flex-shrink-0 flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider bg-[#CEFF00] hover:bg-[#b8e600] text-black cursor-pointer shadow-md transition whitespace-nowrap"
-            style={{ minHeight: '44px' }}
-          >
-            <Plus size={14} />
-            <span className="hidden md:inline">CREATE</span>
-          </button>
         </div>
       </div>
 
@@ -710,13 +826,7 @@ export default function LeagueMatchPanel({
         initialSeconds={timerSeconds ?? 600}
       />
 
-      <CreateLeagueModal
-        isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
-        challenges={challenges}
-        members={members}
-        assignments={assignments}
-      />
+      {/* CreateLeagueModal removed — challenge creation is now via the dropdown custom input field */}
 
       <MatchDetailsModal
         isOpen={isDetailsModalOpen}
