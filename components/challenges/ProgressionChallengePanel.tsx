@@ -5,6 +5,7 @@ import {
   type ChallengeProgression,
   type ChallengeHistoryEntry,
   logProgressionActivity,
+  toggleTierCompletionAction,
   deleteProgressionActivity,
 } from '@/app/actions/progression';
 import MetricPillSelector from './MetricPillSelector';
@@ -32,13 +33,11 @@ export default function ProgressionChallengePanel({
   // Find personal best value for current selected metric
   const currentHighest = useMemo(() => {
     const normSlug = normalizeMetricSlug(selectedMetric);
-    // Find in progression array or derive from history
     const match = progression.find((p) => normalizeMetricSlug(p.challenge_type) === normSlug);
     if (match && typeof match.current_tier === 'number') {
       return match.current_tier;
     }
 
-    // Derive highest value from history entries
     let highest = 0;
     for (const h of history) {
       if (h.user_id === userId && normalizeMetricSlug(h.challenge_type) === normSlug) {
@@ -47,6 +46,32 @@ export default function ProgressionChallengePanel({
     }
     return highest;
   }, [progression, history, userId, selectedMetric]);
+
+  // Compute set of completed tier numbers for active metric
+  const completedTierNumbers = useMemo(() => {
+    const normSlug = normalizeMetricSlug(selectedMetric);
+    const set = new Set<number>();
+    const config = METRIC_PROGRESSION_CATALOG[normSlug] || METRIC_PROGRESSION_CATALOG['push_ups'];
+
+    // Mark completed tiers based on history logs or target values <= currentHighest
+    for (const h of history) {
+      if (h.user_id === userId && normalizeMetricSlug(h.challenge_type) === normSlug) {
+        const matchedTier = config.tiers.find((t) => t.targetValue === h.tier_after);
+        if (matchedTier) {
+          set.add(matchedTier.tierNumber);
+        }
+      }
+    }
+
+    // Also mark tiers completed if targetValue <= currentHighest
+    for (const t of config.tiers) {
+      if (currentHighest >= t.targetValue) {
+        set.add(t.tierNumber);
+      }
+    }
+
+    return set;
+  }, [selectedMetric, history, userId, currentHighest]);
 
   // Filter history for current metric and user
   const metricHistory = useMemo(() => {
@@ -64,9 +89,8 @@ export default function ProgressionChallengePanel({
   };
 
   const handleToggleTier = (tier: ChallengeTierDef) => {
-    if (currentHighest >= tier.targetValue) return;
     startTransition(async () => {
-      await handleLogValue(tier.targetValue);
+      await toggleTierCompletionAction(selectedMetric, tier.tierNumber, tier.targetValue);
     });
   };
 
@@ -91,7 +115,7 @@ export default function ProgressionChallengePanel({
       {/* ── 3. Challenge Tier List (1-14 Progressive Tiers) ───────── */}
       <ChallengeTierList
         metric={selectedMetric}
-        currentHighest={currentHighest}
+        completedTierNumbers={completedTierNumbers}
         onToggleTier={handleToggleTier}
       />
 
@@ -103,6 +127,7 @@ export default function ProgressionChallengePanel({
 
       {/* ── 5. Challenge History Section ───────────────────────────── */}
       <ChallengeHistory
+        metric={selectedMetric}
         history={metricHistory}
         userId={userId}
         onDeleteEntry={handleDeleteEntry}
