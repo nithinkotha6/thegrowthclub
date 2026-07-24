@@ -270,12 +270,12 @@ export default function LeagueMatchPanel({
 
   const timerLabel = timerSeconds
     ? `${Math.floor(timerSeconds / 60)}:${String(timerSeconds % 60).padStart(2, '0')}`
-    : 'TIMER';
+    : null;
 
   // Challenge pill label — truncate long names gracefully
   const challengePillLabel = selectedChallenge
     ? selectedChallenge.name.toUpperCase()
-    : 'CHALLENGE';
+    : 'LEAGUE';
 
   return (
     <div className="flex flex-col gap-6 max-w-5xl mx-auto py-2">
@@ -291,216 +291,193 @@ export default function LeagueMatchPanel({
         </div>
       )}
 
-      {/*
-        ── CONTROL BAR ────────────────────────────────────────────────────────
-        THREE-LAYER ARCHITECTURE:
-          1. Shell   — visual chrome only (bg, border, border-radius).
-                       overflow: visible so the dropdown portal can escape.
-          2. Track   — overflow: hidden clips scrolling buttons to shell corners.
-          3. Scroll  — overflow-x: auto, transparent, no border, hidden scrollbar.
-      */}
+      {/* ── CONTROL BAR ─ flat single-layer flex row, no scrolling ────────── */}
       <div
         style={{
-          position: 'relative',
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '10px',
+          padding: '12px 16px',
           background: '#0F1F3C',
           border: '1px solid rgba(255,255,255,0.10)',
           borderRadius: '16px',
           boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
-          overflow: 'visible',   /* Shell MUST be visible so dropdown escapes */
         }}
       >
-        {/* Track — clips buttons to shell's rounded corners */}
-        <div style={{ overflow: 'hidden', borderRadius: '16px' }}>
-          {/* Scroll — transparent, just handles overflow-x */}
-          <div
+        {/* 1 ── LEAGUE dropdown pill ── */}
+        <button
+          ref={pillRef}
+          type="button"
+          id="league-challenge-pill"
+          onClick={handleToggleDropdown}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '10px 14px',
+            borderRadius: '10px',
+            fontWeight: 800,
+            fontSize: '13px',
+            whiteSpace: 'nowrap',
+            cursor: 'pointer',
+            minHeight: '44px',
+            transition: 'all 0.15s ease',
+            background: selectedChallenge ? '#CEFF00' : '#1E3A5F',
+            color: selectedChallenge ? '#0F1F3C' : '#ffffff',
+            border: selectedChallenge ? 'none' : '1.5px solid rgba(255,255,255,0.20)',
+            maxWidth: '200px',
+          }}
+        >
+          <Swords size={14} style={{ flexShrink: 0 }} />
+          <span
             style={{
-              overflowX: 'auto',
-              overflowY: 'visible',
-              scrollbarWidth: 'none',
-              msOverflowStyle: 'none',
-              padding: '12px 16px',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              maxWidth: '130px',
+              display: 'inline-block',
             }}
           >
-            {/* Pills strip */}
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: '10px',
-                flexWrap: 'nowrap',
-              }}
-            >
+            {challengePillLabel}
+          </span>
+          <ChevronDown
+            size={13}
+            style={{
+              flexShrink: 0,
+              transition: 'transform 0.2s ease',
+              transform: isDropdownOpen ? 'rotate(180deg)' : 'none',
+            }}
+          />
+        </button>
 
-              {/* 1 ── Challenge Dropdown Pill ── */}
-              <button
-                ref={pillRef}
-                type="button"
-                id="league-challenge-pill"
-                onClick={handleToggleDropdown}
+        {/* Divider */}
+        <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.12)', flexShrink: 0 }} />
+
+        {/* 2 ── TEAMS button ── */}
+        <button
+          id="league-select-teams"
+          type="button"
+          onClick={() => setIsTeamModalOpen(true)}
+          disabled={!selectedChallengeId || matchStatus === 'MATCH_ACTIVE'}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '10px 14px',
+            borderRadius: '10px',
+            fontWeight: 800,
+            fontSize: '13px',
+            whiteSpace: 'nowrap',
+            cursor: 'pointer',
+            minHeight: '44px',
+            transition: 'all 0.15s ease',
+            background: titanTeamMembers && rebelTeamMembers ? 'rgba(206,255,0,0.12)' : '#1E3A5F',
+            color: titanTeamMembers && rebelTeamMembers ? '#CEFF00' : '#ffffff',
+            border: titanTeamMembers && rebelTeamMembers ? '1.5px solid rgba(206,255,0,0.5)' : '1.5px solid rgba(255,255,255,0.20)',
+            opacity: (!selectedChallengeId || matchStatus === 'MATCH_ACTIVE') ? 0.4 : 1,
+          }}
+        >
+          <Users size={14} style={{ flexShrink: 0 }} />
+          <span>
+            {titanTeamMembers && rebelTeamMembers
+              ? `${titanTeamMembers.length}v${rebelTeamMembers.length}`
+              : 'TEAMS'}
+          </span>
+        </button>
+
+        {/* 3 ── TIMER icon-only button ── */}
+        <button
+          id="league-set-timer"
+          type="button"
+          onClick={() => setIsTimerModalOpen(true)}
+          disabled={matchStatus === 'MATCH_ACTIVE'}
+          title={timerLabel ? `Timer: ${timerLabel}` : 'Set Timer'}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
+            padding: '10px 14px',
+            borderRadius: '10px',
+            fontWeight: 800,
+            fontSize: '13px',
+            whiteSpace: 'nowrap',
+            cursor: 'pointer',
+            minHeight: '44px',
+            transition: 'all 0.15s ease',
+            background: timerSeconds ? 'rgba(206,255,0,0.12)' : '#1E3A5F',
+            color: timerSeconds ? '#CEFF00' : '#ffffff',
+            border: timerSeconds ? '1.5px solid rgba(206,255,0,0.5)' : '1.5px solid rgba(255,255,255,0.20)',
+            opacity: matchStatus === 'MATCH_ACTIVE' ? 0.4 : 1,
+          }}
+        >
+          <Clock size={14} style={{ flexShrink: 0 }} />
+          {timerLabel && (
+            <span style={{ fontSize: '12px', fontVariantNumeric: 'tabular-nums' }}>
+              {timerLabel}
+            </span>
+          )}
+        </button>
+
+        {/* 4 ── START button ── */}
+        <button
+          id="league-start-match"
+          type="button"
+          onClick={handleStartMatch}
+          disabled={
+            isPending ||
+            !selectedChallengeId ||
+            !titanTeamMembers ||
+            !rebelTeamMembers ||
+            matchStatus === 'MATCH_ACTIVE'
+          }
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '10px 16px',
+            borderRadius: '10px',
+            fontWeight: 800,
+            fontSize: '13px',
+            whiteSpace: 'nowrap',
+            cursor: 'pointer',
+            minHeight: '44px',
+            transition: 'all 0.15s ease',
+            boxShadow: matchStatus !== 'MATCH_ACTIVE' ? '0 4px 14px rgba(206,255,0,0.25)' : 'none',
+            background: matchStatus === 'MATCH_ACTIVE' ? 'rgba(52,211,153,0.12)' : '#CEFF00',
+            color: matchStatus === 'MATCH_ACTIVE' ? '#34d399' : '#0F1F3C',
+            border: matchStatus === 'MATCH_ACTIVE' ? '1.5px solid rgba(52,211,153,0.5)' : 'none',
+            opacity:
+              isPending || !selectedChallengeId || !titanTeamMembers || !rebelTeamMembers
+                ? 0.4
+                : 1,
+          }}
+        >
+          {matchStatus === 'MATCH_ACTIVE' ? (
+            <>
+              <span
                 style={{
+                  display: 'inline-block',
+                  width: '7px',
+                  height: '7px',
+                  borderRadius: '50%',
+                  background: '#34d399',
                   flexShrink: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '10px 14px',
-                  borderRadius: '10px',
-                  fontWeight: 800,
-                  fontSize: '13px',
-                  whiteSpace: 'nowrap',
-                  cursor: 'pointer',
-                  minHeight: '44px',
-                  transition: 'all 0.15s ease',
-                  background: selectedChallenge ? '#CEFF00' : '#1E3A5F',
-                  color: selectedChallenge ? '#0F1F3C' : '#94a3b8',
-                  border: selectedChallenge ? 'none' : '1.5px solid rgba(255,255,255,0.15)',
-                  maxWidth: '200px',
+                  animation: 'pulse 1.5s ease-in-out infinite',
                 }}
-              >
-                <Swords size={14} style={{ flexShrink: 0 }} />
-                <span
-                  style={{
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                    maxWidth: '130px',
-                    display: 'inline-block',
-                  }}
-                >
-                  {challengePillLabel}
-                </span>
-                <ChevronDown
-                  size={13}
-                  style={{
-                    flexShrink: 0,
-                    transition: 'transform 0.2s ease',
-                    transform: isDropdownOpen ? 'rotate(180deg)' : 'none',
-                  }}
-                />
-              </button>
+              />
+              LIVE
+            </>
+          ) : (
+            <>
+              <Play size={13} fill="currentColor" style={{ flexShrink: 0 }} />
+              {isPending ? '...' : 'START'}
+            </>
+          )}
+        </button>
 
-              {/* Divider */}
-              <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.12)', flexShrink: 0 }} />
-
-              {/* 2 ── SELECT TEAMS ── */}
-              <button
-                id="league-select-teams"
-                type="button"
-                onClick={() => setIsTeamModalOpen(true)}
-                disabled={!selectedChallengeId || matchStatus === 'MATCH_ACTIVE'}
-                style={{
-                  flexShrink: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '10px 14px',
-                  borderRadius: '10px',
-                  fontWeight: 800,
-                  fontSize: '13px',
-                  whiteSpace: 'nowrap',
-                  cursor: 'pointer',
-                  minHeight: '44px',
-                  transition: 'all 0.15s ease',
-                  background: titanTeamMembers && rebelTeamMembers ? 'rgba(206,255,0,0.12)' : '#1E3A5F',
-                  color: titanTeamMembers && rebelTeamMembers ? '#CEFF00' : '#94a3b8',
-                  border: titanTeamMembers && rebelTeamMembers ? '1.5px solid rgba(206,255,0,0.5)' : '1.5px solid rgba(255,255,255,0.15)',
-                  opacity: (!selectedChallengeId || matchStatus === 'MATCH_ACTIVE') ? 0.4 : 1,
-                }}
-              >
-                <Users size={14} style={{ flexShrink: 0 }} />
-                <span>{teamsLabel}</span>
-              </button>
-
-              {/* 3 ── SET TIMER ── */}
-              <button
-                id="league-set-timer"
-                type="button"
-                onClick={() => setIsTimerModalOpen(true)}
-                disabled={matchStatus === 'MATCH_ACTIVE'}
-                style={{
-                  flexShrink: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '10px 14px',
-                  borderRadius: '10px',
-                  fontWeight: 800,
-                  fontSize: '13px',
-                  whiteSpace: 'nowrap',
-                  cursor: 'pointer',
-                  minHeight: '44px',
-                  transition: 'all 0.15s ease',
-                  background: timerSeconds ? 'rgba(206,255,0,0.12)' : '#1E3A5F',
-                  color: timerSeconds ? '#CEFF00' : '#94a3b8',
-                  border: timerSeconds ? '1.5px solid rgba(206,255,0,0.5)' : '1.5px solid rgba(255,255,255,0.15)',
-                  opacity: matchStatus === 'MATCH_ACTIVE' ? 0.4 : 1,
-                }}
-              >
-                <Clock size={14} style={{ flexShrink: 0 }} />
-                <span>⏱ {timerLabel}</span>
-              </button>
-
-              {/* 4 ── START MATCH ── */}
-              <button
-                id="league-start-match"
-                type="button"
-                onClick={handleStartMatch}
-                disabled={
-                  isPending ||
-                  !selectedChallengeId ||
-                  !titanTeamMembers ||
-                  !rebelTeamMembers ||
-                  matchStatus === 'MATCH_ACTIVE'
-                }
-                style={{
-                  flexShrink: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '10px 16px',
-                  borderRadius: '10px',
-                  fontWeight: 800,
-                  fontSize: '13px',
-                  whiteSpace: 'nowrap',
-                  cursor: 'pointer',
-                  minHeight: '44px',
-                  transition: 'all 0.15s ease',
-                  boxShadow: matchStatus !== 'MATCH_ACTIVE' ? '0 4px 14px rgba(206,255,0,0.25)' : 'none',
-                  background: matchStatus === 'MATCH_ACTIVE' ? 'rgba(52,211,153,0.12)' : '#CEFF00',
-                  color: matchStatus === 'MATCH_ACTIVE' ? '#34d399' : '#0F1F3C',
-                  border: matchStatus === 'MATCH_ACTIVE' ? '1.5px solid rgba(52,211,153,0.5)' : 'none',
-                  opacity:
-                    isPending || !selectedChallengeId || !titanTeamMembers || !rebelTeamMembers
-                      ? 0.4
-                      : 1,
-                }}
-              >
-                {matchStatus === 'MATCH_ACTIVE' ? (
-                  <>
-                    <span
-                      style={{
-                        display: 'inline-block',
-                        width: '7px',
-                        height: '7px',
-                        borderRadius: '50%',
-                        background: '#34d399',
-                        flexShrink: 0,
-                        animation: 'pulse 1.5s ease-in-out infinite',
-                      }}
-                    />
-                    MATCH LIVE
-                  </>
-                ) : (
-                  <>
-                    <Play size={13} fill="currentColor" style={{ flexShrink: 0 }} />
-                    {isPending ? 'STARTING...' : 'START MATCH'}
-                  </>
-                )}
-              </button>
-
-            </div>
-          </div>
-        </div>
       </div>
 
       {/*
